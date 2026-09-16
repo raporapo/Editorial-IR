@@ -1,0 +1,83 @@
+name: shorts
+version: 0.1.0
+extends: [base-editor]
+description: >-
+  Under a minute, vertical, and it has to work for someone who arrived with no
+  context and will leave in two seconds.
+license: Apache-2.0
+
+defaults:
+  min_clip_duration_ms: 800
+  max_clip_duration_ms: 3500
+  pad_in_ms: 60
+  pad_out_ms: 100
+  snap_to_silence: true
+  snap_window_ms: 300
+
+scoring:
+  weights:
+    emotional_intensity: 1.0
+    uniqueness: 0.6
+    story_importance: 0.6
+    context_relevance: 0.3
+    information_density: 0.3
+    redundancy: -1.0
+  flag_weights:
+    opening_candidate: 0.4
+    requires_previous_context: -0.6
+
+arc:
+  # The one skill allowed to reorder, and only to lift a single hook to the
+  # front. Everything after it stays in the order it happened.
+  ordering: hook_first
+  segments:
+    - name: opening
+      budget: 0.25
+      prefer_roles: [climax, payoff, reaction]
+    - name: middle
+      budget: 0.6
+      prefer_roles: [build_up, payoff, reaction]
+    - name: ending
+      budget: 0.15
+      prefer_roles: [ending, resolution]
+
+constraints:
+  max_operations: 14
+
+intent:
+  opening: immediate
+  middle: fast
+  ending: abrupt
+
+rules:
+  - id: nothing-that-needs-explaining
+    description: >-
+      A viewer arrives here with no context and will not be given any, so a clip
+      that only makes sense after another clip cannot be used.
+    priority: 60
+    when:
+      requires_previous_context_probability: ">0.6"
+    action:
+      drop: true
+
+  - id: open-on-the-best-moment
+    when:
+      emotional_intensity: ">0.75"
+    action:
+      prefer: 0.4
+      place_at: opening
+
+  - id: keep-it-moving
+    priority: 20
+    when:
+      emotional_intensity: "<0.5"
+    action:
+      maximum_duration_sec: 2.0
+
+  - id: no-establishing-shots
+    description: There is no time to establish anything.
+    when:
+      establishing_shot_probability: ">0.6"
+    action:
+      avoid: 0.3
+      maximum_duration_sec: 1.5

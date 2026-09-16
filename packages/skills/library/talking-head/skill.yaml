@@ -1,0 +1,71 @@
+name: talking-head
+version: 0.1.0
+extends: [base-editor]
+description: >-
+  One person explaining something to camera. What is said carries the piece, so
+  sound quality and complete sentences matter more than pictures.
+license: Apache-2.0
+
+defaults:
+  min_clip_duration_ms: 2500
+  max_clip_duration_ms: 25000
+  pad_in_ms: 250
+  pad_out_ms: 400
+  snap_to_silence: true
+  snap_window_ms: 900
+
+scoring:
+  weights:
+    information_density: 0.9
+    audio_quality: 0.6
+    emotional_intensity: 0.2
+    visual_quality: 0.1
+  flag_weights:
+    contains_dead_air: -0.5
+
+arc:
+  ordering: chronological
+  segments:
+    - name: opening
+      budget: 0.1
+      prefer_roles: [setup, context]
+    - name: middle
+      budget: 0.75
+      prefer_roles: [context, build_up, payoff]
+    - name: ending
+      budget: 0.15
+      prefer_roles: [resolution, ending]
+
+constraints:
+  min_speech_share: 0.7
+
+rules:
+  - id: never-cut-mid-sentence
+    description: >-
+      Trimming inside speech produces a cut that sounds like a mistake, which is
+      worse than a piece running slightly long.
+    priority: 40
+    when:
+      has_speech: true
+    action:
+      avoid_aggressive_cutting: true
+
+  - id: drop-silence
+    when:
+      has_speech: false
+      story_importance: "<0.6"
+    action:
+      drop: true
+
+  - id: keep-the-good-audio
+    when:
+      audio_quality: "<0.3"
+    action:
+      avoid: 0.4
+
+  - id: a-dense-explanation-earns-its-length
+    when:
+      information_density: ">0.7"
+    action:
+      maximum_duration_sec: 40.0
+      prefer: 0.2

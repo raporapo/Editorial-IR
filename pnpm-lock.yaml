@@ -116,6 +116,10 @@ importers:
       '@editorial-ir/contracts':
         specifier: workspace:*
         version: link:../contracts
+    devDependencies:
+      '@editorial-ir/perception':
+        specifier: workspace:*
+        version: link:../perception
 
   packages/perception:
     dependencies:

@@ -58,9 +58,6 @@ rl.on('line', (line) => {
       reply({ ok: true, op: 'shutdown', result: {} });
       process.exit(0);
       break;
-    case 'crash':
-      process.exit(3);
-      break;
     default:
       reply({ ok: false, op: request.op, error: { code: 'unsupported_op', message: request.op } });
   }

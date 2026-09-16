@@ -82,7 +82,7 @@ describe('PythonWorkerClient', () => {
     const client = makeClient('slow');
     await client.request('health', {});
     const pending = client.request('probe', { path: '/tmp/a.mov' });
-    void client.request('crash', {}).catch(() => undefined);
+    void client.request('shutdown', {}).catch(() => undefined);
     await expect(pending).rejects.toThrow(/worker exited|not running/);
   });
 
