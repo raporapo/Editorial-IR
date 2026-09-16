@@ -42,7 +42,12 @@ describe('the walkthrough in the README', () => {
     const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
 
     expect(await main(['demo', root])).toBe(0);
+    // These four are quoted verbatim in the README, which is the first thing
+    // anyone reads. A figure that has quietly moved makes the whole page look
+    // like it is describing a different program.
     expect(stdout()).toContain('73 events');
+    expect(stdout()).toContain('shots: 104');
+    expect(stdout()).toContain('relations: 435');
     expect(stdout()).toContain('cost: nothing');
 
     output = [];

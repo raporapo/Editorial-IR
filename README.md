@@ -43,6 +43,7 @@ the analysis
   material: 00:27:00
   events: 73, averaging 22s
   transcribed: 26 utterances
+  shots: 104
   relations: 435
   took: 0.1s
   cost: nothing
