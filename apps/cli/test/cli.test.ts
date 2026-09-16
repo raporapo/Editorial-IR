@@ -174,3 +174,54 @@ describe('terminal widths', () => {
     expect(truncate('short', 20)).toBe('short');
   });
 });
+
+describe('reviewing a cut', () => {
+  it('reads the latest plan back and reports on it', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+    await main([
+      'plan',
+      '--project',
+      root,
+      '--skill',
+      'travel-vlog',
+      '--duration',
+      '180',
+      '--quiet',
+    ]);
+
+    output = [];
+    expect(await main(['review', '--project', root])).toBe(0);
+    const text = stdout();
+    expect(text).toContain('validity');
+    expect(text).toContain('how it reads');
+  }, 60_000);
+
+  it('says what to do when there is no plan', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+    await expect(main(['review', '--project', root])).rejects.toThrow(/no plan yet/);
+  }, 60_000);
+});
+
+describe('the agent command', () => {
+  it('says how to configure a model, and that it is not required', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+
+    const saved = {
+      base: process.env.OEA_AGENT_BASE_URL,
+      decision: process.env.OEA_DECISION_BASE_URL,
+    };
+    delete process.env.OEA_AGENT_BASE_URL;
+    delete process.env.OEA_DECISION_BASE_URL;
+    try {
+      await expect(main(['agent', 'three minutes', '--project', root])).rejects.toThrow(
+        /needs a model/,
+      );
+    } finally {
+      if (saved.base) process.env.OEA_AGENT_BASE_URL = saved.base;
+      if (saved.decision) process.env.OEA_DECISION_BASE_URL = saved.decision;
+    }
+  }, 60_000);
+});

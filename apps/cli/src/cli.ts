@@ -11,6 +11,8 @@ import { runSearch } from './commands/search.js';
 import { runExplain } from './commands/explain.js';
 import { runAnnotate } from './commands/annotate.js';
 import { runContext, runDemo, runDoctor, runSchema, runSkills } from './commands/misc.js';
+import { runReview } from './commands/review.js';
+import { runAgent } from './commands/agent.js';
 
 /**
  * `oea` — the command line.
@@ -166,6 +168,29 @@ export async function main(argv: string[]): Promise<number> {
         ...(values.clear ? { clear: true } : {}),
       });
 
+    case 'review':
+      return runReview({
+        ...(values.project ? { project: values.project } : {}),
+        ...(values.plan ? { plan: values.plan } : {}),
+        ...(values.json ? { json: true } : {}),
+      });
+
+    case 'agent':
+      if (rest.length === 0) {
+        fail(
+          'agent needs an instruction, such as: oea agent "three minutes, ending on the night view"',
+        );
+        return 2;
+      }
+      return runAgent({
+        instruction: rest.join(' '),
+        ...(values.project ? { project: values.project } : {}),
+        ...(values.skill ? { skill: values.skill } : {}),
+        ...(values['skills-dir'] ? { skillsDir: values['skills-dir'] } : {}),
+        ...(number(values.duration) === undefined ? {} : { duration: number(values.duration) }),
+        ...(values.json ? { json: true } : {}),
+      });
+
     case 'apply':
       return runApply({
         ...(values.project ? { project: values.project } : {}),
@@ -262,6 +287,8 @@ function printHelp(command: string | undefined): void {
   heading('a cut');
   line('  oea skills [name]            what each editing style does');
   line('  oea plan --skill <name> --duration <seconds>');
+  line('  oea agent "<what you want>"  plan with a model in the loop (needs one)');
+  line('  oea review                   what is wrong with the latest cut');
   line('  oea editors                  what each editing application can take');
   line('  oea apply --editor <id>      write the cut out');
 
@@ -281,6 +308,7 @@ function printHelp(command: string | undefined): void {
   line('  OEA_VLM_BASE_URL, OEA_VLM_MODEL            a closer look at hard events');
   line('  OEA_DECISION_BASE_URL, OEA_DECISION_MODEL  a second opinion on judgement');
   line('  OEA_EMBED_BASE_URL, OEA_EMBED_MODEL        meaning-based search');
+  line('  OEA_AGENT_BASE_URL, OEA_AGENT_MODEL        the agent in "oea agent"');
   line();
   note('Keys come from the environment, never from flags: a key in shell history');
   note('is a key in a backup.');

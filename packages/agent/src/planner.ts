@@ -42,7 +42,32 @@ export interface PlanOptions {
   sequence?: Partial<SequenceSpec>;
   /** Used to snap cut points to silence. */
   observations?: ObservationTimeline;
+  /** Adjustments from a caller: a person on the command line, or a model agent. */
+  overrides?: PlanOverrides;
   now?: () => string;
+}
+
+/**
+ * Adjustments applied after the skill and before selection.
+ *
+ * This is the seam a model-driven agent works through. It contributes judgement
+ * about which moments matter for a particular request — "the meals do not all
+ * need to be shown" — and the planner keeps contributing feasibility: the target
+ * duration, the user's must-keeps and the validator's invariants are still
+ * satisfied by construction, whoever asked for what.
+ *
+ * It cannot override the user. An event the user marked essential stays, and an
+ * event they excluded stays out, whatever is passed here.
+ */
+export interface PlanOverrides {
+  /** Select these if at all possible. */
+  require?: readonly string[];
+  /** Do not select these. */
+  drop?: readonly string[];
+  /** Added to the score, before ranking. Negative is allowed. */
+  boost?: Readonly<Record<string, number>>;
+  /** Why, for the plan's rationale. */
+  reasons?: Readonly<Record<string, string>>;
 }
 
 interface Candidate {
@@ -132,6 +157,7 @@ export function planEdit(options: PlanOptions): EditPlan {
     );
   }
 
+  applyOverrides(candidates, options.overrides, rationale);
   assignPreferredDurations(candidates);
   assignArcSegments(candidates, skill);
   suppressDuplicates(candidates, ir, rationale);
@@ -356,6 +382,52 @@ function select(
   }
 
   return chosen.sort((a, b) => a.index - b.index);
+}
+
+/**
+ * Applies a caller's adjustments.
+ *
+ * Deliberately after the skill and before selection: the skill decides what the
+ * style wants, the caller adjusts for this particular request, and the planner
+ * still decides what actually fits.
+ */
+function applyOverrides(
+  candidates: Candidate[],
+  overrides: PlanOverrides | undefined,
+  rationale: PlanRationale[],
+): void {
+  if (!overrides) return;
+
+  const required = new Set(overrides.require ?? []);
+  const dropped = new Set(overrides.drop ?? []);
+
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const candidate = candidates[i]!;
+    const id = candidate.event.id;
+
+    const boost = overrides.boost?.[id];
+    if (boost !== undefined) candidate.value += boost;
+
+    if (dropped.has(id)) {
+      // The user still outranks the caller: an event they marked essential is
+      // not something an agent gets to drop.
+      if (candidate.event.knowledge.essential) continue;
+      rationale.push({
+        event_id: id,
+        decision: 'dropped',
+        reason: overrides.reasons?.[id] ?? 'left out at the caller\u2019s request',
+        score: candidate.value,
+        skill_rule_ids: candidate.directive.matched_rule_ids,
+      });
+      candidates.splice(i, 1);
+      continue;
+    }
+
+    if (required.has(id)) {
+      candidate.required = true;
+      candidate.directive = { ...candidate.directive, required: true };
+    }
+  }
 }
 
 /** Value, with a bonus for the roles this part of the arc wants. */

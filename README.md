@@ -57,6 +57,7 @@ Then look at what it understood, and cut it:
 pnpm oea timeline --project ./demo
 pnpm oea plan --project ./demo --skill travel-vlog --duration 180
 pnpm oea plan --project ./demo --skill shorts --duration 40
+pnpm oea review --project ./demo
 pnpm oea apply --project ./demo --editor otio
 ```
 
