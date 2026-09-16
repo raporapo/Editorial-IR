@@ -30,7 +30,11 @@ import { expectedUnitValue } from '@editorial-ir/contracts';
  *
  * Both have the same mean, so any blend of them does too.
  */
-export function unitToDistribution(value: number, levelCount: number, concentration = 0.4): number[] {
+export function unitToDistribution(
+  value: number,
+  levelCount: number,
+  concentration = 0.4,
+): number[] {
   if (levelCount <= 1) return [1];
   const clamped = Math.min(1, Math.max(0, value));
   const mean = clamped * (levelCount - 1);

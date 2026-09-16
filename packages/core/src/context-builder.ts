@@ -6,6 +6,7 @@ import {
   type EventObservations,
   type MediaAsset,
   type ObservationTimeline,
+  type Conflict,
   type PrepareResult,
   type ProjectContext,
   type SemanticEvent,
@@ -14,7 +15,7 @@ import {
 import type { ContextModel } from '@editorial-ir/perception';
 import type { SegmentDraft } from './segment.js';
 import { annotationsFor, applyAnnotations, withOverrides } from './annotations.js';
-import { selectForEscalation, type EscalationPolicy, CostBudget } from './budget.js';
+import { selectForEscalation, type EscalationPolicy, type CostBudget } from './budget.js';
 import type { ModelRunRecorder } from './model-runs.js';
 import { framePathFor } from './observe.js';
 
@@ -53,7 +54,7 @@ export interface BuildEventsOptions {
 
 export interface BuildEventsResult {
   events: SemanticEvent[];
-  conflicts: import('@editorial-ir/contracts').Conflict[];
+  conflicts: Conflict[];
   escalated: string[];
   /** Why escalation stopped where it did, for reporting to the user. */
   escalationLimitedBy: string;
@@ -168,7 +169,13 @@ export async function buildSemanticEvents(
         confidence: described?.confidence ?? 0.15,
       },
       ...(described?.title
-        ? { title: { value: described.title, provenance: 'inferred' as const, confidence: described.confidence } }
+        ? {
+            title: {
+              value: described.title,
+              provenance: 'inferred' as const,
+              confidence: described.confidence,
+            },
+          }
         : {}),
       entities: {
         value: {
@@ -192,7 +199,11 @@ export async function buildSemanticEvents(
       confidence: described ? described.confidence : 0.15,
     };
 
-    const applicable = annotationsFor(event, options.annotations, placementOf.get(skeleton.draft.asset_id) ?? 0);
+    const applicable = annotationsFor(
+      event,
+      options.annotations,
+      placementOf.get(skeleton.draft.asset_id) ?? 0,
+    );
     const applied = applyAnnotations(event, applicable, options.context.background.occasion);
     conflicts.push(...applied.conflicts);
     events.push(withOverrides(event, applied));
@@ -251,7 +262,9 @@ function describeParams(
     ...(previous ? { previous_summary: fallbackDescription(previous.observed) } : {}),
     ...(next ? { next_summary: fallbackDescription(next.observed) } : {}),
     user_context: userContextFor(options.context),
-    ...(options.context.editing_goal.language ? { language: options.context.editing_goal.language } : {}),
+    ...(options.context.editing_goal.language
+      ? { language: options.context.editing_goal.language }
+      : {}),
   };
 }
 
@@ -263,7 +276,9 @@ function framesFor(skeleton: Skeleton, options: BuildEventsOptions): string[] {
   // Four frames: the start, two through the middle and the end. More rarely
   // changes the answer and every one of them costs money on a hosted model.
   const span = skeleton.draft.end_ms - skeleton.draft.start_ms;
-  const points = [0.1, 0.35, 0.65, 0.9].map((fraction) => skeleton.draft.start_ms + span * fraction);
+  const points = [0.1, 0.35, 0.65, 0.9].map(
+    (fraction) => skeleton.draft.start_ms + span * fraction,
+  );
   return points
     .map((ms) => framePathFor(prepared, ms, fps))
     .filter((path): path is string => path !== undefined);
@@ -297,7 +312,10 @@ function fallbackDescription(observed: EventObservations): string {
  * Denormalised onto the event on purpose: an event has to be reviewable on its
  * own, including by an agent that is only allowed to see events.
  */
-export function gatherObservations(draft: SegmentDraft, observations: ObservationTimeline): EventObservations {
+export function gatherObservations(
+  draft: SegmentDraft,
+  observations: ObservationTimeline,
+): EventObservations {
   const range = { start_ms: draft.start_ms, end_ms: draft.end_ms };
   const duration = Math.max(1, draft.end_ms - draft.start_ms);
   const inAsset = <T extends { asset_id: string }>(items: readonly T[]): T[] =>

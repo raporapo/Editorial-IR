@@ -1,9 +1,4 @@
-import {
-  coverage,
-  seqId,
-  type Chapter,
-  type SemanticEvent,
-} from '@editorial-ir/contracts';
+import { coverage, seqId, type Chapter, type SemanticEvent } from '@editorial-ir/contracts';
 
 /**
  * Grouping events into chapters.
@@ -174,7 +169,9 @@ function titleFor(group: readonly SemanticEvent[], place: string | undefined): s
   if (labels) return labels.replace(/_/g, ' ');
 
   const types = mostCommon(
-    group.map((event) => event.event_type.value).filter((type) => type !== 'moment' && type !== 'b_roll'),
+    group
+      .map((event) => event.event_type.value)
+      .filter((type) => type !== 'moment' && type !== 'b_roll'),
   );
   if (types) return types;
 

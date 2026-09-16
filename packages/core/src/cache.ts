@@ -55,7 +55,12 @@ export class FileCache implements PerceptionCache {
     const temporary = `${path}.${process.pid}.tmp`;
     writeFileSync(
       temporary,
-      JSON.stringify({ key: cacheKey(parts), operation: parts.operation, written_at: new Date().toISOString(), value }),
+      JSON.stringify({
+        key: cacheKey(parts),
+        operation: parts.operation,
+        written_at: new Date().toISOString(),
+        value,
+      }),
     );
     renameSync(temporary, path);
   }

@@ -7,7 +7,7 @@ import {
   type SemanticEvent,
 } from '@editorial-ir/contracts';
 import { assessEvent, type EditorialDecisionModel } from '@editorial-ir/decision';
-import { CostBudget, selectForEscalation, type EscalationPolicy } from './budget.js';
+import { type CostBudget, selectForEscalation, type EscalationPolicy } from './budget.js';
 import type { ModelRunRecorder } from './model-runs.js';
 
 /**
@@ -45,19 +45,27 @@ export async function assessEvents(
   for (const [index, event] of ordered.entries()) {
     states.set(
       event.id,
-      buildEventState(event, ordered[index - 1], ordered[index + 1], index / Math.max(1, ordered.length - 1), {
-        context: options.context,
-        ...(options.similarities?.has(event.id)
-          ? { maxSimilarity: options.similarities.get(event.id)! }
-          : {}),
-      }),
+      buildEventState(
+        event,
+        ordered[index - 1],
+        ordered[index + 1],
+        index / Math.max(1, ordered.length - 1),
+        {
+          context: options.context,
+          ...(options.similarities?.has(event.id)
+            ? { maxSimilarity: options.similarities.get(event.id)! }
+            : {}),
+        },
+      ),
     );
   }
 
   const baseRun = options.runs.record({
     stage: 'decision',
     backend: options.baseModel.identity.backend,
-    ...(options.baseModel.identity.model === undefined ? {} : { model: options.baseModel.identity.model }),
+    ...(options.baseModel.identity.model === undefined
+      ? {}
+      : { model: options.baseModel.identity.model }),
     locality: options.baseModel.identity.locality,
     mediaLeavesDevice: options.baseModel.identity.mediaLeavesDevice,
   });
@@ -105,7 +113,12 @@ export async function assessEvents(
       const draft = await assessEvent(model, states.get(eventId)!);
       drafts.set(eventId, draft);
       escalated.push(eventId);
-      options.runs.addCost(escalationRun, draft.costUsd ?? costPerEvent, draft.inputTokens, draft.outputTokens);
+      options.runs.addCost(
+        escalationRun,
+        draft.costUsd ?? costPerEvent,
+        draft.inputTokens,
+        draft.outputTokens,
+      );
     }
   }
 
@@ -134,7 +147,10 @@ export async function assessEvents(
         rationale: 'the model’s own assessment, kept because the user overrode it',
       };
       assessment.metrics = { ...assessment.metrics, story_importance: override };
-      assessment.flags = { ...assessment.flags, preserve: Math.max(assessment.flags.preserve, override) };
+      assessment.flags = {
+        ...assessment.flags,
+        preserve: Math.max(assessment.flags.preserve, override),
+      };
       return { event_id: event.id, current: assessment, history: [original] };
     }
 
@@ -181,9 +197,16 @@ export function buildEventState(
       affect: event.affect.value,
     },
     ...(previous
-      ? { previous_event: { description: previous.description.value, event_type: previous.event_type.value } }
+      ? {
+          previous_event: {
+            description: previous.description.value,
+            event_type: previous.event_type.value,
+          },
+        }
       : {}),
-    ...(next ? { next_event: { description: next.description.value, event_type: next.event_type.value } } : {}),
+    ...(next
+      ? { next_event: { description: next.description.value, event_type: next.event_type.value } }
+      : {}),
     user_context: {
       ...(context.background.occasion ? { occasion: context.background.occasion } : {}),
       ...(context.editing_goal.instruction ? { goal: context.editing_goal.instruction } : {}),
@@ -191,6 +214,8 @@ export function buildEventState(
       notes: event.knowledge.notes,
       essential: event.knowledge.essential,
     },
-    ...(options.maxSimilarity === undefined ? {} : { max_similarity_to_others: options.maxSimilarity }),
+    ...(options.maxSimilarity === undefined
+      ? {}
+      : { max_similarity_to_others: options.maxSimilarity }),
   };
 }

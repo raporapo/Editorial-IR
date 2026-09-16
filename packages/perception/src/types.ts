@@ -116,15 +116,7 @@ export interface PerceptionSuite {
 }
 
 export type PerceptionCapability =
-  | 'probe'
-  | 'prepare'
-  | 'speech'
-  | 'shots'
-  | 'visual'
-  | 'audio'
-  | 'ocr'
-  | 'context'
-  | 'text';
+  'probe' | 'prepare' | 'speech' | 'shots' | 'visual' | 'audio' | 'ocr' | 'context' | 'text';
 
 export function availableCapabilities(suite: PerceptionSuite): PerceptionCapability[] {
   const caps: PerceptionCapability[] = ['probe', 'text'];

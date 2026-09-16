@@ -152,7 +152,8 @@ export function separationScore(signals: BoundarySignals): number {
   if (signals.silence !== undefined) terms.push({ value: signals.silence, weight: 0.25 });
   if (signals.shotChange !== undefined) terms.push({ value: signals.shotChange, weight: 0.15 });
   if (signals.topic !== undefined) terms.push({ value: signals.topic, weight: 0.2 });
-  if (signals.speakerChange !== undefined) terms.push({ value: signals.speakerChange, weight: 0.15 });
+  if (signals.speakerChange !== undefined)
+    terms.push({ value: signals.speakerChange, weight: 0.15 });
 
   if (terms.length === 0) return 0.5;
 
@@ -263,7 +264,9 @@ export function segmentAtoms(
       shot_ids: [...left.shot_ids, ...right.shot_ids],
       // Keep the frame from the longer half: it represents more of the result.
       representative_frame_ms:
-        durationOf(left) >= durationOf(right) ? left.representative_frame_ms : right.representative_frame_ms,
+        durationOf(left) >= durationOf(right)
+          ? left.representative_frame_ms
+          : right.representative_frame_ms,
       ...(left.change_score === undefined ? {} : { change_score: left.change_score }),
     };
     return [...list.slice(0, index), merged, ...list.slice(index + 2)];
@@ -280,9 +283,11 @@ export function segmentAtoms(
 
       const leftScore = i > 0 ? (scores[i - 1] ?? 1) : Infinity;
       const rightScore = i < segments.length - 1 ? (scores[i] ?? 1) : Infinity;
-      const leftFits = i > 0 && durationOf(segments[i - 1]!) + durationOf(segment) <= settings.maxEventMs;
+      const leftFits =
+        i > 0 && durationOf(segments[i - 1]!) + durationOf(segment) <= settings.maxEventMs;
       const rightFits =
-        i < segments.length - 1 && durationOf(segment) + durationOf(segments[i + 1]!) <= settings.maxEventMs;
+        i < segments.length - 1 &&
+        durationOf(segment) + durationOf(segments[i + 1]!) <= settings.maxEventMs;
 
       // Join the side it is more continuous with; a forced split is never crossed.
       if (leftFits && (leftScore <= rightScore || !rightFits) && leftScore < 1) {
@@ -333,7 +338,8 @@ export function segmentAtoms(
     shot_ids: segment.shot_ids,
     method: methodFor(segment, context),
     // How sure we are that this event *starts* where it does.
-    boundary_confidence: index === 0 ? 0.9 : Math.min(1, 0.4 + 0.6 * (finalScores[index - 1] ?? 0.5)),
+    boundary_confidence:
+      index === 0 ? 0.9 : Math.min(1, 0.4 + 0.6 * (finalScores[index - 1] ?? 0.5)),
   }));
 }
 

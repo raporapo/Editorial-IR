@@ -70,7 +70,10 @@ describe('describeFromObservations', () => {
   });
 
   it('describes what was seen when nothing was said', () => {
-    const result = describeFromObservations({ ...empty, visual_labels: ['night_view', 'city_lights'] });
+    const result = describeFromObservations({
+      ...empty,
+      visual_labels: ['night_view', 'city_lights'],
+    });
     expect(result.description).toContain('night_view');
     // Better than nothing, still not an understanding.
     expect(result.confidence).toBeLessThan(0.35);
@@ -83,7 +86,9 @@ describe('describeFromObservations', () => {
 
   it('truncates rather than emitting a paragraph', () => {
     const long = 'あ'.repeat(500);
-    expect(describeFromObservations({ ...empty, transcript: [long] }).description.length).toBeLessThanOrEqual(140);
+    expect(
+      describeFromObservations({ ...empty, transcript: [long] }).description.length,
+    ).toBeLessThanOrEqual(140);
   });
 });
 
@@ -99,7 +104,11 @@ describe('buildPrompt', () => {
   });
 
   it('gives the neighbours so the model can tell arrival from departure', () => {
-    const prompt = buildPrompt({ ...empty, previous_summary: 'on the train', next_summary: 'walking in' });
+    const prompt = buildPrompt({
+      ...empty,
+      previous_summary: 'on the train',
+      next_summary: 'walking in',
+    });
     expect(prompt).toContain('Previous event: on the train');
     expect(prompt).toContain('Next event: walking in');
   });
@@ -119,7 +128,9 @@ describe('createFixtureSuite', () => {
   it('replays what the fixture holds', async () => {
     const suite = createFixtureSuite(fixture);
     expect((await suite.probe.probe('/anywhere/a.mov')).duration_ms).toBe(5000);
-    expect((await suite.shots!.detectShots({ path: 'a.mov', threshold: 0.3, min_shot_ms: 800 })).shots).toHaveLength(1);
+    expect(
+      (await suite.shots!.detectShots({ path: 'a.mov', threshold: 0.3, min_shot_ms: 800 })).shots,
+    ).toHaveLength(1);
   });
 
   it('matches on the file name, so a fixture survives being moved', async () => {

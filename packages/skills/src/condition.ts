@@ -75,7 +75,10 @@ export function parseNumericCondition(condition: NumericCondition): ParsedCompar
     if (low > high) {
       throw new EditorialError('skill_error', `range "${text}" starts above where it ends`);
     }
-    return { test: (value) => value >= low && value <= high, describe: () => `in [${low}, ${high}]` };
+    return {
+      test: (value) => value >= low && value <= high,
+      describe: () => `in [${low}, ${high}]`,
+    };
   }
 
   const comparison = /^(>=|<=|==|!=|>|<)\s*(-?\d+(?:\.\d+)?)$/.exec(text);
@@ -142,10 +145,12 @@ export function evaluateCondition(condition: Record<string, unknown>, facts: Eve
 
     switch (field) {
       case 'all_of':
-        if (!(expected as Record<string, unknown>[]).every((c) => evaluateCondition(c, facts))) return false;
+        if (!(expected as Record<string, unknown>[]).every((c) => evaluateCondition(c, facts)))
+          return false;
         continue;
       case 'any_of':
-        if (!(expected as Record<string, unknown>[]).some((c) => evaluateCondition(c, facts))) return false;
+        if (!(expected as Record<string, unknown>[]).some((c) => evaluateCondition(c, facts)))
+          return false;
         continue;
       case 'not':
         if (evaluateCondition(expected as Record<string, unknown>, facts)) return false;

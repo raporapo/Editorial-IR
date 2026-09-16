@@ -60,7 +60,15 @@ export type Entities = z.infer<typeof Entities>;
  */
 export const EventObservations = obj({
   speech: z
-    .array(obj({ text: z.string(), start_ms: Milliseconds, end_ms: Milliseconds, speaker_id: z.string().optional(), confidence: Confidence }))
+    .array(
+      obj({
+        text: z.string(),
+        start_ms: Milliseconds,
+        end_ms: Milliseconds,
+        speaker_id: z.string().optional(),
+        confidence: Confidence,
+      }),
+    )
     .default([]),
   visual_labels: z.array(z.string()).default([]),
   ocr: z.array(z.string()).default([]),

@@ -7,7 +7,10 @@ import type { FileProjectStore } from '@editorial-ir/core';
 export function requireIr(store: FileProjectStore): EditorialIR {
   const ir = store.readIr();
   if (!ir) {
-    throw new EditorialError('not_found', 'this project has not been analysed yet. Run "oea analyze".');
+    throw new EditorialError(
+      'not_found',
+      'this project has not been analysed yet. Run "oea analyze".',
+    );
   }
   return ir;
 }
@@ -20,7 +23,11 @@ export function requireIr(store: FileProjectStore): EditorialIR {
  * one is configured, which is why a query and its index have to come from the
  * same place.
  */
-export function openIndex(store: FileProjectStore, ir: EditorialIR, encoder?: { embed(texts: string[], role?: 'query' | 'passage'): Promise<number[][]> }): SemanticIndex {
+export function openIndex(
+  store: FileProjectStore,
+  ir: EditorialIR,
+  encoder?: { embed(texts: string[], role?: 'query' | 'passage'): Promise<number[][]> },
+): SemanticIndex {
   const vectors = new FlatVectorIndex();
   const stored = store.readEmbeddings();
   if (stored) vectors.add(stored.records);

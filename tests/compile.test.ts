@@ -25,9 +25,17 @@ describe('compiling the worked example', () => {
   it('registers three recordings and lays them on one capture timeline', async () => {
     const { ir } = await compile();
     expect(ir.assets).toHaveLength(3);
-    expect(ir.assets.map((a) => a.file_name)).toEqual(['IMG_1001.MOV', 'IMG_1002.MOV', 'IMG_1003.MOV']);
+    expect(ir.assets.map((a) => a.file_name)).toEqual([
+      'IMG_1001.MOV',
+      'IMG_1002.MOV',
+      'IMG_1003.MOV',
+    ]);
     // Ordered by capture time, laid end to end, never overlapping.
-    expect(ir.placements.map((p) => p.ordered_by)).toEqual(['creation_time', 'creation_time', 'creation_time']);
+    expect(ir.placements.map((p) => p.ordered_by)).toEqual([
+      'creation_time',
+      'creation_time',
+      'creation_time',
+    ]);
     for (let i = 1; i < ir.placements.length; i++) {
       expect(ir.placements[i]!.offset_ms).toBeGreaterThan(ir.placements[i - 1]!.offset_ms);
     }
@@ -63,7 +71,9 @@ describe('compiling the worked example', () => {
 
   it('carries the transcript into the events it belongs to', async () => {
     const { ir } = await compile();
-    const arrival = ir.events.find((e) => e.observed.speech.some((s) => s.text.includes('やっと着いた')));
+    const arrival = ir.events.find((e) =>
+      e.observed.speech.some((s) => s.text.includes('やっと着いた')),
+    );
     expect(arrival, 'the arrival line should land in some event').toBeDefined();
     expect(arrival!.observed.ocr.join(' ')).toContain('UNIVERSAL STUDIOS JAPAN');
   });
@@ -121,8 +131,16 @@ describe('compiling the worked example', () => {
         generated_at: null,
         project: { ...ir.project, id: null, created_at: null, updated_at: null },
         context: { ...ir.context, project_id: null },
-        model_runs: ir.model_runs.map((r) => ({ ...r, id: null, created_at: null, latency_ms: null })),
-        editorial: ir.editorial.map((e) => ({ ...e, current: { ...e.current, model_run_id: null } })),
+        model_runs: ir.model_runs.map((r) => ({
+          ...r,
+          id: null,
+          created_at: null,
+          latency_ms: null,
+        })),
+        editorial: ir.editorial.map((e) => ({
+          ...e,
+          current: { ...e.current, model_run_id: null },
+        })),
         stats: { ...ir.stats, compile_ms: null },
         fingerprint: null,
       });
@@ -163,7 +181,10 @@ describe('compiling the worked example', () => {
   it('changes the fingerprint when the background changes, so a stale plan is detectable', async () => {
     const { store, suite, ir } = await compile();
     const context = store.readContext();
-    store.writeContext({ ...context, background: { ...context.background, occasion: 'something else' } });
+    store.writeContext({
+      ...context,
+      background: { ...context.background, occasion: 'something else' },
+    });
 
     const second = await compileProject({ store, suite, decision: new HeuristicDecisionBackend() });
     expect(second.ir.fingerprint).not.toBe(ir.fingerprint);
@@ -201,7 +222,10 @@ describe('observationsFingerprint', () => {
     const before = observationsFingerprint(assets, suite);
 
     const context = store.readContext();
-    store.writeContext({ ...context, editing_goal: { ...context.editing_goal, target_duration_ms: 60_000 } });
+    store.writeContext({
+      ...context,
+      editing_goal: { ...context.editing_goal, target_duration_ms: 60_000 },
+    });
 
     expect(observationsFingerprint(store.readAssets(), suite)).toBe(before);
   });

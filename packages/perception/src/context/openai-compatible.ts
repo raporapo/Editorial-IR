@@ -37,7 +37,10 @@ const LOCAL_HOST = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/;
 const DESCRIBE_JSON_SCHEMA = {
   type: 'object',
   properties: {
-    description: { type: 'string', description: 'One sentence describing what happens in this event.' },
+    description: {
+      type: 'string',
+      description: 'One sentence describing what happens in this event.',
+    },
     event_type: {
       type: 'string',
       description: 'A short lowercase kind such as arrival, meal, travel, reaction, explanation.',
@@ -166,9 +169,13 @@ export class OpenAiCompatibleContextModel implements ContextModel {
 
       const parsed = ModelOutput.safeParse(raw);
       if (!parsed.success) {
-        throw new EditorialError('perception_failed', 'context model output did not match the schema', {
-          issues: parsed.error.issues.slice(0, 5).map((i) => i.message),
-        });
+        throw new EditorialError(
+          'perception_failed',
+          'context model output did not match the schema',
+          {
+            issues: parsed.error.issues.slice(0, 5).map((i) => i.message),
+          },
+        );
       }
 
       return DescribeResult.parse({
@@ -176,7 +183,9 @@ export class OpenAiCompatibleContextModel implements ContextModel {
         ...parsed.data,
         affect: clampAffect(parsed.data.affect),
         confidence: Math.min(1, Math.max(0, parsed.data.confidence)),
-        ...(payload.usage?.prompt_tokens === undefined ? {} : { input_tokens: payload.usage.prompt_tokens }),
+        ...(payload.usage?.prompt_tokens === undefined
+          ? {}
+          : { input_tokens: payload.usage.prompt_tokens }),
         ...(payload.usage?.completion_tokens === undefined
           ? {}
           : { output_tokens: payload.usage.completion_tokens }),
@@ -190,7 +199,8 @@ export class OpenAiCompatibleContextModel implements ContextModel {
   estimateCost(inputTokens = 0, outputTokens = 0): number {
     if (!this.pricing) return 0;
     return (
-      (inputTokens * this.pricing.inputPerMillion + outputTokens * this.pricing.outputPerMillion) / 1_000_000
+      (inputTokens * this.pricing.inputPerMillion + outputTokens * this.pricing.outputPerMillion) /
+      1_000_000
     );
   }
 

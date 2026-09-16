@@ -44,7 +44,10 @@ export interface TrimResult {
 
 export function chooseTrim(request: TrimRequest): TrimResult {
   const available = request.range.end_ms - request.range.start_ms;
-  const desired = Math.min(Math.max(request.desiredMs, request.minMs), Math.min(request.maxMs, available));
+  const desired = Math.min(
+    Math.max(request.desiredMs, request.minMs),
+    Math.min(request.maxMs, available),
+  );
 
   // Short enough to keep whole: nothing to choose.
   if (desired >= available) {

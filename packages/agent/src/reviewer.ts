@@ -237,7 +237,9 @@ export function suggestRevisions(
       case 'abrupt_location_change': {
         // Look for something that was between the two, and was left out: a shot
         // of the train is exactly what a jump from the hotel to the park wants.
-        const operation = plan.tracks.video.find((o) => o.operation_id === observation.operation_id);
+        const operation = plan.tracks.video.find(
+          (o) => o.operation_id === observation.operation_id,
+        );
         const bridge = operation?.event_id ? findBridge(ir, operation.event_id, used) : undefined;
         suggestions.push({
           observation_id: observation.id,
@@ -260,7 +262,11 @@ export function suggestRevisions(
 }
 
 /** An unused event immediately before this one, ideally a transition. */
-function findBridge(ir: EditorialIR, eventId: string, used: ReadonlySet<string>): string | undefined {
+function findBridge(
+  ir: EditorialIR,
+  eventId: string,
+  used: ReadonlySet<string>,
+): string | undefined {
   const ordered = [...ir.events].sort((a, b) => a.start_ms - b.start_ms);
   const position = ordered.findIndex((e) => e.id === eventId);
   if (position <= 0) return undefined;
@@ -268,7 +274,8 @@ function findBridge(ir: EditorialIR, eventId: string, used: ReadonlySet<string>)
   for (let i = position - 1; i >= Math.max(0, position - 4); i--) {
     const candidate = ordered[i];
     if (!candidate || used.has(candidate.id)) continue;
-    const role = ir.editorial.find((e) => e.event_id === candidate.id)?.current.narrative_role.selected;
+    const role = ir.editorial.find((e) => e.event_id === candidate.id)?.current.narrative_role
+      .selected;
     if (role === 'transition' || role === 'context' || role === 'setup') return candidate.id;
   }
   return undefined;

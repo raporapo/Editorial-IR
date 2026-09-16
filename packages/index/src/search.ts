@@ -98,7 +98,11 @@ export class SemanticIndex {
     for (const kind of kinds) {
       const vectorHits = new Map<string, number>();
       if (queryVector) {
-        for (const hit of this.vectors.search({ vector: queryVector, kind, ownerIds: candidates })) {
+        for (const hit of this.vectors.search({
+          vector: queryVector,
+          kind,
+          ownerIds: candidates,
+        })) {
           vectorHits.set(hit.ownerId, hit.score);
         }
         // Stored vectors that the query could not be compared against: the

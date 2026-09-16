@@ -1,4 +1,9 @@
-import { newId, type ExecutionLocality, type ModelRun, type PipelineStage } from '@editorial-ir/contracts';
+import {
+  newId,
+  type ExecutionLocality,
+  type ModelRun,
+  type PipelineStage,
+} from '@editorial-ir/contracts';
 import type { ModelIdentity } from '@editorial-ir/perception';
 
 /**
@@ -75,11 +80,16 @@ export class ModelRunRecorder {
   }
 
   all(): ModelRun[] {
-    return [...this.runs.values()].sort((a, b) => a.stage.localeCompare(b.stage) || a.id.localeCompare(b.id));
+    return [...this.runs.values()].sort(
+      (a, b) => a.stage.localeCompare(b.stage) || a.id.localeCompare(b.id),
+    );
   }
 
   totalCostUsd(): number {
-    return Math.round([...this.runs.values()].reduce((sum, r) => sum + r.cost_usd, 0) * 1_000_000) / 1_000_000;
+    return (
+      Math.round([...this.runs.values()].reduce((sum, r) => sum + r.cost_usd, 0) * 1_000_000) /
+      1_000_000
+    );
   }
 
   /** True when anything in this compile sent media off the machine. */

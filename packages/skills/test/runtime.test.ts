@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { SkillManifest } from '@editorial-ir/contracts';
-import { SkillRegistry, SkillRuntime, deriveFacts, mergeSkills, validateSkill } from '../src/index.js';
+import {
+  SkillRegistry,
+  SkillRuntime,
+  deriveFacts,
+  mergeSkills,
+  validateSkill,
+} from '../src/index.js';
 import { makeIR } from '../../../tests/support/ir.js';
 
 const registry = SkillRegistry.withBuiltIns();
@@ -78,7 +84,9 @@ describe('the built-in skill library', () => {
     // Inherited, never written in travel-vlog/skill.yaml.
     expect(travel.scoring.weights.redundancy).toBe(-0.8);
     // Rules accumulate, parent first.
-    expect(travel.rules.length).toBeGreaterThan(registry.source('travel-vlog')!.manifest.rules.length);
+    expect(travel.rules.length).toBeGreaterThan(
+      registry.source('travel-vlog')!.manifest.rules.length,
+    );
     expect(travel.rules[0]?.id).toBe('drop-unusable-picture');
   });
 
@@ -122,7 +130,10 @@ describe('mergeSkills', () => {
   });
 
   it('merges weights key by key', () => {
-    const child = SkillManifest.parse({ name: 'child', scoring: { weights: { story_importance: 0.2 } } });
+    const child = SkillManifest.parse({
+      name: 'child',
+      scoring: { weights: { story_importance: 0.2 } },
+    });
     const merged = mergeSkills(parent, child);
     expect(merged.scoring.weights.story_importance).toBe(0.2);
     expect(merged.scoring.weights.redundancy).toBe(-0.5);
@@ -136,13 +147,21 @@ describe('mergeSkills', () => {
   it('replaces the arc wholesale when the child declares one', () => {
     const child = SkillManifest.parse({
       name: 'child',
-      arc: { segments: [{ name: 'a', budget: 0.5 }, { name: 'b', budget: 0.5 }] },
+      arc: {
+        segments: [
+          { name: 'a', budget: 0.5 },
+          { name: 'b', budget: 0.5 },
+        ],
+      },
     });
     expect(mergeSkills(parent, child).arc.segments).toHaveLength(2);
   });
 
   it('appends rules with the parent first', () => {
-    const child = SkillManifest.parse({ name: 'child', rules: [{ id: 'c1', when: {}, action: { avoid: true } }] });
+    const child = SkillManifest.parse({
+      name: 'child',
+      rules: [{ id: 'c1', when: {}, action: { avoid: true } }],
+    });
     expect(mergeSkills(parent, child).rules.map((r) => r.id)).toEqual(['p1', 'c1']);
   });
 });
@@ -151,13 +170,21 @@ describe('validateSkill', () => {
   it('catches an arc whose budgets do not sum to one', () => {
     const manifest = SkillManifest.parse({
       name: 'broken',
-      arc: { segments: [{ name: 'a', budget: 0.5 }, { name: 'b', budget: 0.2 }] },
+      arc: {
+        segments: [
+          { name: 'a', budget: 0.5 },
+          { name: 'b', budget: 0.2 },
+        ],
+      },
     });
     expect(validateSkill(manifest)[0]).toMatch(/sum to 0.70/);
   });
 
   it('catches a rule that can never do anything', () => {
-    const manifest = SkillManifest.parse({ name: 'broken', rules: [{ id: 'x', when: {}, action: {} }] });
+    const manifest = SkillManifest.parse({
+      name: 'broken',
+      rules: [{ id: 'x', when: {}, action: {} }],
+    });
     expect(validateSkill(manifest)[0]).toMatch(/empty action/);
   });
 
@@ -220,9 +247,19 @@ describe('SkillRuntime', () => {
 
   it('lets the user overrule every rule in the file', () => {
     const withEssential = makeIR({
-      events: [{ description: 'ぼんやりした映像', event_type: 'b_roll', role: 'filler', essential: true, metrics: { story_importance: 0.05, visual_quality: 0.05 } }],
+      events: [
+        {
+          description: 'ぼんやりした映像',
+          event_type: 'b_roll',
+          role: 'filler',
+          essential: true,
+          metrics: { story_importance: 0.05, visual_quality: 0.05 },
+        },
+      ],
     });
-    const directive = new SkillRuntime(registry.resolve('base-editor')).evaluate(withEssential).get('evt_0001')!;
+    const directive = new SkillRuntime(registry.resolve('base-editor'))
+      .evaluate(withEssential)
+      .get('evt_0001')!;
     expect(directive.dropped).toBe(false);
     expect(directive.required).toBe(true);
     expect(directive.locked).toBe(true);
@@ -230,9 +267,13 @@ describe('SkillRuntime', () => {
 
   it('honours an exclusion even against a rule that prefers the event', () => {
     const excluded = makeIR({
-      events: [{ description: '素晴らしい瞬間', metrics: { story_importance: 0.99 }, excluded: true }],
+      events: [
+        { description: '素晴らしい瞬間', metrics: { story_importance: 0.99 }, excluded: true },
+      ],
     });
-    const directive = new SkillRuntime(registry.resolve('base-editor')).evaluate(excluded).get('evt_0001')!;
+    const directive = new SkillRuntime(registry.resolve('base-editor'))
+      .evaluate(excluded)
+      .get('evt_0001')!;
     expect(directive.dropped).toBe(true);
     expect(directive.required).toBe(false);
   });
@@ -261,8 +302,12 @@ describe('SkillRuntime', () => {
   });
 
   it('normalises the base score so a bias means the same everywhere', () => {
-    const small = new SkillRuntime(SkillManifest.parse({ name: 's', scoring: { weights: { story_importance: 0.1 } } }));
-    const large = new SkillRuntime(SkillManifest.parse({ name: 'l', scoring: { weights: { story_importance: 10 } } }));
+    const small = new SkillRuntime(
+      SkillManifest.parse({ name: 's', scoring: { weights: { story_importance: 0.1 } } }),
+    );
+    const large = new SkillRuntime(
+      SkillManifest.parse({ name: 'l', scoring: { weights: { story_importance: 10 } } }),
+    );
     const facts = deriveFacts(ir);
     const f = facts.get('evt_0002')!;
     expect(small.baseScore(f)).toBeCloseTo(large.baseScore(f), 6);

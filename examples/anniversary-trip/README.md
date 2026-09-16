@@ -35,11 +35,11 @@ of video and drop the `--perception fixture` flag.
 
 ## What is in the day
 
-| Recording | Length | Roughly |
-|---|---|---|
-| `IMG_1001.MOV` | 9 min | leaving the hotel, the train, arriving at the gate |
-| `IMG_1002.MOV` | 11 min | queues, a ride, lunch, souvenirs, a show |
-| `IMG_1003.MOV` | 7 min | the night view, and going home |
+| Recording      | Length | Roughly                                            |
+| -------------- | ------ | -------------------------------------------------- |
+| `IMG_1001.MOV` | 9 min  | leaving the hotel, the train, arriving at the gate |
+| `IMG_1002.MOV` | 11 min | queues, a ride, lunch, souvenirs, a show           |
+| `IMG_1003.MOV` | 7 min  | the night view, and going home                     |
 
 `context.yaml` carries what the footage cannot: that this is a first anniversary,
 who the two people are, and that the piece should end on the night view. Delete

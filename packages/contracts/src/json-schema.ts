@@ -15,7 +15,12 @@ import * as validation from './validation.js';
 import * as perception from './perception.js';
 import * as provenance from './provenance.js';
 import * as modelRun from './model-run.js';
-import { IR_VERSION, EDIT_PLAN_VERSION, PERCEPTION_PROTOCOL_VERSION, SKILL_MANIFEST_VERSION } from './version.js';
+import {
+  IR_VERSION,
+  EDIT_PLAN_VERSION,
+  PERCEPTION_PROTOCOL_VERSION,
+  SKILL_MANIFEST_VERSION,
+} from './version.js';
 
 /**
  * JSON Schema is the canonical cross-language contract.

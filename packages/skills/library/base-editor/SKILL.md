@@ -23,7 +23,7 @@ name: my-style
 extends: [base-editor]
 scoring:
   weights:
-    emotional_intensity: 0.9   # overrides just this weight
+    emotional_intensity: 0.9 # overrides just this weight
 rules:
   - when: { narrative_role: payoff }
     action: { avoid_aggressive_cutting: true }

@@ -139,6 +139,7 @@ export function expectedUnitValue(probabilities: number[], levelCount: number): 
   const total = probabilities.reduce((a, b) => a + b, 0);
   if (total <= 0) return 0.5;
   let expectation = 0;
-  for (let i = 0; i < probabilities.length; i++) expectation += (i * (probabilities[i] ?? 0)) / total;
+  for (let i = 0; i < probabilities.length; i++)
+    expectation += (i * (probabilities[i] ?? 0)) / total;
   return Math.min(1, Math.max(0, expectation / (levelCount - 1)));
 }

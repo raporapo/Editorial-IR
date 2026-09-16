@@ -76,7 +76,8 @@ export function negotiate(
     for (const side of ['transition_in', 'transition_out'] as const) {
       const transition = next[side];
       if (!transition || transition.type === 'hard_cut') continue;
-      const supported = capabilities.basic_transition && capabilities.transition_types.includes(transition.type);
+      const supported =
+        capabilities.basic_transition && capabilities.transition_types.includes(transition.type);
       if (supported) continue;
       downgrades.push({
         operation_id: operation.operation_id,

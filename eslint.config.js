@@ -11,6 +11,9 @@ export default tseslint.config(
       'schemas/**',
       'services/**',
       '**/*.d.ts',
+      // Plain scripts, outside any TypeScript project: type-aware linting has
+      // nothing to read them with.
+      '**/*.mjs',
     ],
   },
   eslint.configs.recommended,
@@ -43,12 +46,18 @@ export default tseslint.config(
     },
   },
   {
+    // Tests walk parsed JSON from files on disk — an OTIO timeline, a written
+    // plan — and typing every intermediate step there adds noise without
+    // catching anything. The rules that matter in source stay on everywhere else.
     files: ['**/test/**/*.ts', 'tests/**/*.ts', 'scripts/**/*.ts'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
     },
   },
   {

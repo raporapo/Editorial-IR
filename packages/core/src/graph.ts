@@ -88,7 +88,14 @@ export function buildEventGraph(
       const similarity = settings.similarity?.(a.id, b.id) ?? textSimilarity(a, b);
 
       if (similarity >= settings.duplicateThreshold) {
-        add(a.id, b.id, 'duplicate_of', similarity, 'inferred', 'these look like two takes of the same thing');
+        add(
+          a.id,
+          b.id,
+          'duplicate_of',
+          similarity,
+          'inferred',
+          'these look like two takes of the same thing',
+        );
       } else if (similarity >= settings.topicThreshold) {
         add(a.id, b.id, 'same_topic', similarity);
       }
@@ -101,7 +108,11 @@ export function buildEventGraph(
 
       // A callback: the same subject returning much later, which is worth
       // knowing because dropping the first one strands the second.
-      if (j - i > 8 && j - i <= settings.maxCallbackDistance && similarity >= settings.topicThreshold) {
+      if (
+        j - i > 8 &&
+        j - i <= settings.maxCallbackDistance &&
+        similarity >= settings.topicThreshold
+      ) {
         add(a.id, b.id, 'callback', similarity * 0.8);
       }
     }
@@ -178,8 +189,14 @@ export function duplicateGroups(relations: readonly EventRelation[]): string[][]
 
   for (const relation of relations) {
     if (relation.relation_type !== 'duplicate_of') continue;
-    parent.set(relation.source_event_id, parent.get(relation.source_event_id) ?? relation.source_event_id);
-    parent.set(relation.target_event_id, parent.get(relation.target_event_id) ?? relation.target_event_id);
+    parent.set(
+      relation.source_event_id,
+      parent.get(relation.source_event_id) ?? relation.source_event_id,
+    );
+    parent.set(
+      relation.target_event_id,
+      parent.get(relation.target_event_id) ?? relation.target_event_id,
+    );
     union(relation.source_event_id, relation.target_event_id);
   }
 

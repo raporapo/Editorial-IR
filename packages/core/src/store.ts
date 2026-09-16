@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
@@ -89,7 +96,10 @@ export class FileProjectStore implements ProjectStore {
 
   private requireProject(): void {
     if (!this.exists()) {
-      throw new EditorialError('not_found', `no project at ${this.paths.root}. Run "oea init" first.`);
+      throw new EditorialError(
+        'not_found',
+        `no project at ${this.paths.root}. Run "oea init" first.`,
+      );
     }
   }
 
@@ -104,7 +114,11 @@ export class FileProjectStore implements ProjectStore {
 
   readContext(): ProjectContext {
     this.requireProject();
-    const raw = existsSync(this.paths.context) ? parseYaml(readFileSync(this.paths.context, 'utf8')) : undefined;
+    // parseYaml returns any; it is validated on the next line, and typing it as
+    // unknown is what makes that validation load-bearing rather than decorative.
+    const raw: unknown = existsSync(this.paths.context)
+      ? parseYaml(readFileSync(this.paths.context, 'utf8'))
+      : undefined;
     if (raw === undefined || raw === null) {
       const project = this.readProject();
       return ProjectContext.parse({ project_id: project.id, updated_at: project.created_at });
@@ -118,7 +132,10 @@ export class FileProjectStore implements ProjectStore {
    */
   writeContext(context: ProjectContext): void {
     mkdirSync(this.paths.dir, { recursive: true });
-    writeAtomic(this.paths.context, `${CONTEXT_HEADER}${stringifyYaml(context, { lineWidth: 100 })}`);
+    writeAtomic(
+      this.paths.context,
+      `${CONTEXT_HEADER}${stringifyYaml(context, { lineWidth: 100 })}`,
+    );
   }
 
   readAssets(): MediaAssetType[] {
@@ -132,7 +149,11 @@ export class FileProjectStore implements ProjectStore {
 
   readAnnotations(): UserAnnotation[] {
     if (!existsSync(this.paths.annotations)) return [];
-    return parseOrThrow(z.array(UserAnnotation), readJson(this.paths.annotations), 'annotations.json');
+    return parseOrThrow(
+      z.array(UserAnnotation),
+      readJson(this.paths.annotations),
+      'annotations.json',
+    );
   }
 
   writeAnnotations(annotations: UserAnnotation[]): void {
@@ -141,7 +162,11 @@ export class FileProjectStore implements ProjectStore {
 
   readObservations(): ObservationTimeline | undefined {
     if (!existsSync(this.paths.observations)) return undefined;
-    return parseOrThrow(ObservationTimeline, readJson(this.paths.observations), 'observations.json');
+    return parseOrThrow(
+      ObservationTimeline,
+      readJson(this.paths.observations),
+      'observations.json',
+    );
   }
 
   writeObservations(observations: ObservationTimeline): void {

@@ -42,19 +42,21 @@ function state(overrides: Partial<EventState> = {}): EventState {
     },
     user_context: { tone: [], notes: [], essential: false },
     ...overrides,
-  } as EventState;
+  };
 }
 
 describe('the question registry', () => {
   it('covers every metric, flag and role in the contract', () => {
     for (const metric of EDITORIAL_METRICS) {
       expect(METRIC_QUESTIONS[metric]?.question_id).toBe(metric);
-      expect(METRIC_QUESTIONS[metric]!.levels.length).toBeGreaterThanOrEqual(2);
+      expect(METRIC_QUESTIONS[metric].levels.length).toBeGreaterThanOrEqual(2);
     }
     for (const flag of EDITORIAL_FLAGS) {
       expect(FLAG_QUESTIONS[flag]?.question_id).toBe(flag);
     }
-    expect(NARRATIVE_ROLE_QUESTION.options.map((o) => o.value).sort()).toEqual([...NARRATIVE_ROLES].sort());
+    expect(NARRATIVE_ROLE_QUESTION.options.map((o) => o.value).sort()).toEqual(
+      [...NARRATIVE_ROLES].sort(),
+    );
   });
 
   it('writes a description for every level, which is the whole point', () => {
@@ -139,8 +141,17 @@ describe('HeuristicDecisionBackend', () => {
     const lively = await assessEvent(
       backend,
       state({
-        observed: { ...state().observed, speech: ['やっと着いたね、ここまで長かった'], audio: ['laughter'], speech_ratio: 0.8 },
-        semantic: { ...state().semantic, affect: { happiness: 0.8 }, description: '二人が到着して喜んでいる' },
+        observed: {
+          ...state().observed,
+          speech: ['やっと着いたね、ここまで長かった'],
+          audio: ['laughter'],
+          speech_ratio: 0.8,
+        },
+        semantic: {
+          ...state().semantic,
+          affect: { happiness: 0.8 },
+          description: '二人が到着して喜んでいる',
+        },
       }),
     );
     const empty = await assessEvent(backend, state());
@@ -158,17 +169,30 @@ describe('HeuristicDecisionBackend', () => {
   });
 
   it('scores relevance against what the user actually said the piece is for', async () => {
-    const context = { tone: [], notes: [], essential: false, occasion: '交際1周年旅行', goal: '夜景で感動的に終わる' };
+    const context = {
+      tone: [],
+      notes: [],
+      essential: false,
+      occasion: '交際1周年旅行',
+      goal: '夜景で感動的に終わる',
+    };
     const onPoint = await assessEvent(
       backend,
       state({
         user_context: context,
-        semantic: { ...state().semantic, description: '夜景を見ている二人', entities: { people: [], places: ['夜景'], topics: [] } },
+        semantic: {
+          ...state().semantic,
+          description: '夜景を見ている二人',
+          entities: { people: [], places: ['夜景'], topics: [] },
+        },
       }),
     );
     const offPoint = await assessEvent(
       backend,
-      state({ user_context: context, semantic: { ...state().semantic, description: '駐車場で車を探している' } }),
+      state({
+        user_context: context,
+        semantic: { ...state().semantic, description: '駐車場で車を探している' },
+      }),
     );
     expect(onPoint.metrics.context_relevance).toBeGreaterThan(offPoint.metrics.context_relevance);
   });
@@ -179,7 +203,10 @@ describe('HeuristicDecisionBackend', () => {
   });
 
   it('calls a silent, flat, textless moment filler', async () => {
-    const result = await assessEvent(backend, state({ semantic: { ...state().semantic, event_type: 'b_roll' } }));
+    const result = await assessEvent(
+      backend,
+      state({ semantic: { ...state().semantic, event_type: 'b_roll' } }),
+    );
     expect(result.narrative_role.probabilities.filler ?? 0).toBeGreaterThan(0);
   });
 

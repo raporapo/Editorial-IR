@@ -121,7 +121,9 @@ export function buildAviUtlJob(
   const clips = operationsInOrder(plan).map((operation) => {
     const path = resolveAssetPath(request, operation.source_asset_id);
     if (!path) {
-      warnings.push(`${operation.operation_id} refers to ${operation.source_asset_id}, which has no file`);
+      warnings.push(
+        `${operation.operation_id} refers to ${operation.source_asset_id}, which has no file`,
+      );
     }
     const event = request.ir.events.find((e) => e.id === operation.event_id);
 
@@ -196,7 +198,10 @@ export function buildExo(plan: EditPlan, request: ApplyRequest): string {
   const operations = operationsInOrder(plan);
 
   const lengthFrames = frames(
-    operations.reduce((end, o) => Math.max(end, o.timeline_start_ms + operationTimelineDuration(o)), 0),
+    operations.reduce(
+      (end, o) => Math.max(end, o.timeline_start_ms + operationTimelineDuration(o)),
+      0,
+    ),
   );
 
   const lines: string[] = [

@@ -3,6 +3,13 @@ import { EditorialError } from '@editorial-ir/contracts';
 import { main } from './cli.js';
 import { fail, note } from './ui.js';
 
+/** Details can hold anything, and `[object Object]` helps nobody. */
+function formatDetail(value: unknown): string {
+  if (Array.isArray(value)) return value.map((item) => formatDetail(item)).join(', ');
+  if (value === null || typeof value !== 'object') return String(value);
+  return JSON.stringify(value);
+}
+
 try {
   process.exitCode = await main(process.argv.slice(2));
 } catch (error) {
@@ -12,7 +19,7 @@ try {
     // what does exist".
     for (const [key, value] of Object.entries(error.details)) {
       if (value === undefined) continue;
-      note(`  ${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`);
+      note(`  ${key}: ${formatDetail(value)}`);
     }
     process.exitCode = 1;
   } else {

@@ -93,7 +93,10 @@ export function idSchema<P extends string>(prefix: P, description?: string) {
       (v) => v.startsWith(`${prefix}_`) && ID_BODY.test(v.slice(prefix.length + 1)),
       `expected an identifier of the form "${prefix}_…"`,
     )
-    .meta({ id: `${prefix}Id`, description: description ?? `Identifier prefixed with "${prefix}_".` });
+    .meta({
+      id: `${prefix}Id`,
+      description: description ?? `Identifier prefixed with "${prefix}_".`,
+    });
 }
 
 const ID_ALPHABET = '0123456789abcdefghijkmnpqrstuvwxyz'; // Crockford-ish: no l, o

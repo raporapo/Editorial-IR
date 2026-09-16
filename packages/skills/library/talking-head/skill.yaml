@@ -53,19 +53,19 @@ rules:
   - id: drop-silence
     when:
       has_speech: false
-      story_importance: "<0.6"
+      story_importance: '<0.6'
     action:
       drop: true
 
   - id: keep-the-good-audio
     when:
-      audio_quality: "<0.3"
+      audio_quality: '<0.3'
     action:
       avoid: 0.4
 
   - id: a-dense-explanation-earns-its-length
     when:
-      information_density: ">0.7"
+      information_density: '>0.7'
     action:
       maximum_duration_sec: 40.0
       prefer: 0.2

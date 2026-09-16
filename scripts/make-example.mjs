@@ -25,15 +25,58 @@ const SCRIPT = [
     created: '2026-05-16T08:12:04.000Z',
     durationMs: 9 * 60_000,
     beats: [
-      { at: 0, len: 22_000, labels: ['hotel_room', 'suitcase'], speech: ['そろそろ出発しよう'], type: 'departure' },
-      { at: 24_000, len: 31_000, labels: ['hotel_lobby', 'two_people'], speech: ['今日はUSJだね', '楽しみすぎる'] },
+      {
+        at: 0,
+        len: 22_000,
+        labels: ['hotel_room', 'suitcase'],
+        speech: ['そろそろ出発しよう'],
+        type: 'departure',
+      },
+      {
+        at: 24_000,
+        len: 31_000,
+        labels: ['hotel_lobby', 'two_people'],
+        speech: ['今日はUSJだね', '楽しみすぎる'],
+      },
       { at: 58_000, len: 46_000, labels: ['street', 'morning_light'], speech: [] },
-      { at: 108_000, len: 58_000, labels: ['train_platform', 'crowd'], speech: ['電車混んでるね'], audio: ['crowd'] },
-      { at: 170_000, len: 74_000, labels: ['train_interior', 'window'], speech: ['あと10分くらい'], audio: ['crowd'] },
+      {
+        at: 108_000,
+        len: 58_000,
+        labels: ['train_platform', 'crowd'],
+        speech: ['電車混んでるね'],
+        audio: ['crowd'],
+      },
+      {
+        at: 170_000,
+        len: 74_000,
+        labels: ['train_interior', 'window'],
+        speech: ['あと10分くらい'],
+        audio: ['crowd'],
+      },
       { at: 248_000, len: 38_000, labels: ['train_window', 'city'], speech: [] },
-      { at: 290_000, len: 52_000, labels: ['station_exit', 'signage'], speech: ['こっちだって'], ocr: ['ユニバーサルシティ駅'] },
-      { at: 346_000, len: 64_000, labels: ['walkway', 'two_people'], speech: ['もう見えてきた'], audio: ['crowd'] },
-      { at: 414_000, len: 66_000, labels: ['theme_park_gate', 'two_people', 'smiling'], speech: ['やっと着いた！', 'ここまで長かったね'], audio: ['crowd', 'laughter'], ocr: ['UNIVERSAL STUDIOS JAPAN'], type: 'arrival' },
+      {
+        at: 290_000,
+        len: 52_000,
+        labels: ['station_exit', 'signage'],
+        speech: ['こっちだって'],
+        ocr: ['ユニバーサルシティ駅'],
+      },
+      {
+        at: 346_000,
+        len: 64_000,
+        labels: ['walkway', 'two_people'],
+        speech: ['もう見えてきた'],
+        audio: ['crowd'],
+      },
+      {
+        at: 414_000,
+        len: 66_000,
+        labels: ['theme_park_gate', 'two_people', 'smiling'],
+        speech: ['やっと着いた！', 'ここまで長かったね'],
+        audio: ['crowd', 'laughter'],
+        ocr: ['UNIVERSAL STUDIOS JAPAN'],
+        type: 'arrival',
+      },
       { at: 484_000, len: 56_000, labels: ['entrance', 'ticket_gate'], speech: ['チケット出して'] },
     ],
   },
@@ -42,17 +85,78 @@ const SCRIPT = [
     created: '2026-05-16T11:41:22.000Z',
     durationMs: 11 * 60_000,
     beats: [
-      { at: 0, len: 44_000, labels: ['ride_queue', 'crowd'], speech: ['待ち時間90分だって'], audio: ['crowd'] },
-      { at: 48_000, len: 62_000, labels: ['ride', 'two_people'], speech: ['うわ、すごい！'], audio: ['cheering'], type: 'reaction' },
-      { at: 114_000, len: 38_000, labels: ['ride_exit', 'smiling'], speech: ['もう一回乗りたい'], audio: ['laughter'] },
-      { at: 156_000, len: 71_000, labels: ['food_stall', 'street_food'], speech: ['お腹すいた', 'これ食べよう'], type: 'meal' },
-      { at: 231_000, len: 83_000, labels: ['restaurant', 'ramen', 'table'], speech: ['このラーメン美味しい', '大阪に来た感じするね'], type: 'meal' },
+      {
+        at: 0,
+        len: 44_000,
+        labels: ['ride_queue', 'crowd'],
+        speech: ['待ち時間90分だって'],
+        audio: ['crowd'],
+      },
+      {
+        at: 48_000,
+        len: 62_000,
+        labels: ['ride', 'two_people'],
+        speech: ['うわ、すごい！'],
+        audio: ['cheering'],
+        type: 'reaction',
+      },
+      {
+        at: 114_000,
+        len: 38_000,
+        labels: ['ride_exit', 'smiling'],
+        speech: ['もう一回乗りたい'],
+        audio: ['laughter'],
+      },
+      {
+        at: 156_000,
+        len: 71_000,
+        labels: ['food_stall', 'street_food'],
+        speech: ['お腹すいた', 'これ食べよう'],
+        type: 'meal',
+      },
+      {
+        at: 231_000,
+        len: 83_000,
+        labels: ['restaurant', 'ramen', 'table'],
+        speech: ['このラーメン美味しい', '大阪に来た感じするね'],
+        type: 'meal',
+      },
       { at: 318_000, len: 40_000, labels: ['restaurant', 'ramen'], speech: [], type: 'meal' },
-      { at: 362_000, len: 57_000, labels: ['park_street', 'shops'], speech: ['お土産見ていこう'], audio: ['crowd'] },
-      { at: 423_000, len: 49_000, labels: ['souvenir_shop', 'shelves'], speech: ['これかわいい'], ocr: ['SHOP'] },
-      { at: 476_000, len: 68_000, labels: ['show_stage', 'crowd'], speech: [], audio: ['music', 'applause'] },
-      { at: 548_000, len: 45_000, labels: ['show_stage', 'two_people', 'smiling'], speech: ['最高だった'], audio: ['applause', 'laughter'], type: 'reaction' },
-      { at: 597_000, len: 63_000, labels: ['park_street', 'evening_light'], speech: ['そろそろ暗くなってきたね'] },
+      {
+        at: 362_000,
+        len: 57_000,
+        labels: ['park_street', 'shops'],
+        speech: ['お土産見ていこう'],
+        audio: ['crowd'],
+      },
+      {
+        at: 423_000,
+        len: 49_000,
+        labels: ['souvenir_shop', 'shelves'],
+        speech: ['これかわいい'],
+        ocr: ['SHOP'],
+      },
+      {
+        at: 476_000,
+        len: 68_000,
+        labels: ['show_stage', 'crowd'],
+        speech: [],
+        audio: ['music', 'applause'],
+      },
+      {
+        at: 548_000,
+        len: 45_000,
+        labels: ['show_stage', 'two_people', 'smiling'],
+        speech: ['最高だった'],
+        audio: ['applause', 'laughter'],
+        type: 'reaction',
+      },
+      {
+        at: 597_000,
+        len: 63_000,
+        labels: ['park_street', 'evening_light'],
+        speech: ['そろそろ暗くなってきたね'],
+      },
     ],
   },
   {
@@ -60,11 +164,36 @@ const SCRIPT = [
     created: '2026-05-16T18:52:10.000Z',
     durationMs: 7 * 60_000,
     beats: [
-      { at: 0, len: 52_000, labels: ['observation_deck', 'night_view', 'city_lights'], speech: [], type: 'b_roll' },
-      { at: 56_000, len: 74_000, labels: ['night_view', 'two_people'], speech: ['きれいだね', '来てよかった'], audio: ['wind'] },
+      {
+        at: 0,
+        len: 52_000,
+        labels: ['observation_deck', 'night_view', 'city_lights'],
+        speech: [],
+        type: 'b_roll',
+      },
+      {
+        at: 56_000,
+        len: 74_000,
+        labels: ['night_view', 'two_people'],
+        speech: ['きれいだね', '来てよかった'],
+        audio: ['wind'],
+      },
       { at: 134_000, len: 46_000, labels: ['night_view', 'city_lights'], speech: [] },
-      { at: 184_000, len: 88_000, labels: ['two_people', 'night_view', 'smiling'], speech: ['一年、早かったね', 'また来ようね'], audio: ['laughter'], type: 'farewell' },
-      { at: 276_000, len: 51_000, labels: ['night_view', 'city_lights'], speech: [], type: 'b_roll' },
+      {
+        at: 184_000,
+        len: 88_000,
+        labels: ['two_people', 'night_view', 'smiling'],
+        speech: ['一年、早かったね', 'また来ようね'],
+        audio: ['laughter'],
+        type: 'farewell',
+      },
+      {
+        at: 276_000,
+        len: 51_000,
+        labels: ['night_view', 'city_lights'],
+        speech: [],
+        type: 'b_roll',
+      },
       { at: 331_000, len: 42_000, labels: ['station', 'night'], speech: ['帰ろうか'] },
       { at: 377_000, len: 43_000, labels: ['train_interior', 'night'], speech: [], type: 'b_roll' },
     ],
@@ -161,14 +290,26 @@ for (const asset of SCRIPT) {
     }
 
     for (const type of beat.audio ?? []) {
-      audioEvents.push({ start_ms: beat.at + 1500, end_ms: beat.at + beat.len - 1500, event_type: type === 'wind' ? 'nature' : type, confidence: 0.76 });
+      audioEvents.push({
+        start_ms: beat.at + 1500,
+        end_ms: beat.at + beat.len - 1500,
+        event_type: type === 'wind' ? 'nature' : type,
+        confidence: 0.76,
+      });
     }
 
     for (const text of beat.ocr ?? []) {
-      ocr.push({ start_ms: beat.at + 3000, end_ms: beat.at + Math.min(beat.len, 9000), text, confidence: 0.88 });
+      ocr.push({
+        start_ms: beat.at + 3000,
+        end_ms: beat.at + Math.min(beat.len, 9000),
+        text,
+        confidence: 0.88,
+      });
     }
 
-    for (const shot of shots.filter((s) => s.start_ms >= beat.at && s.start_ms < beat.at + beat.len)) {
+    for (const shot of shots.filter(
+      (s) => s.start_ms >= beat.at && s.start_ms < beat.at + beat.len,
+    )) {
       frames.push({
         timestamp_ms: shot.representative_frame_ms,
         vector: labelVector(beat.labels ?? []),
@@ -180,9 +321,19 @@ for (const asset of SCRIPT) {
     }
 
     // The gap between beats is quiet: that is where a cut can land.
-    audioEvents.push({ start_ms: beat.at + beat.len - 900, end_ms: beat.at + beat.len + 600, event_type: 'silence', confidence: 0.82 });
+    audioEvents.push({
+      start_ms: beat.at + beat.len - 900,
+      end_ms: beat.at + beat.len + 600,
+      event_type: 'silence',
+      confidence: 0.82,
+    });
     if ((beat.speech ?? []).length > 0) {
-      audioEvents.push({ start_ms: beat.at + 1200, end_ms: beat.at + beat.len - 2000, event_type: 'speech', confidence: 0.7 });
+      audioEvents.push({
+        start_ms: beat.at + 1200,
+        end_ms: beat.at + beat.len - 2000,
+        event_type: 'speech',
+        confidence: 0.7,
+      });
     }
   }
 

@@ -77,10 +77,14 @@ export class PythonWorkerClient {
 
     child.on('error', (error) => {
       this.failAll(
-        new EditorialError('perception_failed', `could not start the perception worker: ${error.message}`, {
-          command,
-          args,
-        }),
+        new EditorialError(
+          'perception_failed',
+          `could not start the perception worker: ${error.message}`,
+          {
+            command,
+            args,
+          },
+        ),
       );
     });
 
@@ -177,7 +181,10 @@ export class PythonWorkerClient {
     await this.start();
     const child = this.child;
     if (!child || child.exitCode !== null) {
-      throw new EditorialError('perception_failed', this.exitReason ?? 'perception worker is not running');
+      throw new EditorialError(
+        'perception_failed',
+        this.exitReason ?? 'perception worker is not running',
+      );
     }
 
     const id = `req_${++this.counter}`;
@@ -190,9 +197,13 @@ export class PythonWorkerClient {
         pending.timer = setTimeout(() => {
           this.pending.delete(id);
           reject(
-            new EditorialError('perception_failed', `perception worker timed out after ${timeoutMs}ms`, {
-              op,
-            }),
+            new EditorialError(
+              'perception_failed',
+              `perception worker timed out after ${timeoutMs}ms`,
+              {
+                op,
+              },
+            ),
           );
         }, timeoutMs);
       }
@@ -201,7 +212,9 @@ export class PythonWorkerClient {
         if (error) {
           this.pending.delete(id);
           if (pending.timer) clearTimeout(pending.timer);
-          reject(new EditorialError('perception_failed', `could not write to worker: ${error.message}`));
+          reject(
+            new EditorialError('perception_failed', `could not write to worker: ${error.message}`),
+          );
         }
       });
     });

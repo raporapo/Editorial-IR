@@ -53,7 +53,8 @@ export function readWavHeader(path: string): WavFormat {
           bitsPerSample: fmt.readUInt16LE(14),
         };
       } else if (chunkId === 'data') {
-        if (!format) throw new EditorialError('media_error', `WAV data chunk precedes fmt: ${path}`);
+        if (!format)
+          throw new EditorialError('media_error', `WAV data chunk precedes fmt: ${path}`);
         // A streamed WAV can declare size 0; fall back to what is actually there.
         const dataLength = chunkSize > 0 ? Math.min(chunkSize, fileSize - body) : fileSize - body;
         return { ...format, dataOffset: body, dataLength };

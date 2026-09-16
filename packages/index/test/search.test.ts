@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { EMBEDDING_KINDS, embeddingRefFor, type EmbeddingRecord } from '@editorial-ir/contracts';
 import { HashingTextEmbedding } from '@editorial-ir/perception';
-import { FlatVectorIndex, SemanticIndex, aspectText, cosine, populatedAspects } from '../src/index.js';
+import {
+  FlatVectorIndex,
+  SemanticIndex,
+  aspectText,
+  cosine,
+  populatedAspects,
+} from '../src/index.js';
 import { makeIR } from '../../../tests/support/ir.js';
 
 const encoder = new HashingTextEmbedding();
@@ -156,7 +162,10 @@ describe('SemanticIndex', () => {
 
   it('finds a line by what was said', async () => {
     const index = await buildIndex();
-    const hits = await index.search('また来ようと言っているところ', { kinds: ['speech'], limit: 3 });
+    const hits = await index.search('また来ようと言っているところ', {
+      kinds: ['speech'],
+      limit: 3,
+    });
     expect(hits[0]!.event_id).toBe('evt_0003');
   });
 

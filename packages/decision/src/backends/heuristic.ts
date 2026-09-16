@@ -205,8 +205,26 @@ function informationDensity(state: EventState): number {
 
 /** Openings that cannot stand alone: the sentence refers to something unseen. */
 const DEICTIC_OPENERS = [
-  'それ', 'これ', 'あれ', 'そこ', 'ここ', 'その', 'この', 'あの', 'だから', 'でも', 'そして',
-  'this', 'that', 'these', 'those', 'so ', 'but ', 'and ', 'then ', 'it ',
+  'それ',
+  'これ',
+  'あれ',
+  'そこ',
+  'ここ',
+  'その',
+  'この',
+  'あの',
+  'だから',
+  'でも',
+  'そして',
+  'this',
+  'that',
+  'these',
+  'those',
+  'so ',
+  'but ',
+  'and ',
+  'then ',
+  'it ',
 ];
 
 export function estimateFlag(flag: EditorialFlag, state: EventState): number {
@@ -224,13 +242,16 @@ export function estimateFlag(flag: EditorialFlag, state: EventState): number {
       );
     case 'b_roll_candidate':
       return clamp(
-        (state.observed.speech_ratio < 0.2 ? 0.5 : 0.05) + 0.4 * (state.observed.technical_quality ?? 0.5),
+        (state.observed.speech_ratio < 0.2 ? 0.5 : 0.05) +
+          0.4 * (state.observed.technical_quality ?? 0.5),
       );
     case 'opening_candidate':
       return clamp(
         (state.relative_position < 0.2 ? 0.35 : 0.05) +
           0.4 * emotionalIntensity(state) +
-          (state.semantic.event_type === 'arrival' || state.semantic.event_type === 'departure' ? 0.2 : 0),
+          (state.semantic.event_type === 'arrival' || state.semantic.event_type === 'departure'
+            ? 0.2
+            : 0),
       );
     case 'ending_candidate':
       return clamp(
@@ -272,7 +293,8 @@ export function narrativeRoleWeights(state: EventState): Record<string, number> 
   const intensity = emotionalIntensity(state);
   const position = state.relative_position;
 
-  if (type === 'travel' || type === 'departure') weights.transition = (weights.transition ?? 0) + 0.5;
+  if (type === 'travel' || type === 'departure')
+    weights.transition = (weights.transition ?? 0) + 0.5;
   if (type === 'arrival') {
     weights.payoff = (weights.payoff ?? 0) + 0.35;
     weights.setup = (weights.setup ?? 0) + 0.15;
@@ -299,7 +321,12 @@ export function narrativeRoleWeights(state: EventState): Record<string, number> 
   // up with material nobody wanted. Requiring all four matters — a wordless shot
   // of a city at night is not filler, it is the ending.
   const nothingSeen = state.observed.visual_labels.length === 0;
-  if (state.observed.speech.length === 0 && intensity < 0.3 && state.observed.ocr.length === 0 && nothingSeen) {
+  if (
+    state.observed.speech.length === 0 &&
+    intensity < 0.3 &&
+    state.observed.ocr.length === 0 &&
+    nothingSeen
+  ) {
     weights.filler = (weights.filler ?? 0) + 0.4;
   } else if (state.observed.speech.length === 0 && !nothingSeen) {
     // Wordless but with something in frame: that is what b-roll and

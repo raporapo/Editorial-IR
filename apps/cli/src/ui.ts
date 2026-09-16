@@ -9,7 +9,9 @@
 const ESC = String.fromCharCode(27);
 
 const useColour =
-  process.env.NO_COLOR === undefined && process.env.TERM !== 'dumb' && process.stdout.isTTY === true;
+  process.env.NO_COLOR === undefined &&
+  process.env.TERM !== 'dumb' &&
+  process.stdout.isTTY === true;
 
 const code = (open: number, close: number) => (text: string) =>
   useColour ? `${ESC}[${open}m${text}${ESC}[${close}m` : text;

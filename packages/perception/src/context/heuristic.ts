@@ -63,7 +63,12 @@ export function describeFromObservations(params: DescribeParams, maxLength = 140
     description,
     event_type: inferEventType(speech, [...ocr, ...seen], audio),
     ...(speech[0] ? { title: truncate(speech[0], 40) } : {}),
-    entities: { people: [], places: [], objects: seen.slice(0, 6), topics: keywordsOf(speech, ocr) },
+    entities: {
+      people: [],
+      places: [],
+      objects: seen.slice(0, 6),
+      topics: keywordsOf(speech, ocr),
+    },
     affect: inferAffect(speech, audio),
     // Deliberately low. An observation summary is not an understanding, and the
     // escalation policy reads this number to decide what deserves a real model.
@@ -81,11 +86,23 @@ export function describeFromObservations(params: DescribeParams, maxLength = 140
 const EVENT_TYPE_RULES: { type: string; patterns: RegExp[] }[] = [
   { type: 'arrival', patterns: [/着いた|到着|ついた/, /\b(arrived|we'?re here|made it)\b/] },
   { type: 'departure', patterns: [/出発|行こう|でかけ/, /\b(let'?s go|heading out|leaving)\b/] },
-  { type: 'meal', patterns: [/食べ|美味し|おいし|ごはん|ランチ|ディナー/, /\b(eat|eating|delicious|lunch|dinner|tasty)\b/] },
+  {
+    type: 'meal',
+    patterns: [
+      /食べ|美味し|おいし|ごはん|ランチ|ディナー/,
+      /\b(eat|eating|delicious|lunch|dinner|tasty)\b/,
+    ],
+  },
   { type: 'travel', patterns: [/電車|バス|車|移動|駅/, /\b(train|bus|car|station|driving)\b/] },
   { type: 'reaction', patterns: [/すごい|やば|うわ|えー/, /\b(wow|amazing|oh my|no way)\b/] },
-  { type: 'explanation', patterns: [/つまり|理由|説明|というのは/, /\b(because|the reason|basically|so what)\b/] },
-  { type: 'farewell', patterns: [/また来|さよなら|ありがとう|おわり/, /\b(goodbye|see you|thank you|that'?s it)\b/] },
+  {
+    type: 'explanation',
+    patterns: [/つまり|理由|説明|というのは/, /\b(because|the reason|basically|so what)\b/],
+  },
+  {
+    type: 'farewell',
+    patterns: [/また来|さよなら|ありがとう|おわり/, /\b(goodbye|see you|thank you|that'?s it)\b/],
+  },
 ];
 
 export function inferEventType(speech: string[], ocr: string[], audio: string[]): string {
@@ -108,10 +125,16 @@ export function inferAffect(speech: string[], audio: string[]): Record<string, n
   }
   if (audio.includes('applause') || audio.includes('cheering')) affect.excitement = 0.7;
   if (audio.includes('crowd')) affect.excitement = Math.max(affect.excitement ?? 0, 0.4);
-  if (/すごい|やば|うわ|最高/.test(haystack) || /\b(wow|amazing|awesome|incredible)\b/.test(haystack)) {
+  if (
+    /すごい|やば|うわ|最高/.test(haystack) ||
+    /\b(wow|amazing|awesome|incredible)\b/.test(haystack)
+  ) {
     affect.excitement = Math.max(affect.excitement ?? 0, 0.65);
   }
-  if (/ありがとう|嬉しい|楽しい/.test(haystack) || /\b(happy|glad|thank you|love)\b/.test(haystack)) {
+  if (
+    /ありがとう|嬉しい|楽しい/.test(haystack) ||
+    /\b(happy|glad|thank you|love)\b/.test(haystack)
+  ) {
     affect.happiness = Math.max(affect.happiness ?? 0, 0.6);
   }
   if (audio.includes('silence') && speech.length === 0) affect.calm = 0.5;

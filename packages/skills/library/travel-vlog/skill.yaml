@@ -43,7 +43,7 @@ rules:
   - id: establish-a-new-place
     description: A viewer who does not know where they are cannot follow what happens there.
     when:
-      establishing_shot_probability: ">0.7"
+      establishing_shot_probability: '>0.7'
       new_location: true
     action:
       prefer: 0.3
@@ -52,7 +52,7 @@ rules:
   - id: let-feeling-breathe
     description: The reaction after the moment is usually the moment.
     when:
-      emotional_intensity: ">0.8"
+      emotional_intensity: '>0.8'
     action:
       minimum_duration_sec: 3.0
       preserve_reaction: true
@@ -75,6 +75,6 @@ rules:
   - id: one-meal-is-enough
     when:
       event_type: meal
-      redundancy: ">0.6"
+      redundancy: '>0.6'
     action:
       prefer_higher_quality_only: true

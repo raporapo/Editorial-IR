@@ -15,7 +15,10 @@ rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 
 for (const name of SCHEMA_NAMES) {
-  writeFileSync(join(outDir, `${name}.schema.json`), `${JSON.stringify(toJsonSchema(name), null, 2)}\n`);
+  writeFileSync(
+    join(outDir, `${name}.schema.json`),
+    `${JSON.stringify(toJsonSchema(name), null, 2)}\n`,
+  );
 }
 writeFileSync(
   join(outDir, 'editorial-ir.bundle.schema.json'),

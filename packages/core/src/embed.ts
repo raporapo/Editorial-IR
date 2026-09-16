@@ -118,5 +118,8 @@ export function attachEmbeddingRefs(
     refs.push(record.id);
     byEvent.set(record.owner_id, refs);
   }
-  return events.map((event) => ({ ...event, embedding_refs: (byEvent.get(event.id) ?? []).sort() }));
+  return events.map((event) => ({
+    ...event,
+    embedding_refs: (byEvent.get(event.id) ?? []).sort(),
+  }));
 }

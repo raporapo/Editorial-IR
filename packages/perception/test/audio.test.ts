@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { analyseHops, percentile, runsOf, silenceThreshold, speechProbability } from '../src/index.js';
+import {
+  analyseHops,
+  percentile,
+  runsOf,
+  silenceThreshold,
+  speechProbability,
+} from '../src/index.js';
 import type { HopStatistics } from '../src/wav.js';
 
 const OPTIONS = {

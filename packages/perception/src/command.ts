@@ -83,10 +83,7 @@ export class ScriptedCommandRunner implements CommandRunner {
   readonly calls: { command: string; args: string[] }[] = [];
 
   constructor(
-    private readonly responses: (
-      command: string,
-      args: string[],
-    ) => CommandResult | undefined,
+    private readonly responses: (command: string, args: string[]) => CommandResult | undefined,
     private readonly availableCommands: Set<string> = new Set(['ffmpeg', 'ffprobe']),
   ) {}
 
@@ -94,7 +91,10 @@ export class ScriptedCommandRunner implements CommandRunner {
     this.calls.push({ command, args });
     const response = this.responses(command, args);
     if (!response) {
-      throw new EditorialError('media_error', `no scripted response for ${command}`, { command, args });
+      throw new EditorialError('media_error', `no scripted response for ${command}`, {
+        command,
+        args,
+      });
     }
     return response;
   }

@@ -13,7 +13,8 @@ if (mode === 'noise') {
 
 rl.on('line', (line) => {
   const request = JSON.parse(line);
-  const reply = (body) => process.stdout.write(`${JSON.stringify({ v: '0.1.0', id: request.id, ...body })}\n`);
+  const reply = (body) =>
+    process.stdout.write(`${JSON.stringify({ v: '0.1.0', id: request.id, ...body })}\n`);
 
   switch (request.op) {
     case 'health':

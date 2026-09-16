@@ -60,7 +60,7 @@ rules:
     description: Material nobody could watch is not worth ranking.
     priority: 90
     when:
-      visual_quality: "<0.15"
+      visual_quality: '<0.15'
     action:
       drop: true
 
@@ -69,14 +69,14 @@ rules:
     priority: 50
     when:
       narrative_role: filler
-      story_importance: "<0.3"
+      story_importance: '<0.3'
     action:
       drop: true
 
   - id: suppress-duplicates
     description: Keep the best take, not every take.
     when:
-      redundancy: ">0.8"
+      redundancy: '>0.8'
     action:
       prefer_higher_quality_only: true
       avoid: 0.2
@@ -84,14 +84,14 @@ rules:
   - id: trim-dead-air
     description: A long silent stretch can be shortened without losing anything.
     when:
-      contains_dead_air_probability: ">0.6"
+      contains_dead_air_probability: '>0.6'
       has_speech: false
     action:
       maximum_duration_sec: 4.0
 
   - id: keep-what-matters
     when:
-      story_importance: ">0.75"
+      story_importance: '>0.75'
     action:
       prefer: 0.2
       minimum_duration_sec: 2.0
@@ -99,14 +99,14 @@ rules:
   - id: protect-strong-feeling
     description: Cutting a laugh in half is worse than running four seconds long.
     when:
-      emotional_intensity: ">0.8"
+      emotional_intensity: '>0.8'
     action:
       minimum_duration_sec: 2.5
       avoid_aggressive_cutting: true
 
   - id: use-quiet-picture-as-b-roll
     when:
-      b_roll_candidate_probability: ">0.7"
+      b_roll_candidate_probability: '>0.7'
       has_speech: false
     action:
       as_b_roll: true
@@ -114,7 +114,7 @@ rules:
 
   - id: prefer-a-real-ending
     when:
-      ending_candidate_probability: ">0.6"
+      ending_candidate_probability: '>0.6'
       project_position: last
     action:
       prefer: 0.25

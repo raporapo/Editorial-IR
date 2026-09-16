@@ -100,7 +100,9 @@ export class WorkerVisualEmbeddingModel implements VisualEmbeddingModel {
     this.identity = identity(model);
   }
   async embedFrames(params: EmbedFramesParams): Promise<EmbedFramesResult> {
-    const result = await this.client.request('embed_frames', params, { timeoutMs: LONG_TIMEOUT_MS });
+    const result = await this.client.request('embed_frames', params, {
+      timeoutMs: LONG_TIMEOUT_MS,
+    });
     this.dim = result.dim;
     return result;
   }
@@ -145,7 +147,11 @@ export class WorkerTextEmbeddingModel implements TextEmbeddingModel {
     this.identity = identity(model);
   }
   async embed(texts: string[], role: 'query' | 'passage' = 'passage'): Promise<number[][]> {
-    const result = await this.client.request('embed_text', { texts, role }, { timeoutMs: LONG_TIMEOUT_MS });
+    const result = await this.client.request(
+      'embed_text',
+      { texts, role },
+      { timeoutMs: LONG_TIMEOUT_MS },
+    );
     this.dim = result.dim;
     return result.vectors;
   }

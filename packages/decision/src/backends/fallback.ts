@@ -48,10 +48,14 @@ export class FallbackDecisionBackend implements EditorialDecisionModel {
     const primaryBatch = primary.assessAll?.bind(primary);
     if (primaryBatch) {
       this.assessAll = (state, request) =>
-        this.attempt('assess_all', () => primaryBatch(state, request), async () => {
-          if (fallback.assessAll) return fallback.assessAll(state, request);
-          return assessViaPrimitives(fallback, state, request);
-        });
+        this.attempt(
+          'assess_all',
+          () => primaryBatch(state, request),
+          async () => {
+            if (fallback.assessAll) return fallback.assessAll(state, request);
+            return assessViaPrimitives(fallback, state, request);
+          },
+        );
     }
   }
 
@@ -61,14 +65,18 @@ export class FallbackDecisionBackend implements EditorialDecisionModel {
   }
 
   async choice(state: EventState, request: ChoiceRequest): Promise<ChoiceResult> {
-    return this.attempt(request.question_id, () => this.primary.choice(state, request), () =>
-      this.fallback.choice(state, request),
+    return this.attempt(
+      request.question_id,
+      () => this.primary.choice(state, request),
+      () => this.fallback.choice(state, request),
     );
   }
 
   async score(state: EventState, request: ScoreRequest): Promise<ScoreResult> {
-    return this.attempt(request.question_id, () => this.primary.score(state, request), () =>
-      this.fallback.score(state, request),
+    return this.attempt(
+      request.question_id,
+      () => this.primary.score(state, request),
+      () => this.fallback.score(state, request),
     );
   }
 
@@ -89,7 +97,11 @@ export class FallbackDecisionBackend implements EditorialDecisionModel {
    */
   assessAll?: (state: EventState, request: BatchRequest) => Promise<BatchAnswers>;
 
-  private async attempt<T>(questionId: string, primary: () => Promise<T>, fallback: () => Promise<T>): Promise<T> {
+  private async attempt<T>(
+    questionId: string,
+    primary: () => Promise<T>,
+    fallback: () => Promise<T>,
+  ): Promise<T> {
     if (this.abandoned) return fallback();
     try {
       const result = await primary();

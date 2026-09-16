@@ -24,34 +24,40 @@ export function annotationsFor(
   annotations: readonly UserAnnotation[],
   captureOffsetMs = 0,
 ): UserAnnotation[] {
-  return annotations
-    .filter((annotation) => {
-      const target = annotation.target;
-      switch (target.kind) {
-        case 'event':
-          return target.event_id === event.id;
-        case 'event_pair':
-          return target.event_a === event.id || target.event_b === event.id;
-        case 'time_range': {
-          if (target.asset_id && !event.source_ranges.some((r) => r.asset_id === target.asset_id)) return false;
-          const range = {
-            start_ms: target.start_ms + (target.asset_id ? captureOffsetMs : 0),
-            end_ms: target.end_ms + (target.asset_id ? captureOffsetMs : 0),
-          };
-          // Half the event has to be inside the range, or a loosely drawn
-          // selection would mark three neighbours essential as well.
-          return overlapMs(range, event) >= Math.min(event.end_ms - event.start_ms, range.end_ms - range.start_ms) / 2;
+  return (
+    annotations
+      .filter((annotation) => {
+        const target = annotation.target;
+        switch (target.kind) {
+          case 'event':
+            return target.event_id === event.id;
+          case 'event_pair':
+            return target.event_a === event.id || target.event_b === event.id;
+          case 'time_range': {
+            if (target.asset_id && !event.source_ranges.some((r) => r.asset_id === target.asset_id))
+              return false;
+            const range = {
+              start_ms: target.start_ms + (target.asset_id ? captureOffsetMs : 0),
+              end_ms: target.end_ms + (target.asset_id ? captureOffsetMs : 0),
+            };
+            // Half the event has to be inside the range, or a loosely drawn
+            // selection would mark three neighbours essential as well.
+            return (
+              overlapMs(range, event) >=
+              Math.min(event.end_ms - event.start_ms, range.end_ms - range.start_ms) / 2
+            );
+          }
+          case 'asset':
+            return event.source_ranges.some((r) => r.asset_id === target.asset_id);
+          case 'project':
+            return true;
+          default:
+            return false;
         }
-        case 'asset':
-          return event.source_ranges.some((r) => r.asset_id === target.asset_id);
-        case 'project':
-          return true;
-        default:
-          return false;
-      }
-    })
-    // Highest priority last, so it is applied last and therefore wins.
-    .sort((a, b) => a.priority - b.priority || a.created_at.localeCompare(b.created_at));
+      })
+      // Highest priority last, so it is applied last and therefore wins.
+      .sort((a, b) => a.priority - b.priority || a.created_at.localeCompare(b.created_at))
+  );
 }
 
 export interface AppliedKnowledge {
@@ -186,7 +192,10 @@ export function continuityOverrides(annotations: readonly UserAnnotation[]): Map
   const overrides = new Map<string, number>();
   for (const annotation of annotations) {
     if (annotation.type !== 'continuity' || annotation.target.kind !== 'event_pair') continue;
-    overrides.set(`${annotation.target.event_a}->${annotation.target.event_b}`, annotation.strength);
+    overrides.set(
+      `${annotation.target.event_a}->${annotation.target.event_b}`,
+      annotation.strength,
+    );
   }
   return overrides;
 }

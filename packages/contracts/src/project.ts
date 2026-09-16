@@ -109,7 +109,12 @@ export type ProjectContext = z.infer<typeof ProjectContext>;
 /** What an annotation is attached to. */
 export const AnnotationTarget = z
   .discriminatedUnion('kind', [
-    obj({ kind: z.literal('time_range'), start_ms: Milliseconds, end_ms: Milliseconds, asset_id: AssetId.optional() }),
+    obj({
+      kind: z.literal('time_range'),
+      start_ms: Milliseconds,
+      end_ms: Milliseconds,
+      asset_id: AssetId.optional(),
+    }),
     obj({ kind: z.literal('event'), event_id: EventId }),
     obj({ kind: z.literal('event_pair'), event_a: EventId, event_b: EventId }),
     obj({ kind: z.literal('asset'), asset_id: AssetId }),

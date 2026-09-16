@@ -78,7 +78,11 @@ export type TextOperation = z.infer<typeof TextOperation>;
 export const AudioTrackSpec = z
   .discriminatedUnion('type', [
     /** Each video clip carries its own sound. */
-    obj({ type: z.literal('source_audio'), track: z.int().min(0).default(0), gain_db: z.number().default(0) }),
+    obj({
+      type: z.literal('source_audio'),
+      track: z.int().min(0).default(0),
+      gain_db: z.number().default(0),
+    }),
     /** An external bed such as music, laid once across the sequence. */
     obj({
       type: z.literal('external'),

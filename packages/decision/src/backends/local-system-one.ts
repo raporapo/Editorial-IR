@@ -15,7 +15,7 @@ import type {
   DecisionBackendIdentity,
   EditorialDecisionModel,
 } from '../types.js';
-import { argmax, normalise, prune, scoreFromUnit } from '../distribution.js';
+import { normalise, prune, scoreFromUnit } from '../distribution.js';
 
 /**
  * A decision backend built on any model that speaks OpenAI chat completions with
@@ -80,7 +80,11 @@ export class LocalSystemOneBackend implements EditorialDecisionModel {
 
   async assessAll(state: EventState, request: BatchRequest): Promise<BatchAnswers> {
     const schema = batchSchema(request);
-    const payload = await this.call(buildBatchPrompt(state, request), schema, 'editorial_assessment');
+    const payload = await this.call(
+      buildBatchPrompt(state, request),
+      schema,
+      'editorial_assessment',
+    );
 
     const raw = payload.content as Record<string, unknown>;
     const scores: Record<string, ScoreResult> = {};
@@ -136,27 +140,31 @@ export class LocalSystemOneBackend implements EditorialDecisionModel {
   async score(state: EventState, request: ScoreRequest): Promise<ScoreResult> {
     const answers = await this.assessAll(state, { scores: [request], booleans: [] });
     const result = answers.scores[request.question_id];
-    if (!result) throw new EditorialError('decision_failed', `no answer for "${request.question_id}"`);
+    if (!result)
+      throw new EditorialError('decision_failed', `no answer for "${request.question_id}"`);
     return result;
   }
 
   async booleanProbability(state: EventState, request: BooleanRequest): Promise<BooleanResult> {
     const answers = await this.assessAll(state, { scores: [], booleans: [request] });
     const result = answers.booleans[request.question_id];
-    if (!result) throw new EditorialError('decision_failed', `no answer for "${request.question_id}"`);
+    if (!result)
+      throw new EditorialError('decision_failed', `no answer for "${request.question_id}"`);
     return result;
   }
 
   async choice(state: EventState, request: ChoiceRequest): Promise<ChoiceResult> {
     const answers = await this.assessAll(state, { scores: [], booleans: [], choice: request });
-    if (!answers.choice) throw new EditorialError('decision_failed', `no answer for "${request.question_id}"`);
+    if (!answers.choice)
+      throw new EditorialError('decision_failed', `no answer for "${request.question_id}"`);
     return answers.choice;
   }
 
   estimateCost(inputTokens: number, outputTokens: number): number {
     if (!this.pricing) return 0;
     return (
-      (inputTokens * this.pricing.inputPerMillion + outputTokens * this.pricing.outputPerMillion) / 1_000_000
+      (inputTokens * this.pricing.inputPerMillion + outputTokens * this.pricing.outputPerMillion) /
+      1_000_000
     );
   }
 
@@ -207,7 +215,9 @@ export class LocalSystemOneBackend implements EditorialDecisionModel {
       try {
         return {
           content: JSON.parse(text),
-          ...(payload.usage?.prompt_tokens === undefined ? {} : { inputTokens: payload.usage.prompt_tokens }),
+          ...(payload.usage?.prompt_tokens === undefined
+            ? {}
+            : { inputTokens: payload.usage.prompt_tokens }),
           ...(payload.usage?.completion_tokens === undefined
             ? {}
             : { outputTokens: payload.usage.completion_tokens }),
@@ -238,7 +248,9 @@ export function buildBatchPrompt(state: EventState, request: BatchRequest): stri
   if (request.scores.length > 0) {
     sections.push('## Scales');
     for (const question of request.scores) {
-      const levels = question.levels.map((l) => `  ${l.level} = ${l.label}: ${l.description}`).join('\n');
+      const levels = question.levels
+        .map((l) => `  ${l.level} = ${l.label}: ${l.description}`)
+        .join('\n');
       sections.push(`${question.question_id}: ${question.question}\n${levels}`);
     }
   }

@@ -77,10 +77,14 @@ export class OpenAiCompatibleTextEmbedding implements TextEmbeddingModel {
         signal: controller.signal,
       });
       if (!response.ok) {
-        throw new EditorialError('perception_failed', `embedding request failed with ${response.status}`, {
-          status: response.status,
-          body: (await response.text()).slice(0, 500),
-        });
+        throw new EditorialError(
+          'perception_failed',
+          `embedding request failed with ${response.status}`,
+          {
+            status: response.status,
+            body: (await response.text()).slice(0, 500),
+          },
+        );
       }
       const payload = (await response.json()) as { data?: { embedding?: number[] }[] };
       const rows = payload.data ?? [];

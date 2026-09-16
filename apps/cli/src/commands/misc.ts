@@ -25,7 +25,11 @@ export function runSkills(args: { name?: string; skillsDir?: string }): number {
 
   if (!args.name) {
     heading('skills');
-    table(registry.list().map((source) => [source.name, source.manifest.description.split('\n')[0] ?? '']));
+    table(
+      registry
+        .list()
+        .map((source) => [source.name, source.manifest.description.split('\n')[0] ?? '']),
+    );
     line();
     note('oea skills <name>   what it does and why');
     return 0;
@@ -45,7 +49,10 @@ export function runSkills(args: { name?: string; skillsDir?: string }): number {
   const resolved = registry.resolve(args.name);
   heading('as resolved');
   detail('extends', resolved.extends.join(', ') || 'nothing');
-  detail('clips', `${resolved.defaults.min_clip_duration_ms / 1000}s to ${resolved.defaults.max_clip_duration_ms / 1000}s`);
+  detail(
+    'clips',
+    `${resolved.defaults.min_clip_duration_ms / 1000}s to ${resolved.defaults.max_clip_duration_ms / 1000}s`,
+  );
   detail('order', resolved.arc.ordering);
   detail('rules', String(resolved.rules.length));
 
@@ -91,7 +98,10 @@ export async function runDoctor(): Promise<number> {
 
   heading('what is configured');
   const suite = createLocalSuite();
-  detail('perception', suite.speech ? 'with transcription' : 'ffmpeg only (no transcription, no vision)');
+  detail(
+    'perception',
+    suite.speech ? 'with transcription' : 'ffmpeg only (no transcription, no vision)',
+  );
   detail('embeddings', process.env.OEA_EMBED_MODEL ?? 'hashing (lexical, no model)');
   detail('closer look', process.env.OEA_VLM_MODEL ?? colour.grey('not configured'));
   detail('judgement', process.env.OEA_DECISION_MODEL ?? 'rules (free, instant, reproducible)');
@@ -103,8 +113,19 @@ export async function runDoctor(): Promise<number> {
 
   heading('skills and editors');
   const registry = SkillRegistry.withBuiltIns();
-  detail('skills', registry.list().map((s) => s.name).join(', '));
-  detail('editors', listAdapters().map((a) => a.id).join(', '));
+  detail(
+    'skills',
+    registry
+      .list()
+      .map((s) => s.name)
+      .join(', '),
+  );
+  detail(
+    'editors',
+    listAdapters()
+      .map((a) => a.id)
+      .join(', '),
+  );
 
   for (const source of registry.list()) {
     const issues = validateSkill(registry.resolve(source.name));
@@ -145,7 +166,10 @@ export function runSchema(args: { out?: string; name?: string }): number {
 
   mkdirSync(args.out, { recursive: true });
   for (const name of SCHEMA_NAMES) {
-    writeFileSync(join(args.out, `${name}.schema.json`), `${JSON.stringify(toJsonSchema(name), null, 2)}\n`);
+    writeFileSync(
+      join(args.out, `${name}.schema.json`),
+      `${JSON.stringify(toJsonSchema(name), null, 2)}\n`,
+    );
   }
   writeFileSync(
     join(args.out, 'editorial-ir.bundle.schema.json'),
@@ -170,7 +194,11 @@ export function runContext(args: { project?: string; json?: boolean }): number {
 
   heading('what you have told it');
   detail('occasion', context.background.occasion ?? colour.grey('nothing yet'));
-  detail('people', context.background.people.map((p) => `${p.id}${p.role ? ` (${p.role})` : ''}`).join(', ') || colour.grey('nobody'));
+  detail(
+    'people',
+    context.background.people.map((p) => `${p.id}${p.role ? ` (${p.role})` : ''}`).join(', ') ||
+      colour.grey('nobody'),
+  );
   detail('places', context.background.places.map((p) => p.id).join(', ') || colour.grey('nowhere'));
   detail(
     'target',
@@ -179,7 +207,8 @@ export function runContext(args: { project?: string; json?: boolean }): number {
       : colour.grey('not set'),
   );
   detail('tone', context.editing_goal.tone.join(', ') || colour.grey('not set'));
-  if (context.editing_goal.instruction) detail('instruction', context.editing_goal.instruction.trim());
+  if (context.editing_goal.instruction)
+    detail('instruction', context.editing_goal.instruction.trim());
 
   line();
   note(`Edit ${relative(process.cwd(), store.paths.context)} to change any of this.`);
@@ -212,7 +241,10 @@ export function runDemo(args: { directory?: string }): { root: string; fixture: 
   const project = store.readProject();
   store.writeContext(
     ProjectContext.parse({
-      ...(parseYaml(readFileSync(join(EXAMPLE_DIR, 'context.yaml'), 'utf8')) as Record<string, unknown>),
+      ...(parseYaml(readFileSync(join(EXAMPLE_DIR, 'context.yaml'), 'utf8')) as Record<
+        string,
+        unknown
+      >),
       project_id: project.id,
     }),
   );

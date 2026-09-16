@@ -53,7 +53,10 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
 
     heading('the analysis');
     detail('material', formatTimecode(ir.stats.total_media_duration_ms, false));
-    detail('events', `${ir.stats.event_count}, averaging ${Math.round(ir.stats.mean_event_duration_ms / 1000)}s`);
+    detail(
+      'events',
+      `${ir.stats.event_count}, averaging ${Math.round(ir.stats.mean_event_duration_ms / 1000)}s`,
+    );
     detail('transcribed', `${ir.stats.utterance_count} utterances`);
     detail('shots', String(ir.stats.shot_count));
     detail('relations', String(ir.stats.relation_count));
@@ -79,7 +82,8 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
     detail('media left this machine', report.mediaLeftDevice ? colour.yellow('yes') : 'no');
     if (report.mediaLeftDevice) {
       const remote = ir.model_runs.filter((run) => run.media_left_device);
-      for (const run of remote) note(`  ${run.stage} to ${run.backend}${run.model ? ` (${run.model})` : ''}`);
+      for (const run of remote)
+        note(`  ${run.stage} to ${run.backend}${run.model ? ` (${run.model})` : ''}`);
     }
 
     if (report.unavailable.length > 0) {
@@ -98,7 +102,8 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
 
     if (ir.conflicts.length > 0) {
       heading('disagreements');
-      for (const conflict of ir.conflicts) note(`  ${conflict.path}: ${conflict.note ?? 'recorded'}`);
+      for (const conflict of ir.conflicts)
+        note(`  ${conflict.path}: ${conflict.note ?? 'recorded'}`);
     }
 
     heading('next');

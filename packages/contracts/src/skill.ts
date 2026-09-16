@@ -31,10 +31,12 @@ import { SKILL_MANIFEST_VERSION } from './version.js';
 export const NumericCondition = z
   .union([
     z.number(),
-    z.string().regex(
-      /^\s*(?:(?:>=|<=|==|!=|>|<)\s*-?\d+(?:\.\d+)?|-?\d+(?:\.\d+)?\s*\.\.\s*-?\d+(?:\.\d+)?)\s*$/,
-      'expected a comparator such as ">0.7", "<=0.2" or "0.3..0.7"',
-    ),
+    z
+      .string()
+      .regex(
+        /^\s*(?:(?:>=|<=|==|!=|>|<)\s*-?\d+(?:\.\d+)?|-?\d+(?:\.\d+)?\s*\.\.\s*-?\d+(?:\.\d+)?)\s*$/,
+        'expected a comparator such as ">0.7", "<=0.2" or "0.3..0.7"',
+      ),
     obj({
       gt: z.number().optional(),
       gte: z.number().optional(),
@@ -50,9 +52,7 @@ export type NumericCondition = z.infer<typeof NumericCondition>;
 const StringMatch = z.union([z.string(), z.array(z.string()).min(1)]);
 
 /** Where an event sits inside its chapter, and inside the project. */
-export const PositionalScope = z
-  .enum(['first', 'middle', 'last'])
-  .meta({ id: 'PositionalScope' });
+export const PositionalScope = z.enum(['first', 'middle', 'last']).meta({ id: 'PositionalScope' });
 
 const metricConditions = Object.fromEntries(
   EDITORIAL_METRICS.map((m) => [m, NumericCondition.optional()]),
@@ -60,7 +60,10 @@ const metricConditions = Object.fromEntries(
 
 const flagConditions = Object.fromEntries(
   EDITORIAL_FLAGS.map((f) => [`${f}_probability`, NumericCondition.optional()]),
-) as Record<`${(typeof EDITORIAL_FLAGS)[number]}_probability`, z.ZodOptional<typeof NumericCondition>>;
+) as Record<
+  `${(typeof EDITORIAL_FLAGS)[number]}_probability`,
+  z.ZodOptional<typeof NumericCondition>
+>;
 
 /**
  * Conditions are ANDed. Nesting is available through `all_of` / `any_of` / `not`.

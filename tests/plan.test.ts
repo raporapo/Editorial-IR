@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { compileProject } from '@editorial-ir/core';
 import { HeuristicDecisionBackend } from '@editorial-ir/decision';
 import { SkillRegistry } from '@editorial-ir/skills';
-import { AgentToolkit, planEdit, reviewPlan, suggestRevisions, validatePlan } from '@editorial-ir/agent';
+import {
+  AgentToolkit,
+  planEdit,
+  reviewPlan,
+  suggestRevisions,
+  validatePlan,
+} from '@editorial-ir/agent';
 import {
   EditPlan,
   operationTimelineDuration,
@@ -37,7 +43,11 @@ describe('planning a three-minute travel vlog', () => {
 
   it('passes the deterministic validator', async () => {
     const { ir, plan, store } = await planned();
-    const report = validatePlan(plan, { ir, projectRoot: store.paths.root, checkMediaExists: true });
+    const report = validatePlan(plan, {
+      ir,
+      projectRoot: store.paths.root,
+      checkMediaExists: true,
+    });
     expect(report.issues.filter((i) => i.severity === 'error')).toEqual([]);
     expect(report.ok).toBe(true);
   });
@@ -133,7 +143,8 @@ describe('the same material under different skills', () => {
     expect(planDurationMs(short.plan)).toBeLessThan(planDurationMs(travel.plan));
     // A short cuts faster: shorter clips, for a shorter piece.
     const meanOf = (plan: typeof travel.plan) =>
-      plan.tracks.video.reduce((sum, o) => sum + operationTimelineDuration(o), 0) / plan.tracks.video.length;
+      plan.tracks.video.reduce((sum, o) => sum + operationTimelineDuration(o), 0) /
+      plan.tracks.video.length;
     expect(meanOf(short.plan)).toBeLessThan(meanOf(travel.plan));
   });
 
@@ -144,11 +155,23 @@ describe('the same material under different skills', () => {
 
   it('reuses one analysis for both, without re-reading the video', async () => {
     const { ir, observations } = await compiled();
-    const travel = planEdit({ ir, skill: registry.resolve('travel-vlog'), targetDurationMs: 180_000, observations });
-    const short = planEdit({ ir, skill: registry.resolve('shorts'), targetDurationMs: 40_000, observations });
+    const travel = planEdit({
+      ir,
+      skill: registry.resolve('travel-vlog'),
+      targetDurationMs: 180_000,
+      observations,
+    });
+    const short = planEdit({
+      ir,
+      skill: registry.resolve('shorts'),
+      targetDurationMs: 40_000,
+      observations,
+    });
     // The whole point of compiling an IR: a second edit is a read, not a re-run.
     expect(travel.ir_fingerprint).toBe(short.ir_fingerprint);
-    expect(travel.tracks.video.map((o) => o.event_id)).not.toEqual(short.tracks.video.map((o) => o.event_id));
+    expect(travel.tracks.video.map((o) => o.event_id)).not.toEqual(
+      short.tracks.video.map((o) => o.event_id),
+    );
   });
 });
 
@@ -271,7 +294,9 @@ describe('reviewing a cut', () => {
       ...plan,
       tracks: {
         ...plan.tracks,
-        video: [{ ...plan.tracks.video[0]!, source_out_ms: plan.tracks.video[0]!.source_in_ms + 200 }],
+        video: [
+          { ...plan.tracks.video[0]!, source_out_ms: plan.tracks.video[0]!.source_in_ms + 200 },
+        ],
       },
     };
     const observations = reviewPlan(tiny, ir);
@@ -284,7 +309,9 @@ describe('reviewing a cut', () => {
       ...plan,
       tracks: {
         ...plan.tracks,
-        video: [{ ...plan.tracks.video[0]!, source_out_ms: plan.tracks.video[0]!.source_in_ms + 200 }],
+        video: [
+          { ...plan.tracks.video[0]!, source_out_ms: plan.tracks.video[0]!.source_in_ms + 200 },
+        ],
       },
     };
     const suggestions = suggestRevisions(reviewPlan(tiny, ir), tiny, ir);

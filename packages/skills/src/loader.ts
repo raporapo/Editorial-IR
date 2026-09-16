@@ -36,9 +36,13 @@ export function parseSkill(text: string, origin: string): SkillManifestType {
   try {
     raw = origin.endsWith('.json') ? JSON.parse(text) : parseYaml(text);
   } catch (error) {
-    throw new EditorialError('skill_error', `${origin} is not valid ${origin.endsWith('.json') ? 'JSON' : 'YAML'}`, {
-      cause: error instanceof Error ? error.message : String(error),
-    });
+    throw new EditorialError(
+      'skill_error',
+      `${origin} is not valid ${origin.endsWith('.json') ? 'JSON' : 'YAML'}`,
+      {
+        cause: error instanceof Error ? error.message : String(error),
+      },
+    );
   }
   return parseOrThrow(SkillManifest, raw, `skill manifest ${origin}`);
 }
@@ -130,7 +134,10 @@ export class SkillRegistry {
 
   private resolveWithStack(name: string, stack: string[]): SkillManifestType {
     if (stack.includes(name)) {
-      throw new EditorialError('skill_error', `skills extend each other in a cycle: ${[...stack, name].join(' -> ')}`);
+      throw new EditorialError(
+        'skill_error',
+        `skills extend each other in a cycle: ${[...stack, name].join(' -> ')}`,
+      );
     }
 
     const source = this.sources.get(name);
@@ -148,7 +155,12 @@ export class SkillRegistry {
 
     const result = merged ? mergeSkills(merged, source.manifest) : source.manifest;
     // The resolved skill keeps its own identity, not its parent's.
-    return { ...result, name: source.manifest.name, version: source.manifest.version, extends: source.manifest.extends };
+    return {
+      ...result,
+      name: source.manifest.name,
+      version: source.manifest.version,
+      extends: source.manifest.extends,
+    };
   }
 }
 
@@ -166,7 +178,10 @@ export class SkillRegistry {
  * - `rules` are concatenated, parent first. At equal priority the child's rule
  *   is applied later and therefore wins.
  */
-export function mergeSkills(parent: SkillManifestType, child: SkillManifestType): SkillManifestType {
+export function mergeSkills(
+  parent: SkillManifestType,
+  child: SkillManifestType,
+): SkillManifestType {
   return {
     ...parent,
     ...child,
@@ -213,7 +228,9 @@ export function validateSkill(manifest: SkillManifestType): string[] {
   for (const rule of manifest.rules) {
     const action = rule.action as Record<string, unknown>;
     if (Object.keys(action).length === 0) {
-      problems.push(`rule "${rule.id ?? '(unnamed)'}" has an empty action and can never do anything`);
+      problems.push(
+        `rule "${rule.id ?? '(unnamed)'}" has an empty action and can never do anything`,
+      );
     }
     if (
       action.minimum_duration_sec !== undefined &&

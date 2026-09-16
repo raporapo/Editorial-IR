@@ -12,20 +12,22 @@ import { ConflictId, ModelRunId } from './ids.js';
  * you cannot debug a bad cut, and you cannot honour the rule that user
  * knowledge outranks model output.
  */
-export const Provenance = z.enum([
-  /** Directly measured from the media (ASR text, a detected shot boundary, ffprobe metadata). */
-  'observed',
-  /** Produced by a model reasoning over observations. */
-  'inferred',
-  /** Supplied by the user. Never overwritten by a model. */
-  'user_provided',
-  /** Produced by evaluating a Skill's declarative rules. */
-  'skill_derived',
-  /** Produced by the editing agent while planning. */
-  'agent_derived',
-  /** Read back out of an NLE after the plan was applied. */
-  'nle_observed',
-]).meta({ id: 'Provenance' });
+export const Provenance = z
+  .enum([
+    /** Directly measured from the media (ASR text, a detected shot boundary, ffprobe metadata). */
+    'observed',
+    /** Produced by a model reasoning over observations. */
+    'inferred',
+    /** Supplied by the user. Never overwritten by a model. */
+    'user_provided',
+    /** Produced by evaluating a Skill's declarative rules. */
+    'skill_derived',
+    /** Produced by the editing agent while planning. */
+    'agent_derived',
+    /** Read back out of an NLE after the plan was applied. */
+    'nle_observed',
+  ])
+  .meta({ id: 'Provenance' });
 export type Provenance = z.infer<typeof Provenance>;
 
 /**

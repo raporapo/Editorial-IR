@@ -62,7 +62,11 @@ export function makeEvent(spec: EventSpec, index: number): SemanticEvent {
     start_ms: start,
     end_ms: start + duration,
     source_ranges: [{ asset_id: assetId, source_in_ms: start, source_out_ms: start + duration }],
-    description: { value: spec.description ?? `event ${index + 1}`, provenance: 'inferred', confidence: 0.5 },
+    description: {
+      value: spec.description ?? `event ${index + 1}`,
+      provenance: 'inferred',
+      confidence: 0.5,
+    },
     event_type: { value: spec.event_type ?? 'moment', provenance: 'inferred', confidence: 0.5 },
     entities: {
       value: {
@@ -89,7 +93,9 @@ export function makeEvent(spec: EventSpec, index: number): SemanticEvent {
       shot_count: 1,
       speech_ratio: spec.speech_ratio ?? (spec.speech?.length ? 0.7 : 0),
       silence_ratio: spec.silence_ratio ?? 0.1,
-      ...(spec.technical_quality === undefined ? {} : { technical_quality: spec.technical_quality }),
+      ...(spec.technical_quality === undefined
+        ? {}
+        : { technical_quality: spec.technical_quality }),
     },
     knowledge: {
       notes: [],

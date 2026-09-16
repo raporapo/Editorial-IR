@@ -72,7 +72,7 @@ export class SkillRuntime {
     let avoidAggressiveCutting = false;
 
     for (const rule of this.rules) {
-      if (!evaluateCondition(rule.when as Record<string, unknown>, facts)) continue;
+      if (!evaluateCondition(rule.when, facts)) continue;
 
       directive.matched_rule_ids.push(rule.id);
       this.options.onRuleFired?.(facts.event_id, rule.id);

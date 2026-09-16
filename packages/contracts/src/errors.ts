@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { type z } from 'zod';
 
 /**
  * A single error type across the whole toolchain, carrying a stable `code`.
@@ -61,10 +61,18 @@ export function parseOrThrow<T extends z.ZodType>(
 ): z.infer<T> {
   const result = schema.safeParse(value);
   if (result.success) return result.data;
-  throw new EditorialError('schema_violation', `${what} failed validation: ${formatZodError(result.error)}`, {
-    what,
-    issues: result.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message, code: i.code })),
-  });
+  throw new EditorialError(
+    'schema_violation',
+    `${what} failed validation: ${formatZodError(result.error)}`,
+    {
+      what,
+      issues: result.error.issues.map((i) => ({
+        path: i.path.join('.'),
+        message: i.message,
+        code: i.code,
+      })),
+    },
+  );
 }
 
 export function formatZodError(error: z.ZodError): string {

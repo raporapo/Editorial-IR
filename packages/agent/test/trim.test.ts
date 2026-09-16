@@ -86,7 +86,10 @@ describe('chooseTrim', () => {
       maxMs: 4100,
       snapToSilence: true,
       // Snapping here would leave a clip far shorter than its floor.
-      silences: [{ start_ms: 10_000, end_ms: 11_500 }, { start_ms: 11_900, end_ms: 12_400 }],
+      silences: [
+        { start_ms: 10_000, end_ms: 11_500 },
+        { start_ms: 11_900, end_ms: 12_400 },
+      ],
     });
     expect(result.out_ms - result.in_ms).toBeGreaterThanOrEqual(3900);
   });
@@ -106,7 +109,11 @@ describe('chooseTrim', () => {
   });
 
   it('is deterministic', () => {
-    const request = { ...base, speech: [{ start_ms: 20_000, end_ms: 23_000 }], snapToSilence: true };
+    const request = {
+      ...base,
+      speech: [{ start_ms: 20_000, end_ms: 23_000 }],
+      snapToSilence: true,
+    };
     expect(chooseTrim(request)).toEqual(chooseTrim(request));
   });
 });

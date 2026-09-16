@@ -55,7 +55,7 @@ rules:
     description: The first thing said should be what the piece is about.
     when:
       project_position: first
-      information_density: ">0.5"
+      information_density: '>0.5'
     action:
       prefer: 0.3
       place_at: opening

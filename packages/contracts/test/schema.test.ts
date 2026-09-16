@@ -81,7 +81,8 @@ describe('user annotations', () => {
 
   it('rejects a payload that does not match its type', () => {
     expect(
-      UserAnnotation.safeParse({ ...base, type: 'importance', target: { kind: 'project' } }).success,
+      UserAnnotation.safeParse({ ...base, type: 'importance', target: { kind: 'project' } })
+        .success,
     ).toBe(false);
   });
 });

@@ -76,7 +76,10 @@ describe('evaluateCondition', () => {
   it('matches an editorial metric by name', () => {
     expect(evaluateCondition({ story_importance: '>0.4' }, facts())).toBe(true);
     expect(
-      evaluateCondition({ story_importance: '>0.9' }, facts({ metrics: { ...NEUTRAL_METRICS, story_importance: 0.95 } })),
+      evaluateCondition(
+        { story_importance: '>0.9' },
+        facts({ metrics: { ...NEUTRAL_METRICS, story_importance: 0.95 } }),
+      ),
     ).toBe(true);
   });
 
@@ -113,16 +116,24 @@ describe('evaluateCondition', () => {
 
   it('nests with all_of, any_of and not', () => {
     const f = facts();
-    expect(evaluateCondition({ any_of: [{ event_type: 'meal' }, { event_type: 'moment' }] }, f)).toBe(true);
-    expect(evaluateCondition({ all_of: [{ has_speech: true }, { event_type: 'meal' }] }, f)).toBe(false);
+    expect(
+      evaluateCondition({ any_of: [{ event_type: 'meal' }, { event_type: 'moment' }] }, f),
+    ).toBe(true);
+    expect(evaluateCondition({ all_of: [{ has_speech: true }, { event_type: 'meal' }] }, f)).toBe(
+      false,
+    );
     expect(evaluateCondition({ not: { event_type: 'meal' } }, f)).toBe(true);
   });
 
   it('rejects a misspelled field instead of silently never firing', () => {
     // A rule that quietly does nothing is the most frustrating way for a skill
     // to be wrong: the file looks right and the edit ignores it.
-    expect(() => evaluateCondition({ stroy_importance: '>0.5' }, facts())).toThrow(/not something a rule can test/);
-    expect(() => evaluateCondition({ establishing_shot: '>0.5' }, facts())).toThrow(/not something a rule can test/);
+    expect(() => evaluateCondition({ stroy_importance: '>0.5' }, facts())).toThrow(
+      /not something a rule can test/,
+    );
+    expect(() => evaluateCondition({ establishing_shot: '>0.5' }, facts())).toThrow(
+      /not something a rule can test/,
+    );
   });
 
   it('is true for an empty condition, which matches everything', () => {

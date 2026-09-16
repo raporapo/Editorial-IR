@@ -1,4 +1,9 @@
-import { EditorialError, type ProbeResult, ProbeResult as ProbeResultSchema, parseOrThrow } from '@editorial-ir/contracts';
+import {
+  EditorialError,
+  type ProbeResult,
+  ProbeResult as ProbeResultSchema,
+  parseOrThrow,
+} from '@editorial-ir/contracts';
 import type { CommandRunner } from '../command.js';
 import { NodeCommandRunner } from '../command.js';
 import type { MediaProbe, ModelIdentity } from '../types.js';

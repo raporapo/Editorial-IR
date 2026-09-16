@@ -5,6 +5,8 @@ import {
   operationTimelineDuration,
   operationsInOrder,
   type ApplyResult,
+  type EditPlan,
+  type VideoOperation,
 } from '@editorial-ir/contracts';
 import type { ApplyRequest, EditorAdapter } from './types.js';
 import { negotiate, resolveAssetPath, toFileUrl } from './types.js';
@@ -76,7 +78,7 @@ export class OtioAdapter implements EditorAdapter {
 
 /** Exported so the document can be checked without touching the filesystem. */
 export function buildOtioTimeline(
-  plan: import('@editorial-ir/contracts').EditPlan,
+  plan: EditPlan,
   request: ApplyRequest,
   warnings: string[] = [],
 ): Record<string, unknown> {
@@ -132,7 +134,9 @@ export function buildOtioTimeline(
 
         const path = resolveAssetPath(request, operation.source_asset_id);
         if (!path) {
-          warnings.push(`${operation.operation_id} refers to ${operation.source_asset_id}, which has no file`);
+          warnings.push(
+            `${operation.operation_id} refers to ${operation.source_asset_id}, which has no file`,
+          );
         }
         const asset = request.ir.assets.find((a) => a.id === operation.source_asset_id);
 
@@ -200,10 +204,7 @@ export function buildOtioTimeline(
   };
 }
 
-function clipName(
-  operation: import('@editorial-ir/contracts').VideoOperation,
-  request: ApplyRequest,
-): string {
+function clipName(operation: VideoOperation, request: ApplyRequest): string {
   const event = request.ir.events.find((e) => e.id === operation.event_id);
   const asset = request.ir.assets.find((a) => a.id === operation.source_asset_id);
   const description = event?.title?.value ?? event?.description.value;

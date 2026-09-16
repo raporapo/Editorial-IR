@@ -10,20 +10,22 @@ import { ModelRunId } from './ids.js';
  * `model_run_id` instead. That keeps models replaceable (an architectural
  * invariant) while still making every value in the IR fully traceable.
  */
-export const PipelineStage = z.enum([
-  'ingest',
-  'speech',
-  'visual',
-  'audio',
-  'ocr',
-  'shot_detection',
-  'segmentation',
-  'context',
-  'decision',
-  'embedding',
-  'planning',
-  'review',
-]).meta({ id: 'PipelineStage' });
+export const PipelineStage = z
+  .enum([
+    'ingest',
+    'speech',
+    'visual',
+    'audio',
+    'ocr',
+    'shot_detection',
+    'segmentation',
+    'context',
+    'decision',
+    'embedding',
+    'planning',
+    'review',
+  ])
+  .meta({ id: 'PipelineStage' });
 export type PipelineStage = z.infer<typeof PipelineStage>;
 
 /** Where the work physically happened. Used for privacy reporting and costing. */

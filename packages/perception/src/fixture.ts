@@ -83,7 +83,15 @@ const FIXTURE_IDENTITY: ModelIdentity = {
 };
 
 export class FixturePerception
-  implements MediaProbe, MediaPreparer, SpeechModel, ShotDetector, VisualEmbeddingModel, AudioModel, OcrModel, ContextModel
+  implements
+    MediaProbe,
+    MediaPreparer,
+    SpeechModel,
+    ShotDetector,
+    VisualEmbeddingModel,
+    AudioModel,
+    OcrModel,
+    ContextModel
 {
   readonly identity = FIXTURE_IDENTITY;
   dim = 0;
@@ -105,9 +113,16 @@ export class FixturePerception
     return found;
   }
 
-  private require<T>(path: string, field: keyof z.infer<typeof AssetFixture>, value: T | undefined): T {
+  private require<T>(
+    path: string,
+    field: keyof z.infer<typeof AssetFixture>,
+    value: T | undefined,
+  ): T {
     if (value === undefined) {
-      throw new EditorialError('not_found', `the perception fixture for "${basename(path)}" has no "${field}"`);
+      throw new EditorialError(
+        'not_found',
+        `the perception fixture for "${basename(path)}" has no "${field}"`,
+      );
     }
     return value;
   }
@@ -122,7 +137,11 @@ export class FixturePerception
   }
 
   async transcribe(params: { audio_path: string }) {
-    return this.require(params.audio_path, 'transcribe', this.assetFixture(params.audio_path).transcribe);
+    return this.require(
+      params.audio_path,
+      'transcribe',
+      this.assetFixture(params.audio_path).transcribe,
+    );
   }
 
   async detectShots(params: { path: string }) {
@@ -130,13 +149,21 @@ export class FixturePerception
   }
 
   async embedFrames(params: { path: string }) {
-    const result = this.require(params.path, 'embed_frames', this.assetFixture(params.path).embed_frames);
+    const result = this.require(
+      params.path,
+      'embed_frames',
+      this.assetFixture(params.path).embed_frames,
+    );
     this.dim = result.dim;
     return result;
   }
 
   async analyzeAudio(params: { audio_path: string }) {
-    return this.require(params.audio_path, 'analyze_audio', this.assetFixture(params.audio_path).analyze_audio);
+    return this.require(
+      params.audio_path,
+      'analyze_audio',
+      this.assetFixture(params.audio_path).analyze_audio,
+    );
   }
 
   async ocr(params: { path: string }) {
@@ -146,7 +173,10 @@ export class FixturePerception
   async describe(params: { event_id: string }) {
     const found = this.fixture.describe[params.event_id];
     if (!found) {
-      throw new EditorialError('not_found', `the perception fixture has no description for ${params.event_id}`);
+      throw new EditorialError(
+        'not_found',
+        `the perception fixture has no description for ${params.event_id}`,
+      );
     }
     return found;
   }

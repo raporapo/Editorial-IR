@@ -51,15 +51,21 @@ export class FfmpegMediaPreparer implements MediaPreparer {
 
     if (params.proxy_height > 0) {
       const proxyPath = join(params.work_dir, 'proxy.mp4');
-      await this.runner.run(this.binary, proxyArgs(params.path, proxyPath, params.proxy_height, this.crf), {
-        timeoutMs: this.timeoutMs,
-      });
+      await this.runner.run(
+        this.binary,
+        proxyArgs(params.path, proxyPath, params.proxy_height, this.crf),
+        {
+          timeoutMs: this.timeoutMs,
+        },
+      );
       result.proxy_path = proxyPath;
     }
 
     if (params.extract_audio) {
       const audioPath = join(params.work_dir, 'audio.wav');
-      await this.runner.run(this.binary, audioArgs(params.path, audioPath), { timeoutMs: this.timeoutMs });
+      await this.runner.run(this.binary, audioArgs(params.path, audioPath), {
+        timeoutMs: this.timeoutMs,
+      });
       result.audio_path = audioPath;
     }
 
@@ -82,16 +88,23 @@ export const AUDIO_SAMPLE_RATE = 16_000;
 export function proxyArgs(input: string, output: string, height: number, crf: number): string[] {
   return [
     '-hide_banner',
-    '-loglevel', 'error',
+    '-loglevel',
+    'error',
     '-y',
-    '-i', input,
+    '-i',
+    input,
     // -2 keeps the width even, which h264 requires.
-    '-vf', `scale=-2:${height}`,
-    '-c:v', 'libx264',
-    '-preset', 'veryfast',
-    '-crf', String(crf),
+    '-vf',
+    `scale=-2:${height}`,
+    '-c:v',
+    'libx264',
+    '-preset',
+    'veryfast',
+    '-crf',
+    String(crf),
     '-an',
-    '-movflags', '+faststart',
+    '-movflags',
+    '+faststart',
     output,
   ];
 }
@@ -99,13 +112,18 @@ export function proxyArgs(input: string, output: string, height: number, crf: nu
 export function audioArgs(input: string, output: string): string[] {
   return [
     '-hide_banner',
-    '-loglevel', 'error',
+    '-loglevel',
+    'error',
     '-y',
-    '-i', input,
+    '-i',
+    input,
     '-vn',
-    '-ac', '1',
-    '-ar', String(AUDIO_SAMPLE_RATE),
-    '-c:a', 'pcm_s16le',
+    '-ac',
+    '1',
+    '-ar',
+    String(AUDIO_SAMPLE_RATE),
+    '-c:a',
+    'pcm_s16le',
     output,
   ];
 }
@@ -113,11 +131,15 @@ export function audioArgs(input: string, output: string): string[] {
 export function frameArgs(input: string, framesDir: string, fps: number): string[] {
   return [
     '-hide_banner',
-    '-loglevel', 'error',
+    '-loglevel',
+    'error',
     '-y',
-    '-i', input,
-    '-vf', `fps=${fps}`,
-    '-q:v', '4',
+    '-i',
+    input,
+    '-vf',
+    `fps=${fps}`,
+    '-q:v',
+    '4',
     join(framesDir, '%08d.jpg'),
   ];
 }

@@ -22,7 +22,16 @@ import type { PerceptionCache } from './cache.js';
  * re-analyse it and copying a project to another machine does not either.
  */
 
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.mkv', '.m4v', '.avi', '.webm', '.mts', '.m2ts']);
+const VIDEO_EXTENSIONS = new Set([
+  '.mp4',
+  '.mov',
+  '.mkv',
+  '.m4v',
+  '.avi',
+  '.webm',
+  '.mts',
+  '.m2ts',
+]);
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.opus']);
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.heic', '.tif', '.tiff']);
 
@@ -73,7 +82,10 @@ export interface IngestResult {
   failed: { path: string; reason: string }[];
 }
 
-export async function ingestPaths(targets: string[], options: IngestOptions): Promise<IngestResult> {
+export async function ingestPaths(
+  targets: string[],
+  options: IngestOptions,
+): Promise<IngestResult> {
   const existing = [...(options.existing ?? [])];
   const byHash = new Map(existing.map((asset) => [asset.sha256, asset]));
 
@@ -126,7 +138,9 @@ export async function ingestPaths(targets: string[], options: IngestOptions): Pr
       ...(probe.video_codec === undefined ? {} : { video_codec: probe.video_codec }),
       ...(probe.audio_codec === undefined ? {} : { audio_codec: probe.audio_codec }),
       ...(probe.audio_channels === undefined ? {} : { audio_channels: probe.audio_channels }),
-      ...(probe.audio_sample_rate === undefined ? {} : { audio_sample_rate: probe.audio_sample_rate }),
+      ...(probe.audio_sample_rate === undefined
+        ? {}
+        : { audio_sample_rate: probe.audio_sample_rate }),
       ...(probe.container === undefined ? {} : { container: probe.container }),
       ...(probe.bit_rate === undefined ? {} : { bit_rate: probe.bit_rate }),
       ...(probe.rotation === undefined ? {} : { rotation: probe.rotation }),
@@ -201,7 +215,11 @@ export function placeAssets(assets: readonly MediaAsset[]): AssetPlacement[] {
 }
 
 /** Maps a time inside an asset to the capture timeline, and back. */
-export function toCaptureTime(placements: readonly AssetPlacement[], assetId: string, ms: number): number {
+export function toCaptureTime(
+  placements: readonly AssetPlacement[],
+  assetId: string,
+  ms: number,
+): number {
   const placement = placements.find((p) => p.asset_id === assetId);
   return (placement?.offset_ms ?? 0) + ms;
 }

@@ -1,6 +1,12 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { EditorialError, IR_VERSION, ProjectContext, newId, type Project } from '@editorial-ir/contracts';
+import {
+  EditorialError,
+  IR_VERSION,
+  ProjectContext,
+  newId,
+  type Project,
+} from '@editorial-ir/contracts';
 import { FileProjectStore, PROJECT_DIR } from '@editorial-ir/core';
 
 /**

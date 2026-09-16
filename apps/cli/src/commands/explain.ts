@@ -36,14 +36,19 @@ export function runExplain(args: ExplainArgs): number {
     return 0;
   }
 
-  heading(`${event.id}  ${formatTimecode(event.start_ms, false)} - ${formatTimecode(event.end_ms, false)}`);
+  heading(
+    `${event.id}  ${formatTimecode(event.start_ms, false)} - ${formatTimecode(event.end_ms, false)}`,
+  );
   line(`  ${event.description.value}`);
   line();
 
   detail('kind', event.event_type.value);
   detail('role', assessment?.narrative_role.selected ?? 'unknown');
   detail('from', event.source_ranges.map((r) => r.asset_id).join(', '));
-  detail('boundaries', `${event.segmentation.method}, confidence ${event.segmentation.boundary_confidence.toFixed(2)}`);
+  detail(
+    'boundaries',
+    `${event.segmentation.method}, confidence ${event.segmentation.boundary_confidence.toFixed(2)}`,
+  );
   detail(
     'understood by',
     `${event.description.provenance}, confidence ${event.confidence.toFixed(2)}`,

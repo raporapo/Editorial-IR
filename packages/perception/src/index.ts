@@ -33,7 +33,12 @@ export {
   percentile,
   runsOf,
 } from './ffmpeg/audio.js';
-export { HashingTextEmbedding, normalizeText, fnv1a, l2normalize } from './text-embedding/hashing.js';
+export {
+  HashingTextEmbedding,
+  normalizeText,
+  fnv1a,
+  l2normalize,
+} from './text-embedding/hashing.js';
 export { OpenAiCompatibleTextEmbedding } from './text-embedding/openai-compatible.js';
 export {
   HeuristicContextModel,
@@ -42,6 +47,10 @@ export {
   inferAffect,
   keywordsOf,
 } from './context/heuristic.js';
-export { OpenAiCompatibleContextModel, buildPrompt, toDataUrl } from './context/openai-compatible.js';
+export {
+  OpenAiCompatibleContextModel,
+  buildPrompt,
+  toDataUrl,
+} from './context/openai-compatible.js';
 export { PythonWorkerClient, type PythonWorkerOptions } from './worker/client.js';
 export * from './worker/models.js';

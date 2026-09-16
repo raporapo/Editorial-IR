@@ -194,7 +194,14 @@ export const TranscribeResult = obj({
         speaker_id: z.string().optional(),
         confidence: Confidence.default(0.5),
         words: z
-          .array(obj({ start_ms: Milliseconds, end_ms: Milliseconds, text: z.string(), confidence: Confidence.optional() }))
+          .array(
+            obj({
+              start_ms: Milliseconds,
+              end_ms: Milliseconds,
+              text: z.string(),
+              confidence: Confidence.optional(),
+            }),
+          )
           .optional(),
       }),
     )
@@ -320,7 +327,13 @@ export type PerceptionErrorCode = z.infer<typeof PerceptionErrorCode>;
 
 export const PerceptionResponse = z
   .discriminatedUnion('ok', [
-    obj({ v: z.string(), id: z.string(), ok: z.literal(true), op: PerceptionOp, result: z.unknown() }),
+    obj({
+      v: z.string(),
+      id: z.string(),
+      ok: z.literal(true),
+      op: PerceptionOp,
+      result: z.unknown(),
+    }),
     obj({
       v: z.string(),
       id: z.string(),

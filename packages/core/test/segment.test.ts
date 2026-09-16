@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { MediaAsset, ObservationTimeline, Shot } from '@editorial-ir/contracts';
-import { buildAtoms, segmentAssets, segmentAtoms, separationScore, signalsAt, type Atom } from '../src/index.js';
+import {
+  buildAtoms,
+  segmentAssets,
+  segmentAtoms,
+  separationScore,
+  signalsAt,
+  type Atom,
+} from '../src/index.js';
 
 const asset: MediaAsset = {
   id: 'asset_001',
@@ -93,8 +100,12 @@ describe('separationScore', () => {
   });
 
   it('stays inside [0,1]', () => {
-    expect(separationScore({ visual: 1, silence: 1, shotChange: 1, topic: 1, speakerChange: 1 })).toBeLessThanOrEqual(1);
-    expect(separationScore({ visual: 0, silence: 0, shotChange: 0, topic: 0, speakerChange: 0 })).toBeGreaterThanOrEqual(0);
+    expect(
+      separationScore({ visual: 1, silence: 1, shotChange: 1, topic: 1, speakerChange: 1 }),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      separationScore({ visual: 0, silence: 0, shotChange: 0, topic: 0, speakerChange: 0 }),
+    ).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -102,7 +113,14 @@ describe('signalsAt', () => {
   it('sees a sentence spanning the boundary', () => {
     const signals = signalsAt(atom(0, 5000), atom(5000, 10_000), {
       utterances: [
-        { id: 'utt_1', asset_id: 'asset_001', start_ms: 3000, end_ms: 7000, text: 'still talking', confidence: 0.9 },
+        {
+          id: 'utt_1',
+          asset_id: 'asset_001',
+          start_ms: 3000,
+          end_ms: 7000,
+          text: 'still talking',
+          confidence: 0.9,
+        },
       ],
       audioEvents: [],
     });
@@ -113,7 +131,14 @@ describe('signalsAt', () => {
     const signals = signalsAt(atom(0, 5000), atom(5000, 10_000), {
       utterances: [],
       audioEvents: [
-        { id: 'aev_1', asset_id: 'asset_001', start_ms: 4600, end_ms: 5600, event_type: 'silence', confidence: 0.8 },
+        {
+          id: 'aev_1',
+          asset_id: 'asset_001',
+          start_ms: 4600,
+          end_ms: 5600,
+          event_type: 'silence',
+          confidence: 0.8,
+        },
       ],
     });
     expect(signals.silence).toBeGreaterThan(0.5);
@@ -122,8 +147,24 @@ describe('signalsAt', () => {
   it('sees a change of speaker', () => {
     const signals = signalsAt(atom(0, 5000), atom(5000, 10_000), {
       utterances: [
-        { id: 'utt_1', asset_id: 'asset_001', start_ms: 1000, end_ms: 4000, speaker_id: 'A', text: 'hello', confidence: 0.9 },
-        { id: 'utt_2', asset_id: 'asset_001', start_ms: 6000, end_ms: 9000, speaker_id: 'B', text: 'goodbye', confidence: 0.9 },
+        {
+          id: 'utt_1',
+          asset_id: 'asset_001',
+          start_ms: 1000,
+          end_ms: 4000,
+          speaker_id: 'A',
+          text: 'hello',
+          confidence: 0.9,
+        },
+        {
+          id: 'utt_2',
+          asset_id: 'asset_001',
+          start_ms: 6000,
+          end_ms: 9000,
+          speaker_id: 'B',
+          text: 'goodbye',
+          confidence: 0.9,
+        },
       ],
       audioEvents: [],
     });
@@ -146,13 +187,15 @@ describe('segmentAtoms', () => {
   it('never produces an event shorter than the minimum', () => {
     const atoms = [atom(0, 900), atom(900, 1800), atom(1800, 12_000)];
     const segments = segmentAtoms(atoms, plain, { minEventMs: 2000 });
-    for (const segment of segments) expect(segment.end_ms - segment.start_ms).toBeGreaterThanOrEqual(2000);
+    for (const segment of segments)
+      expect(segment.end_ms - segment.start_ms).toBeGreaterThanOrEqual(2000);
   });
 
   it('never produces an event longer than the maximum', () => {
     const atoms = Array.from({ length: 20 }, (_, i) => atom(i * 3000, (i + 1) * 3000));
     const segments = segmentAtoms(atoms, plain, { maxEventMs: 20_000 });
-    for (const segment of segments) expect(segment.end_ms - segment.start_ms).toBeLessThanOrEqual(20_000);
+    for (const segment of segments)
+      expect(segment.end_ms - segment.start_ms).toBeLessThanOrEqual(20_000);
   });
 
   it('covers the whole asset with no gaps and no overlaps', () => {
@@ -182,7 +225,11 @@ describe('segmentAtoms', () => {
 
   it('merges where the user demanded it, even across a sharp cut', () => {
     const atoms = [atom(0, 4000), atom(4000, 8000, 0.99)];
-    const segments = segmentAtoms(atoms, { ...plain, forcedMerges: [4000] }, { mergeThreshold: 0.1 });
+    const segments = segmentAtoms(
+      atoms,
+      { ...plain, forcedMerges: [4000] },
+      { mergeThreshold: 0.1 },
+    );
     expect(segments).toHaveLength(1);
   });
 
@@ -192,7 +239,14 @@ describe('segmentAtoms', () => {
       atoms,
       {
         utterances: [
-          { id: 'utt_1', asset_id: 'asset_001', start_ms: 1000, end_ms: 8000, text: 'one long sentence', confidence: 0.9 },
+          {
+            id: 'utt_1',
+            asset_id: 'asset_001',
+            start_ms: 1000,
+            end_ms: 8000,
+            text: 'one long sentence',
+            confidence: 0.9,
+          },
         ],
         audioEvents: [],
       },
@@ -211,7 +265,9 @@ describe('segmentAtoms', () => {
 
   it('is deterministic', () => {
     const atoms = Array.from({ length: 15 }, (_, i) => atom(i * 3000, (i + 1) * 3000, (i % 4) / 4));
-    expect(JSON.stringify(segmentAtoms(atoms, plain))).toBe(JSON.stringify(segmentAtoms(atoms, plain)));
+    expect(JSON.stringify(segmentAtoms(atoms, plain))).toBe(
+      JSON.stringify(segmentAtoms(atoms, plain)),
+    );
   });
 
   it('returns nothing for no atoms', () => {
@@ -221,7 +277,12 @@ describe('segmentAtoms', () => {
 
 describe('segmentAssets', () => {
   it('never lets an event straddle two recordings', () => {
-    const second: MediaAsset = { ...asset, id: 'asset_002', file_name: 'b.mov', sha256: 'b'.repeat(64) };
+    const second: MediaAsset = {
+      ...asset,
+      id: 'asset_002',
+      file_name: 'b.mov',
+      sha256: 'b'.repeat(64),
+    };
     const segments = segmentAssets(
       [asset, second],
       observations({

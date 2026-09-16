@@ -1,4 +1,4 @@
-import { assessmentFor, formatTimecode } from '@editorial-ir/contracts';
+import { assessmentFor, formatTimecode, type SemanticEvent } from '@editorial-ir/contracts';
 import { openProject } from '../project.js';
 import { bar, colour, heading, line, note, table, truncate } from '../ui.js';
 import { requireIr } from '../ir.js';
@@ -22,7 +22,13 @@ export function runTimeline(args: TimelineArgs): number {
   const ir = requireIr(store);
 
   if (args.json) {
-    line(JSON.stringify(ir.chapters.map((chapter) => ({ ...chapter, events: chapter.event_ids })), null, 2));
+    line(
+      JSON.stringify(
+        ir.chapters.map((chapter) => ({ ...chapter, events: chapter.event_ids })),
+        null,
+        2,
+      ),
+    );
     return 0;
   }
 
@@ -64,7 +70,7 @@ export function runTimeline(args: TimelineArgs): number {
   return 0;
 }
 
-function markers(event: import('@editorial-ir/contracts').SemanticEvent): string {
+function markers(event: SemanticEvent): string {
   const marks: string[] = [];
   if (event.knowledge.essential) marks.push(colour.green('keep'));
   if (event.knowledge.excluded) marks.push(colour.red('drop'));

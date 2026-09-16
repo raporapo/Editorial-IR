@@ -66,7 +66,11 @@ export class AgentToolkit {
   ) {}
 
   /** Everything the user said this piece is for. */
-  getProjectContext(): ProjectContext & { title: string; total_duration_ms: number; event_count: number } {
+  getProjectContext(): ProjectContext & {
+    title: string;
+    total_duration_ms: number;
+    event_count: number;
+  } {
     return {
       ...this.ir.context,
       title: this.ir.project.title,
@@ -92,7 +96,7 @@ export class AgentToolkit {
     if (filter.chapterId) events = events.filter((e) => e.chapter_id === filter.chapterId);
     if (filter.eventType) events = events.filter((e) => e.event_type.value === filter.eventType);
     if (filter.hasSpeech !== undefined) {
-      events = events.filter((e) => (e.observed.speech.length > 0) === filter.hasSpeech);
+      events = events.filter((e) => e.observed.speech.length > 0 === filter.hasSpeech);
     }
     if (filter.essentialOnly) events = events.filter((e) => e.knowledge.essential);
 
@@ -128,7 +132,10 @@ export class AgentToolkit {
    * agent asked to plan a three-minute cut from six hundred events cannot be
    * handed every transcript, and does not need to be.
    */
-  inspectEvent(eventId: string, detail: DetailLevel = 'detailed'): Record<string, unknown> | undefined {
+  inspectEvent(
+    eventId: string,
+    detail: DetailLevel = 'detailed',
+  ): Record<string, unknown> | undefined {
     const event = eventById(this.ir, eventId);
     if (!event) return undefined;
     const assessment = assessmentFor(this.ir, eventId);
@@ -189,7 +196,11 @@ export class AgentToolkit {
 
   /* --- search ------------------------------------------------------------- */
 
-  private async searchAspect(query: string, kind: EmbeddingKind, limit: number): Promise<SearchHit[]> {
+  private async searchAspect(
+    query: string,
+    kind: EmbeddingKind,
+    limit: number,
+  ): Promise<SearchHit[]> {
     if (!this.index) return [];
     return this.index.search(query, { kinds: [kind], limit });
   }
@@ -265,7 +276,8 @@ export class AgentToolkit {
 export const AGENT_TOOL_DEFINITIONS = [
   {
     name: 'get_project_context',
-    description: 'What the user said this piece is for: occasion, people, places, goal, target duration.',
+    description:
+      'What the user said this piece is for: occasion, people, places, goal, target duration.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -322,7 +334,8 @@ export const AGENT_TOOL_DEFINITIONS = [
   },
   {
     name: 'get_neighbours',
-    description: 'The events immediately before and after one event, for judging whether a cut would strand it.',
+    description:
+      'The events immediately before and after one event, for judging whether a cut would strand it.',
     parameters: {
       type: 'object',
       properties: { eventId: { type: 'string' } },
@@ -342,7 +355,8 @@ export const AGENT_TOOL_DEFINITIONS = [
   },
   {
     name: 'create_edit_plan',
-    description: 'Produce an EditPlan from a skill and a target duration. The plan is validated before it is used.',
+    description:
+      'Produce an EditPlan from a skill and a target duration. The plan is validated before it is used.',
     parameters: {
       type: 'object',
       properties: { skill: { type: 'string' }, targetDurationMs: { type: 'integer' } },
@@ -352,7 +366,8 @@ export const AGENT_TOOL_DEFINITIONS = [
   },
   {
     name: 'validate_edit_plan',
-    description: 'Check a plan against the media, the user’s instructions and the target application.',
+    description:
+      'Check a plan against the media, the user’s instructions and the target application.',
     parameters: {
       type: 'object',
       properties: { plan: { type: 'object' } },

@@ -66,56 +66,55 @@ describe('the adapter registry', () => {
 });
 
 describe('capability negotiation', () => {
-  const basePlan = (overrides: Partial<EditPlan['tracks']['video'][number]>): EditPlan =>
-    ({
-      edit_plan_version: '0.1.0',
-      id: 'plan_x',
-      project_id: 'prj_x',
-      created_at: '2026-05-17T00:00:00.000Z',
-      ir_fingerprint: 'f',
-      skill: { name: 's', version: '1' },
-      sequence: {
-        name: 's',
-        target_duration_ms: 1000,
-        tolerance_ms: 0,
-        width: 1920,
-        height: 1080,
-        frame_rate: 30,
-        frame_rate_num: 30,
-        frame_rate_den: 1,
-        sample_rate: 48_000,
-      },
-      tracks: {
-        video: [
-          {
-            operation_id: 'op_0001',
-            source_asset_id: 'asset_001',
-            source_in_ms: 0,
-            source_out_ms: 2000,
-            timeline_start_ms: 0,
-            track: 0,
-            speed: 1,
-            use_source_audio: true,
-            provenance: 'agent_derived',
-            ...overrides,
-          },
-        ],
-        audio: [],
-        text: [],
-      },
-      intent: { tone: [] },
-      rationale: [],
-      stats: {
-        operation_count: 1,
-        total_duration_ms: 2000,
-        duration_error_ms: 0,
-        compression_ratio: 0.1,
-        events_selected: 1,
-        events_available: 1,
-        mean_importance: 0.5,
-        mean_continuity: 0.5,
-      },
-    }) as EditPlan;
+  const basePlan = (overrides: Partial<EditPlan['tracks']['video'][number]>): EditPlan => ({
+    edit_plan_version: '0.1.0',
+    id: 'plan_x',
+    project_id: 'prj_x',
+    created_at: '2026-05-17T00:00:00.000Z',
+    ir_fingerprint: 'f',
+    skill: { name: 's', version: '1' },
+    sequence: {
+      name: 's',
+      target_duration_ms: 1000,
+      tolerance_ms: 0,
+      width: 1920,
+      height: 1080,
+      frame_rate: 30,
+      frame_rate_num: 30,
+      frame_rate_den: 1,
+      sample_rate: 48_000,
+    },
+    tracks: {
+      video: [
+        {
+          operation_id: 'op_0001',
+          source_asset_id: 'asset_001',
+          source_in_ms: 0,
+          source_out_ms: 2000,
+          timeline_start_ms: 0,
+          track: 0,
+          speed: 1,
+          use_source_audio: true,
+          provenance: 'agent_derived',
+          ...overrides,
+        },
+      ],
+      audio: [],
+      text: [],
+    },
+    intent: { tone: [] },
+    rationale: [],
+    stats: {
+      operation_count: 1,
+      total_duration_ms: 2000,
+      duration_error_ms: 0,
+      compression_ratio: 0.1,
+      events_selected: 1,
+      events_available: 1,
+      mean_importance: 0.5,
+      mean_continuity: 0.5,
+    },
+  });
 
   it('turns an unsupported transition into a cut, and says so', () => {
     const plan = basePlan({ transition_in: { type: 'cross_dissolve', duration_ms: 500 } });
@@ -123,7 +122,10 @@ describe('capability negotiation', () => {
     expect(adjusted.tracks.video[0]!.transition_in!.type).toBe('cross_dissolve');
     expect(downgrades).toHaveLength(0);
 
-    const premiere = negotiate(basePlan({ transition_in: { type: 'fade_in', duration_ms: 500 } }), new PremiereAdapter().capabilities);
+    const premiere = negotiate(
+      basePlan({ transition_in: { type: 'fade_in', duration_ms: 500 } }),
+      new PremiereAdapter().capabilities,
+    );
     expect(premiere.plan.tracks.video[0]!.transition_in!.type).toBe('hard_cut');
     expect(premiere.downgrades[0]!.action).toContain('became a cut');
   });
@@ -193,7 +195,9 @@ describe('the OpenTimelineIO adapter', () => {
   it('measures clip durations in frames at the sequence rate', async () => {
     const { plan, request } = await prepared();
     const document = buildOtioTimeline(plan, request) as Record<string, any>;
-    const clips = document.tracks.children[0].children.filter((c: any) => c.OTIO_SCHEMA === 'Clip.1');
+    const clips = document.tracks.children[0].children.filter(
+      (c: any) => c.OTIO_SCHEMA === 'Clip.1',
+    );
     for (const [index, clip] of clips.entries()) {
       const operation = plan.tracks.video[index]!;
       const expected = msToFrames(operationTimelineDuration(operation), 30000, 1001);

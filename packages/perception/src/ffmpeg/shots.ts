@@ -41,10 +41,14 @@ export class FfmpegShotDetector implements ShotDetector {
   }
 
   async detectShots(params: DetectShotsParams): Promise<DetectShotsResult> {
-    const { stderr } = await this.runner.run(this.binary, sceneArgs(params.path, params.threshold), {
-      timeoutMs: this.timeoutMs,
-      allowFailure: true,
-    });
+    const { stderr } = await this.runner.run(
+      this.binary,
+      sceneArgs(params.path, params.threshold),
+      {
+        timeoutMs: this.timeoutMs,
+        allowFailure: true,
+      },
+    );
     const boundaries = parseShowinfoTimes(stderr);
     const durationMs = await this.probeDurationMs(params.path);
     return {
@@ -62,7 +66,10 @@ export class FfmpegShotDetector implements ShotDetector {
     if (!match) return 0;
     const [, h, m, s, cs] = match;
     return (
-      Number(h) * 3_600_000 + Number(m) * 60_000 + Number(s) * 1000 + Number((cs ?? '0').padEnd(3, '0'))
+      Number(h) * 3_600_000 +
+      Number(m) * 60_000 +
+      Number(s) * 1000 +
+      Number((cs ?? '0').padEnd(3, '0'))
     );
   }
 }
@@ -70,10 +77,13 @@ export class FfmpegShotDetector implements ShotDetector {
 export function sceneArgs(input: string, threshold: number): string[] {
   return [
     '-hide_banner',
-    '-i', input,
-    '-filter:v', `select='gt(scene,${threshold})',showinfo`,
+    '-i',
+    input,
+    '-filter:v',
+    `select='gt(scene,${threshold})',showinfo`,
     '-an',
-    '-f', 'null',
+    '-f',
+    'null',
     '-',
   ];
 }

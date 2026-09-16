@@ -82,7 +82,11 @@ export class PremiereAdapter implements EditorAdapter {
 }
 
 /** Exported so the XML can be checked without touching the filesystem. */
-export function buildFcpXml(plan: EditPlan, request: ApplyRequest, warnings: string[] = []): string {
+export function buildFcpXml(
+  plan: EditPlan,
+  request: ApplyRequest,
+  warnings: string[] = [],
+): string {
   const { frame_rate_num: rateNum, frame_rate_den: rateDen } = plan.sequence;
   // NTSC rates are written as the rounded timebase plus a flag, which is how
   // this format has always represented 29.97 and 23.976.
@@ -93,7 +97,8 @@ export function buildFcpXml(plan: EditPlan, request: ApplyRequest, warnings: str
   const operations = operationsInOrder(plan);
   const sequenceFrames = frames(
     operations.reduce(
-      (end, operation) => Math.max(end, operation.timeline_start_ms + operationTimelineDuration(operation)),
+      (end, operation) =>
+        Math.max(end, operation.timeline_start_ms + operationTimelineDuration(operation)),
       0,
     ),
   );
@@ -135,13 +140,17 @@ export function buildFcpXml(plan: EditPlan, request: ApplyRequest, warnings: str
       const asset = request.ir.assets.find((a) => a.id === operation.source_asset_id);
       const path = resolveAssetPath(request, operation.source_asset_id);
       if (!asset || !path) {
-        warnings.push(`${operation.operation_id} refers to ${operation.source_asset_id}, which has no file`);
+        warnings.push(
+          `${operation.operation_id} refers to ${operation.source_asset_id}, which has no file`,
+        );
         continue;
       }
 
       const clipId = `clipitem-${trackIndex + 1}-${index + 1}`;
       const timelineStart = frames(operation.timeline_start_ms);
-      const timelineEnd = frames(operation.timeline_start_ms + operationTimelineDuration(operation));
+      const timelineEnd = frames(
+        operation.timeline_start_ms + operationTimelineDuration(operation),
+      );
 
       lines.push(`          <clipitem id="${clipId}">`);
       lines.push(`            <name>${escapeXml(asset.file_name)}</name>`);
@@ -186,7 +195,9 @@ export function buildFcpXml(plan: EditPlan, request: ApplyRequest, warnings: str
       if (rationale) {
         lines.push('            <comments>');
         lines.push(`              <mastercomment1>${escapeXml(rationale.reason)}</mastercomment1>`);
-        lines.push(`              <mastercomment2>${escapeXml(operation.role ?? '')}</mastercomment2>`);
+        lines.push(
+          `              <mastercomment2>${escapeXml(operation.role ?? '')}</mastercomment2>`,
+        );
         lines.push('            </comments>');
       }
 
@@ -216,7 +227,13 @@ function rateElement(timebase: number, ntsc: boolean, indent: number): string {
   ].join('\n');
 }
 
-/** Characters XML 1.0 cannot represent at all. */
+/**
+ * Characters XML 1.0 cannot represent at all.
+ *
+ * Matching control characters is the whole point here, so the rule that warns
+ * about them has nothing useful to say.
+ */
+// eslint-disable-next-line no-control-regex
 const UNREPRESENTABLE = new RegExp('[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]', 'g');
 
 /**

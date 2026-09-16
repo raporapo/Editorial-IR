@@ -21,5 +21,7 @@ export function createAdapter(id: string): EditorAdapter {
 }
 
 export function listAdapters(): AdapterCapabilities[] {
-  return [new OtioAdapter(), new PremiereAdapter(), new AviUtl2Adapter()].map((a) => a.capabilities);
+  return [new OtioAdapter(), new PremiereAdapter(), new AviUtl2Adapter()].map(
+    (a) => a.capabilities,
+  );
 }

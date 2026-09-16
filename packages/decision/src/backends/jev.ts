@@ -64,7 +64,9 @@ export class JevBackend implements EditorialDecisionModel {
       // Only the structured event state is sent: no frames, no audio.
       mediaLeavesDevice: false,
       baseConfidence: options.baseConfidence ?? 0.8,
-      ...(options.costPerEventUsd === undefined ? {} : { costPerEventUsd: options.costPerEventUsd }),
+      ...(options.costPerEventUsd === undefined
+        ? {}
+        : { costPerEventUsd: options.costPerEventUsd }),
       parameters: { base_url: this.baseUrl },
     };
   }
@@ -72,17 +74,26 @@ export class JevBackend implements EditorialDecisionModel {
   async choice(state: EventState, request: ChoiceRequest): Promise<ChoiceResult> {
     const body = await this.post<{ selected?: string; probabilities?: Record<string, number> }>(
       this.paths.choice,
-      { state, question: request.question, options: request.options.map((o) => o.value), option_descriptions: request.options },
+      {
+        state,
+        question: request.question,
+        options: request.options.map((o) => o.value),
+        option_descriptions: request.options,
+      },
     );
     const probabilities = prune(
       normalise(body.probabilities ?? Object.fromEntries(request.options.map((o) => [o.value, 1]))),
     );
     const selected = body.selected ?? argmax(probabilities);
     if (!request.options.some((o) => o.value === selected)) {
-      throw new EditorialError('decision_failed', `decision service chose an option that was not offered`, {
-        selected,
-        offered: request.options.map((o) => o.value),
-      });
+      throw new EditorialError(
+        'decision_failed',
+        `decision service chose an option that was not offered`,
+        {
+          selected,
+          offered: request.options.map((o) => o.value),
+        },
+      );
     }
     return { selected, probabilities };
   }
@@ -133,10 +144,14 @@ export class JevBackend implements EditorialDecisionModel {
         signal: controller.signal,
       });
       if (!response.ok) {
-        throw new EditorialError('decision_failed', `decision service returned ${response.status}`, {
-          path,
-          status: response.status,
-        });
+        throw new EditorialError(
+          'decision_failed',
+          `decision service returned ${response.status}`,
+          {
+            path,
+            status: response.status,
+          },
+        );
       }
       return (await response.json()) as T;
     } finally {

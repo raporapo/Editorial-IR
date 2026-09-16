@@ -1,10 +1,26 @@
 import { relative } from 'node:path';
 import { SkillRegistry } from '@editorial-ir/skills';
 import { planEdit, reviewPlan, validatePlan } from '@editorial-ir/agent';
-import { formatTimecode, operationTimelineDuration, planDurationMs, summariseReport } from '@editorial-ir/contracts';
+import {
+  formatTimecode,
+  operationTimelineDuration,
+  planDurationMs,
+  summariseReport,
+} from '@editorial-ir/contracts';
 import { openProject } from '../project.js';
 import { requireIr } from '../ir.js';
-import { colour, detail, fail, heading, line, note, success, table, truncate, warn } from '../ui.js';
+import {
+  colour,
+  detail,
+  fail,
+  heading,
+  line,
+  note,
+  success,
+  table,
+  truncate,
+  warn,
+} from '../ui.js';
 
 export interface PlanArgs {
   project?: string;
@@ -83,7 +99,9 @@ export function runPlan(args: PlanArgs): number {
   if (observations.length > 0) {
     heading('review');
     for (const observation of observations.slice(0, 8)) {
-      note(`  ${formatTimecode(observation.timeline_ms, false)} ${observation.observation_type}: ${observation.message}`);
+      note(
+        `  ${formatTimecode(observation.timeline_ms, false)} ${observation.observation_type}: ${observation.message}`,
+      );
     }
     if (observations.length > 8) note(`  ...and ${observations.length - 8} more`);
   }

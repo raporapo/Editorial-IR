@@ -5,6 +5,7 @@ import {
   type EmbeddingSet,
   type MediaAsset,
   type ObservationTimeline,
+  type PrepareResult,
   type Project,
   type ProjectContext,
   type SemanticEvent,
@@ -115,7 +116,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
 
   let observations: ObservationTimeline;
   let frameVectors = new Map<string, number[]>();
-  let derived = new Map<string, import('@editorial-ir/contracts').PrepareResult>();
+  let derived = new Map<string, PrepareResult>();
   let unavailable: string[] = [];
   let failures: { stage: string; assetId: string; reason: string }[] = [];
 
@@ -180,7 +181,9 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
 
   // ---- search ---------------------------------------------------------------
   options.onProgress?.('embed', 'indexing', 0, 1);
-  const embedded = await buildEmbeddings(built.events, context, options.suite.text, { frameVectors });
+  const embedded = await buildEmbeddings(built.events, context, options.suite.text, {
+    frameVectors,
+  });
   const vectorIndex = new FlatVectorIndex();
   vectorIndex.add(embedded.records);
   // Redundancy is a question about the whole set, which is why the index has to
@@ -293,9 +296,16 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
  * What perception depends on: the media itself and the models that will look at
  * it. Not the project background, not the target duration, not the skill.
  */
-export function observationsFingerprint(assets: readonly MediaAsset[], suite: PerceptionSuite): string {
-  const identityOf = (model: { identity: { backend: string; model?: string; modelVersion?: string } } | undefined) =>
-    model ? [model.identity.backend, model.identity.model ?? '', model.identity.modelVersion ?? ''] : null;
+export function observationsFingerprint(
+  assets: readonly MediaAsset[],
+  suite: PerceptionSuite,
+): string {
+  const identityOf = (
+    model: { identity: { backend: string; model?: string; modelVersion?: string } } | undefined,
+  ) =>
+    model
+      ? [model.identity.backend, model.identity.model ?? '', model.identity.modelVersion ?? '']
+      : null;
 
   return hashObject({
     pipeline: PIPELINE_VERSION,

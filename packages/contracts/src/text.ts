@@ -31,8 +31,7 @@ export function tokenize(text: string): string[] {
  * exactly one token in a Japanese sentence, which is the same as finding none,
  * so these runs are matched by character bigram instead.
  */
-const SPACELESS_SCRIPT =
-  /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f]/u;
+const SPACELESS_SCRIPT = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f]/u;
 
 /**
  * Splits text into the units matching actually compares.
@@ -51,7 +50,8 @@ export function matchFeatures(text: string): string[] {
           features.push(segment.text);
           continue;
         }
-        for (let i = 0; i + 2 <= segment.text.length; i++) features.push(segment.text.slice(i, i + 2));
+        for (let i = 0; i + 2 <= segment.text.length; i++)
+          features.push(segment.text.slice(i, i + 2));
       } else if (segment.text.length > 1) {
         features.push(segment.text);
       }

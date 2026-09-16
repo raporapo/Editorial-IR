@@ -69,14 +69,20 @@ export function resolveBackends(options: BackendOptions = {}): ResolvedBackends 
   if (perception.startsWith('fixture')) {
     const path = perception.includes(':') ? perception.slice(perception.indexOf(':') + 1) : '';
     if (!path || !existsSync(path)) {
-      throw new EditorialError('invalid_input', `--perception fixture:<path> needs a fixture file that exists`, {
-        given: path,
-      });
+      throw new EditorialError(
+        'invalid_input',
+        `--perception fixture:<path> needs a fixture file that exists`,
+        {
+          given: path,
+        },
+      );
     }
     suite = createFixtureSuite(loadPerceptionFixture(path));
     description.push(`perception: replayed from ${path}`);
   } else if (perception.startsWith('python')) {
-    const command = perception.includes(':') ? perception.slice(perception.indexOf(':') + 1) : 'python3';
+    const command = perception.includes(':')
+      ? perception.slice(perception.indexOf(':') + 1)
+      : 'python3';
     const client = new PythonWorkerClient({
       command,
       ...(options.onLog ? { onLog: options.onLog } : {}),
@@ -157,7 +163,11 @@ export function resolveBackends(options: BackendOptions = {}): ResolvedBackends 
         ...(process.env.OEA_DECISION_API_KEY ? { apiKey: process.env.OEA_DECISION_API_KEY } : {}),
       }),
       heuristic,
-      { ...(options.onLog ? { onFallback: (_error, id) => options.onLog?.(`decision fell back on ${id}`) } : {}) },
+      {
+        ...(options.onLog
+          ? { onFallback: (_error, id) => options.onLog?.(`decision fell back on ${id}`) }
+          : {}),
+      },
     );
     description.push(`judgement: ${decisionModel} at ${decisionBase}, falling back to rules`);
   } else if (decisionChoice === 'jev') {
@@ -172,7 +182,9 @@ export function resolveBackends(options: BackendOptions = {}): ResolvedBackends 
       }),
       heuristic,
     );
-    description.push(`judgement: an external decision service at ${jevBase}, falling back to rules`);
+    description.push(
+      `judgement: an external decision service at ${jevBase}, falling back to rules`,
+    );
   } else {
     description.push('judgement: rules (free, instant, reproducible)');
     // With a model configured but not selected as the primary, use it only where
@@ -184,7 +196,9 @@ export function resolveBackends(options: BackendOptions = {}): ResolvedBackends 
         model: decisionModel,
         ...(process.env.OEA_DECISION_API_KEY ? { apiKey: process.env.OEA_DECISION_API_KEY } : {}),
       });
-      description.push(`second opinion: ${decisionModel}, on the events the rules are unsure about`);
+      description.push(
+        `second opinion: ${decisionModel}, on the events the rules are unsure about`,
+      );
     }
   }
 

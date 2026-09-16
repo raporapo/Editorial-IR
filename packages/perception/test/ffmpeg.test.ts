@@ -97,7 +97,9 @@ describe('FfprobeMediaProbe', () => {
 
   it('reports a clear error when ffprobe returns something that is not JSON', async () => {
     const runner = new ScriptedCommandRunner(() => ({ stdout: 'not json', stderr: '', code: 0 }));
-    await expect(new FfprobeMediaProbe({ runner }).probe('/tmp/clip.mov')).rejects.toThrow(/not JSON/);
+    await expect(new FfprobeMediaProbe({ runner }).probe('/tmp/clip.mov')).rejects.toThrow(
+      /not JSON/,
+    );
   });
 });
 

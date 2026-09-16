@@ -60,14 +60,14 @@ than thirty — which is where nearly all of the wall-clock time goes.
 
 ## Configuration
 
-| Variable | What it does |
-|---|---|
-| `OEA_ASR_MODEL` | Whisper size; default `small` |
-| `OEA_ASR_COMPUTE` | Compute type; default `int8` |
-| `OEA_VISUAL_MODEL` | Vision encoder; default `google/siglip-base-patch16-224` |
-| `OEA_TEXT_MODEL` | Sentence embedding model; unset uses the hashing fallback |
-| `OEA_VLM_BASE_URL`, `OEA_VLM_MODEL`, `OEA_VLM_API_KEY` | The closer look at an event |
-| `OEA_MODEL_SLOTS` | How many large models may be resident; default 1 |
+| Variable                                               | What it does                                              |
+| ------------------------------------------------------ | --------------------------------------------------------- |
+| `OEA_ASR_MODEL`                                        | Whisper size; default `small`                             |
+| `OEA_ASR_COMPUTE`                                      | Compute type; default `int8`                              |
+| `OEA_VISUAL_MODEL`                                     | Vision encoder; default `google/siglip-base-patch16-224`  |
+| `OEA_TEXT_MODEL`                                       | Sentence embedding model; unset uses the hashing fallback |
+| `OEA_VLM_BASE_URL`, `OEA_VLM_MODEL`, `OEA_VLM_API_KEY` | The closer look at an event                               |
+| `OEA_MODEL_SLOTS`                                      | How many large models may be resident; default 1          |
 
 ## The hashing embedding is duplicated on purpose
 

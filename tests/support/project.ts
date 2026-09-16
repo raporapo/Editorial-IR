@@ -4,11 +4,17 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IR_VERSION, newId, ProjectContext } from '@editorial-ir/contracts';
 import { FileProjectStore, MemoryCache, ingestPaths, placeAssets } from '@editorial-ir/core';
-import { HashingTextEmbedding, createFixtureSuite, PerceptionFixture } from '@editorial-ir/perception';
+import {
+  HashingTextEmbedding,
+  createFixtureSuite,
+  PerceptionFixture,
+} from '@editorial-ir/perception';
 import { parse as parseYaml } from 'yaml';
 
 /** The committed worked example, copied into a temporary directory per test. */
-export const EXAMPLE_DIR = fileURLToPath(new URL('../../examples/anniversary-trip', import.meta.url));
+export const EXAMPLE_DIR = fileURLToPath(
+  new URL('../../examples/anniversary-trip', import.meta.url),
+);
 
 export function readExampleFixture(): PerceptionFixture {
   return PerceptionFixture.parse(
@@ -39,7 +45,10 @@ export async function makeExampleProject(): Promise<FileProjectStore> {
   };
 
   const context = ProjectContext.parse({
-    ...(parseYaml(readFileSync(join(EXAMPLE_DIR, 'context.yaml'), 'utf8')) as Record<string, unknown>),
+    ...(parseYaml(readFileSync(join(EXAMPLE_DIR, 'context.yaml'), 'utf8')) as Record<
+      string,
+      unknown
+    >),
     project_id: project.id,
   });
 

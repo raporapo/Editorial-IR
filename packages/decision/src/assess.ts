@@ -75,7 +75,7 @@ export async function assessEvent(
     const choice = await model.choice(state, NARRATIVE_ROLE_QUESTION);
     role = {
       selected: choice.selected as NarrativeRole,
-      probabilities: choice.probabilities as Partial<Record<NarrativeRole, number>>,
+      probabilities: choice.probabilities,
     };
   }
 
@@ -110,7 +110,7 @@ function fromBatch(
   const role: NarrativeRoleAssessment = answers.choice
     ? {
         selected: answers.choice.selected as NarrativeRole,
-        probabilities: answers.choice.probabilities as Partial<Record<NarrativeRole, number>>,
+        probabilities: answers.choice.probabilities,
       }
     : { selected: 'context', probabilities: {} };
 

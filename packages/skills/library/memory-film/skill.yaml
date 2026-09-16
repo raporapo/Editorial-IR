@@ -57,7 +57,7 @@ rules:
   - id: never-rush-a-feeling
     priority: 30
     when:
-      emotional_intensity: ">0.6"
+      emotional_intensity: '>0.6'
     action:
       minimum_duration_sec: 3.0
       avoid_aggressive_cutting: true
@@ -73,7 +73,7 @@ rules:
   - id: information-is-not-the-point
     when:
       narrative_role: context
-      emotional_intensity: "<0.3"
+      emotional_intensity: '<0.3'
     action:
       avoid: 0.2
       maximum_duration_sec: 3.0

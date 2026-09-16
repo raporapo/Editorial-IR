@@ -48,7 +48,9 @@ describe('the walkthrough in the README', () => {
     expect(stdout()).toContain('evt_0001');
 
     output = [];
-    expect(await main(['plan', '--project', root, '--skill', 'travel-vlog', '--duration', '180'])).toBe(0);
+    expect(
+      await main(['plan', '--project', root, '--skill', 'travel-vlog', '--duration', '180']),
+    ).toBe(0);
     expect(stdout()).toContain('clips');
     expect(stdout()).toMatch(/00:0[23]:\d\d/);
 
@@ -81,13 +83,25 @@ describe('the walkthrough in the README', () => {
     expect(stdout()).toContain('essential on evt_0005');
 
     output = [];
-    expect(await main(['analyze', '--project', root, '--perception', `fixture:${join(root, 'perception.fixture.json')}`])).toBe(0);
+    expect(
+      await main([
+        'analyze',
+        '--project',
+        root,
+        '--perception',
+        `fixture:${join(root, 'perception.fixture.json')}`,
+      ]),
+    ).toBe(0);
     output = [];
-    expect(await main(['plan', '--project', root, '--skill', 'shorts', '--duration', '40', '--json'])).toBe(0);
+    expect(
+      await main(['plan', '--project', root, '--skill', 'shorts', '--duration', '40', '--json']),
+    ).toBe(0);
 
     const plan = JSON.parse(stdout());
     // A short has room for fourteen clips; this one is in because it was asked for.
-    expect(plan.tracks.video.some((o: { event_id: string }) => o.event_id === 'evt_0005')).toBe(true);
+    expect(plan.tracks.video.some((o: { event_id: string }) => o.event_id === 'evt_0005')).toBe(
+      true,
+    );
   }, 90_000);
 
   it('produces machine-readable output when asked', async () => {

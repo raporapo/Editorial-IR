@@ -57,7 +57,9 @@ export async function runApply(args: ApplyArgs): Promise<number> {
   if (result.downgrades.length > 0) {
     heading('changed to fit');
     for (const downgrade of result.downgrades) {
-      warn(`  ${downgrade.capability}: ${downgrade.action}${downgrade.operation_id ? ` (${downgrade.operation_id})` : ''}`);
+      warn(
+        `  ${downgrade.capability}: ${downgrade.action}${downgrade.operation_id ? ` (${downgrade.operation_id})` : ''}`,
+      );
     }
   }
 
@@ -71,7 +73,10 @@ export async function runApply(args: ApplyArgs): Promise<number> {
 export function runEditors(): number {
   heading('editors');
   for (const capabilities of listAdapters()) {
-    detail(capabilities.id, `${capabilities.name} (${capabilities.mode}, ${capabilities.output_extensions.join(' ')})`);
+    detail(
+      capabilities.id,
+      `${capabilities.name} (${capabilities.mode}, ${capabilities.output_extensions.join(' ')})`,
+    );
     for (const note_ of capabilities.notes) note(`      ${note_}`);
   }
   return 0;

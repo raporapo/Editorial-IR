@@ -66,7 +66,9 @@ export function planEdit(options: PlanOptions): EditPlan {
   const targetDurationMs =
     options.targetDurationMs ?? ir.context.editing_goal.target_duration_ms ?? defaultTarget(ir);
   const toleranceMs =
-    options.toleranceMs ?? ir.context.editing_goal.tolerance_ms ?? Math.round(targetDurationMs * 0.1);
+    options.toleranceMs ??
+    ir.context.editing_goal.tolerance_ms ??
+    Math.round(targetDurationMs * 0.1);
 
   if (targetDurationMs <= 0) {
     throw new EditorialError('invalid_input', 'a target duration is required to plan an edit');
@@ -124,7 +126,10 @@ export function planEdit(options: PlanOptions): EditPlan {
   }
 
   if (candidates.length === 0) {
-    throw new EditorialError('plan_invalid', 'every event was dropped or excluded; there is nothing to cut');
+    throw new EditorialError(
+      'plan_invalid',
+      'every event was dropped or excluded; there is nothing to cut',
+    );
   }
 
   assignPreferredDurations(candidates);
@@ -153,7 +158,10 @@ export function planEdit(options: PlanOptions): EditPlan {
     const range = candidate.event.source_ranges[0];
     if (!range) continue;
 
-    const assetSpeech = candidate.event.observed.speech.map((s) => ({ start_ms: s.start_ms, end_ms: s.end_ms }));
+    const assetSpeech = candidate.event.observed.speech.map((s) => ({
+      start_ms: s.start_ms,
+      end_ms: s.end_ms,
+    }));
     const silences = silencesFor(options.observations, range.asset_id);
 
     const trim = chooseTrim({
@@ -195,7 +203,11 @@ export function planEdit(options: PlanOptions): EditPlan {
     rationale.push({
       event_id: candidate.event.id,
       operation_id: operation.operation_id,
-      decision: candidate.directive.locked ? 'locked' : trim.reason === 'whole_event' ? 'selected' : 'trimmed',
+      decision: candidate.directive.locked
+        ? 'locked'
+        : trim.reason === 'whole_event'
+          ? 'selected'
+          : 'trimmed',
       reason: selectionReason(candidate, trim.reason),
       score: candidate.value,
       skill_rule_ids: candidate.directive.matched_rule_ids,
@@ -222,7 +234,8 @@ export function planEdit(options: PlanOptions): EditPlan {
       ...(skill.intent.opening ? { opening: skill.intent.opening } : {}),
       ...(skill.intent.middle ? { middle: skill.intent.middle } : {}),
       ...(skill.intent.ending ? { ending: skill.intent.ending } : {}),
-      tone: ir.context.editing_goal.tone.length > 0 ? ir.context.editing_goal.tone : skill.intent.tone,
+      tone:
+        ir.context.editing_goal.tone.length > 0 ? ir.context.editing_goal.tone : skill.intent.tone,
     },
     rationale,
     stats: {
@@ -259,7 +272,10 @@ function select(
   options: { targetDurationMs: number; skill: SkillManifest; rationale: PlanRationale[] },
 ): Selected[] {
   const { skill, targetDurationMs } = options;
-  const segments = skill.arc.segments.length > 0 ? skill.arc.segments : [{ name: 'all', budget: 1, prefer_roles: [], require_roles: [] }];
+  const segments =
+    skill.arc.segments.length > 0
+      ? skill.arc.segments
+      : [{ name: 'all', budget: 1, prefer_roles: [], require_roles: [] }];
   const maxOperations = skill.constraints.max_operations ?? Infinity;
 
   const chosen: Selected[] = [];
@@ -273,7 +289,9 @@ function select(
     // is evaluated first spend all of it. Without this, a format with a hard cap
     // fills up on its opening and never reaches its ending.
     const segmentCap =
-      maxOperations === Infinity ? Infinity : Math.max(1, Math.round(maxOperations * segment.budget));
+      maxOperations === Infinity
+        ? Infinity
+        : Math.max(1, Math.round(maxOperations * segment.budget));
 
     const required = pool.filter((c) => c.required);
     const optional = pool
@@ -342,14 +360,16 @@ function select(
 
 /** Value, with a bonus for the roles this part of the arc wants. */
 function roleAdjusted(candidate: Candidate, preferRoles: readonly string[]): number {
-  const roleBonus = candidate.directive.role && preferRoles.includes(candidate.directive.role) ? 0.15 : 0;
+  const roleBonus =
+    candidate.directive.role && preferRoles.includes(candidate.directive.role) ? 0.15 : 0;
   return candidate.value + roleBonus;
 }
 
 /** Value per second, used only to break ties between equally good moments. */
 function density(candidate: Candidate, preferRoles: readonly string[]): number {
   const seconds = Math.max(1, candidate.preferredMs / 1000);
-  const roleBonus = candidate.directive.role && preferRoles.includes(candidate.directive.role) ? 0.15 : 0;
+  const roleBonus =
+    candidate.directive.role && preferRoles.includes(candidate.directive.role) ? 0.15 : 0;
   return (candidate.value + roleBonus) / seconds;
 }
 
@@ -430,7 +450,11 @@ function assignArcSegments(candidates: Candidate[], skill: SkillManifest): void 
 }
 
 /** Among events that cover the same material, keep the one worth keeping. */
-function suppressDuplicates(candidates: Candidate[], ir: EditorialIR, rationale: PlanRationale[]): void {
+function suppressDuplicates(
+  candidates: Candidate[],
+  ir: EditorialIR,
+  rationale: PlanRationale[],
+): void {
   const groups = new Map<string, Candidate[]>();
   for (const relation of ir.relations) {
     if (relation.relation_type !== 'duplicate_of') continue;
@@ -530,7 +554,9 @@ export function allocateDurations(selected: Selected[], targetDurationMs: number
 
   // Over budget even at the floor: give back time from the least valuable.
   if (remaining < 0) {
-    const byValue = [...selected].sort((a, b) => a.value - b.value || a.event.id.localeCompare(b.event.id));
+    const byValue = [...selected].sort(
+      (a, b) => a.value - b.value || a.event.id.localeCompare(b.event.id),
+    );
     for (const candidate of byValue) {
       if (remaining >= 0) break;
       if (candidate.required || candidate.directive.locked) continue;
@@ -577,7 +603,8 @@ function orderForSequence(selected: Selected[], skill: SkillManifest): Selected[
 
   const hook = [...chronological].sort(
     (a, b) =>
-      (b.assessment.flags.opening_candidate ?? 0) + b.assessment.metrics.emotional_intensity -
+      (b.assessment.flags.opening_candidate ?? 0) +
+        b.assessment.metrics.emotional_intensity -
         ((a.assessment.flags.opening_candidate ?? 0) + a.assessment.metrics.emotional_intensity) ||
       a.event.id.localeCompare(b.event.id),
   )[0];
@@ -606,7 +633,9 @@ function buildSequenceSpec(
 ): SequenceSpec {
   // Match the material rather than imposing a format: a vertical project should
   // not silently become sixteen by nine.
-  const reference = [...ir.assets].sort((a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0))[0];
+  const reference = [...ir.assets].sort(
+    (a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0),
+  )[0];
 
   return {
     name: `${ir.project.title} — ${Math.round(targetDurationMs / 1000)}s`,
@@ -635,7 +664,8 @@ function selectionReason(candidate: Selected, trim: string): string {
   const parts: string[] = [];
   if (candidate.required) parts.push('kept because it must be');
   else parts.push(`scored ${candidate.value.toFixed(2)}`);
-  if (candidate.directive.matched_rule_ids.length > 0) parts.push(`rules: ${describeRules(candidate.directive)}`);
+  if (candidate.directive.matched_rule_ids.length > 0)
+    parts.push(`rules: ${describeRules(candidate.directive)}`);
   if (trim === 'speech') parts.push('trimmed to the speech in it');
   else if (trim === 'snapped') parts.push('cut points moved to the nearest quiet moment');
   else if (trim === 'whole_event') parts.push('short enough to keep whole');
@@ -643,7 +673,9 @@ function selectionReason(candidate: Selected, trim: string): string {
 }
 
 function describeRules(directive: SkillDirective): string {
-  return directive.matched_rule_ids.length > 0 ? directive.matched_rule_ids.join(', ') : 'the skill defaults';
+  return directive.matched_rule_ids.length > 0
+    ? directive.matched_rule_ids.join(', ')
+    : 'the skill defaults';
 }
 
 function defaultTarget(ir: EditorialIR): number {

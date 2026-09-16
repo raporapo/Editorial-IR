@@ -82,11 +82,19 @@ export async function observeAssets(
   const unavailable: string[] = [];
   const failures: ObserveResult['failures'] = [];
 
-  const attempt = async (stage: string, assetId: string, work: () => Promise<void>): Promise<void> => {
+  const attempt = async (
+    stage: string,
+    assetId: string,
+    work: () => Promise<void>,
+  ): Promise<void> => {
     try {
       await work();
     } catch (error) {
-      failures.push({ stage, assetId, reason: error instanceof Error ? error.message : String(error) });
+      failures.push({
+        stage,
+        assetId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
     }
   };
 
@@ -139,20 +147,25 @@ export async function observeAssets(
         // Extracted audio when there is some; otherwise the media itself, which
         // every real transcriber can read and which is what a replayed fixture
         // is keyed by.
-        const audioPath = derived.get(asset.id)?.audio_path ?? absolutePath(asset, options.projectRoot);
+        const audioPath =
+          derived.get(asset.id)?.audio_path ?? absolutePath(asset, options.projectRoot);
         options.onProgress?.('transcribe', asset.file_name, done++, ordered.length);
 
         const params = {
           audio_path: audioPath,
-          ...(options.context?.editing_goal.language ? { language: options.context.editing_goal.language } : {}),
+          ...(options.context?.editing_goal.language
+            ? { language: options.context.editing_goal.language }
+            : {}),
           vocabulary: options.context?.background.vocabulary ?? [],
           word_timestamps: true,
           diarize: false,
         };
         let result: Awaited<ReturnType<typeof speech.transcribe>> | undefined;
         await attempt('speech', asset.id, async () => {
-          result = await cached(options.cache, keyFor('transcribe', asset, speech.identity, params), () =>
-            speech.transcribe(params),
+          result = await cached(
+            options.cache,
+            keyFor('transcribe', asset, speech.identity, params),
+            () => speech.transcribe(params),
           );
         });
         if (!result) continue;
@@ -191,8 +204,10 @@ export async function observeAssets(
       const params = { path: source, threshold: 0.3, min_shot_ms: 800 };
       let result: Awaited<ReturnType<typeof detector.detectShots>> | undefined;
       await attempt('shots', asset.id, async () => {
-        result = await cached(options.cache, keyFor('detect_shots', asset, detector.identity, params), () =>
-          detector.detectShots(params),
+        result = await cached(
+          options.cache,
+          keyFor('detect_shots', asset, detector.identity, params),
+          () => detector.detectShots(params),
         );
       });
       if (!result) continue;
@@ -221,7 +236,8 @@ export async function observeAssets(
     let done = 0;
     for (const asset of ordered) {
       if (asset.kind === 'image') continue;
-      const audioPath = derived.get(asset.id)?.audio_path ?? absolutePath(asset, options.projectRoot);
+      const audioPath =
+        derived.get(asset.id)?.audio_path ?? absolutePath(asset, options.projectRoot);
       options.onProgress?.('audio', asset.file_name, done++, ordered.length);
 
       const params = {
@@ -232,8 +248,10 @@ export async function observeAssets(
       };
       let result: Awaited<ReturnType<typeof audio.analyzeAudio>> | undefined;
       await attempt('audio', asset.id, async () => {
-        result = await cached(options.cache, keyFor('analyze_audio', asset, audio.identity, params), () =>
-          audio.analyzeAudio(params),
+        result = await cached(
+          options.cache,
+          keyFor('analyze_audio', asset, audio.identity, params),
+          () => audio.analyzeAudio(params),
         );
       });
       if (!result) continue;
@@ -283,8 +301,10 @@ export async function observeAssets(
         };
         let result: Awaited<ReturnType<typeof visual.embedFrames>> | undefined;
         await attempt('visual', asset.id, async () => {
-          result = await cached(options.cache, keyFor('embed_frames', asset, visual.identity, params), () =>
-            visual.embedFrames(params),
+          result = await cached(
+            options.cache,
+            keyFor('embed_frames', asset, visual.identity, params),
+            () => visual.embedFrames(params),
           );
         });
         if (!result) continue;
@@ -325,7 +345,9 @@ export async function observeAssets(
         const params = {
           path: prepared?.proxy_path ?? absolutePath(asset, options.projectRoot),
           timestamps_ms: timestamps,
-          ...(options.context?.editing_goal.language ? { language: options.context.editing_goal.language } : {}),
+          ...(options.context?.editing_goal.language
+            ? { language: options.context.editing_goal.language }
+            : {}),
         };
         let result: Awaited<ReturnType<typeof reader.ocr>> | undefined;
         await attempt('ocr', asset.id, async () => {
@@ -428,7 +450,11 @@ export function frameSimilarityFrom(
 }
 
 /** Where a frame file for a given timestamp was written, when frames were sampled. */
-export function framePathFor(prepared: PrepareResult | undefined, timestampMs: number, fps: number): string | undefined {
+export function framePathFor(
+  prepared: PrepareResult | undefined,
+  timestampMs: number,
+  fps: number,
+): string | undefined {
   if (!prepared?.frames_dir) return undefined;
   const index = Math.round((timestampMs * fps) / 1000) + 1;
   return join(prepared.frames_dir, frameFileName(Math.max(1, index)));

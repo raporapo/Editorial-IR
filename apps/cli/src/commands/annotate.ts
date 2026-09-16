@@ -40,7 +40,9 @@ export function runAnnotate(args: AnnotateArgs): number {
   }
 
   if (!args.target || !args.kind) {
-    note('usage: oea annotate <event-id|timecode-range> <essential|exclude|importance|note|rename> [value]');
+    note(
+      'usage: oea annotate <event-id|timecode-range> <essential|exclude|importance|note|rename> [value]',
+    );
     return 1;
   }
 
@@ -63,7 +65,7 @@ function buildAnnotation(target: string, kind: string, value: string | undefined
   switch (kind) {
     case 'essential':
     case 'exclude':
-      return { ...base, type: kind } as UserAnnotation;
+      return { ...base, type: kind };
     case 'importance': {
       const number = Number(value);
       if (!Number.isFinite(number) || number < 0 || number > 1) {
@@ -89,11 +91,19 @@ function parseTarget(target: string): UserAnnotation['target'] {
   if (target.startsWith('asset_')) return { kind: 'asset', asset_id: target };
   if (target.includes('-')) {
     const [from, to] = target.split('-');
-    return { kind: 'time_range', start_ms: parseTimecode(from ?? '0'), end_ms: parseTimecode(to ?? '0') };
+    return {
+      kind: 'time_range',
+      start_ms: parseTimecode(from ?? '0'),
+      end_ms: parseTimecode(to ?? '0'),
+    };
   }
-  throw new EditorialError('invalid_input', `"${target}" is not an event id, an asset id or a timecode range`, {
-    examples: ['evt_0031', 'asset_001', '00:18:20-00:18:42'],
-  });
+  throw new EditorialError(
+    'invalid_input',
+    `"${target}" is not an event id, an asset id or a timecode range`,
+    {
+      examples: ['evt_0031', 'asset_001', '00:18:20-00:18:42'],
+    },
+  );
 }
 
 function describeTarget(annotation: UserAnnotation): string {

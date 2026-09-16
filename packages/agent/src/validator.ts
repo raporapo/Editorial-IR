@@ -8,6 +8,7 @@ import {
   planDurationMs,
   reportOk,
   type AdapterCapabilities,
+  type EditPlan,
   type EditorialIR,
   type ValidationIssue,
   type ValidationReport,
@@ -275,7 +276,7 @@ export function validatePlan(plan: unknown, options: ValidateOptions = {}): Vali
  * one transition is unsupported would be worse than the downgrade.
  */
 export function capabilityIssues(
-  plan: import('@editorial-ir/contracts').EditPlan,
+  plan: EditPlan,
   capabilities: AdapterCapabilities,
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -301,7 +302,10 @@ export function capabilityIssues(
 
     for (const transition of [operation.transition_in, operation.transition_out]) {
       if (!transition || transition.type === 'hard_cut') continue;
-      if (!capabilities.basic_transition || !capabilities.transition_types.includes(transition.type)) {
+      if (
+        !capabilities.basic_transition ||
+        !capabilities.transition_types.includes(transition.type)
+      ) {
         issues.push({
           code: 'unsupported_transition',
           severity: 'warning',
