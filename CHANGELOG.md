@@ -22,6 +22,12 @@ is compatible with.
   labels are all in English, which lexical search could never bridge on its own.
   `aliases`, documented since the beginning as "used to link transcript
   mentions", had been read by nothing.
+- **`editing_goal.opening`, `middle`, `ending` and `audience` reach the judge.**
+  The worked example's own context declares `opening: [energetic]` and
+  `ending: [emotional]`, and nothing had ever read either. They now go to
+  whichever model is judging, alongside `tone`. Documented honestly: that means
+  they do something with a model backend and nothing with the rule-based
+  default, which does not read prose.
 - **Every correction the compiler understands is now reachable.** `oea annotate`
   exposed five kinds; the contract and the compiler supported eleven. "This is
   not a sad scene", "this person is my partner", "these two run together" and

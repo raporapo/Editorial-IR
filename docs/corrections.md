@@ -19,6 +19,42 @@ analysing. It is the single highest-value input in the system — deleting the
 `occasion` line and recompiling visibly changes which moments the edit thinks
 matter.
 
+### People and places are matched, not guessed
+
+Everything you declare under `background.people` and `background.places` is
+looked for in what was said, what is written on screen, and what is visible — by
+id, by `display_name`, and by every `aliases` entry. Where it is found, the
+**canonical id** lands on the event, so a skill rule asking for `partner` works
+everywhere rather than on the events where a model happened to use that word.
+
+Aliases are what make this work on real footage, and an alias does not have to be
+a name:
+
+```yaml
+places:
+  - id: 展望台
+    display_name: 梅田スカイビル空中庭園
+    aliases: [observation_deck, 空中庭園] # the label on the picture is in English
+people:
+  - id: partner
+    aliases: [two_people] # the camera never hears a name; it sees two of us
+```
+
+Two consequences worth knowing. A one-character alias is ignored, because it
+would match almost every sentence. And a place you name in Japanese becomes
+findable by `oea search` even when every label on the footage is in English —
+the lexical index cannot bridge languages on its own, and your vocabulary is
+what bridges it.
+
+### What `editing_goal` does, honestly
+
+`target_duration_ms`, `tolerance_ms`, `instruction`, `tone` and `language` are
+used by everything. `opening`, `middle`, `ending` and `audience` are passed to
+whichever model is judging, alongside `tone` — which means they do something with
+a model backend configured and nothing with the rule-based default, because that
+backend does not read prose. Write them anyway: they cost nothing and they are
+the first thing a stronger backend uses.
+
 **`oea annotate`** is what you know about one moment. It survives re-analysis,
 which is what makes it different from a flag on `oea plan`.
 

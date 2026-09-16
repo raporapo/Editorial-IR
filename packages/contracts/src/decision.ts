@@ -58,6 +58,18 @@ export const EventState = obj({
     occasion: z.string().optional(),
     goal: z.string().optional(),
     tone: z.array(z.string()).default([]),
+    /** Who the piece is for, when the user said. */
+    audience: z.string().optional(),
+    /**
+     * How the user wants the piece to open, carry and finish.
+     *
+     * Optional rather than empty-by-default, because "they did not say" and
+     * "they said nothing in particular" are different things to a model reading
+     * this, and only the first should leave it free to decide.
+     */
+    wanted_opening: z.array(z.string()).optional(),
+    wanted_middle: z.array(z.string()).optional(),
+    wanted_ending: z.array(z.string()).optional(),
     notes: z.array(z.string()).default([]),
     essential: z.boolean().default(false),
   }).prefault({}),

@@ -233,6 +233,27 @@
             "type": "string"
           }
         },
+        "audience": {
+          "type": "string"
+        },
+        "wanted_opening": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "wanted_middle": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "wanted_ending": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "notes": {
           "default": [],
           "type": "array",

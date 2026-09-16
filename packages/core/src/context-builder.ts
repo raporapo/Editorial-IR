@@ -364,6 +364,13 @@ function userContextFor(context: ProjectContext): Record<string, unknown> {
   if (context.background.places.length > 0) out.places = context.background.places.map((p) => p.id);
   if (context.editing_goal.instruction) out.goal = context.editing_goal.instruction;
   if (context.editing_goal.tone.length > 0) out.tone = context.editing_goal.tone;
+  if (context.editing_goal.audience) out.audience = context.editing_goal.audience;
+  const wanted = {
+    opening: context.editing_goal.opening,
+    middle: context.editing_goal.middle,
+    ending: context.editing_goal.ending,
+  };
+  if (Object.values(wanted).some((words) => words.length > 0)) out.wanted = wanted;
   return out;
 }
 

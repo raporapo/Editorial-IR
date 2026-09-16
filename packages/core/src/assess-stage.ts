@@ -265,6 +265,21 @@ export function buildEventState(
       ...(context.background.occasion ? { occasion: context.background.occasion } : {}),
       ...(context.editing_goal.instruction ? { goal: context.editing_goal.instruction } : {}),
       tone: context.editing_goal.tone,
+      // The user wrote these in the file the product calls "the step that
+      // matters" and nothing had ever read them. They reach the judge the same
+      // way `tone` does: a backend that reasons can use them, and the rule-based
+      // default ignores them, which is a property of that backend rather than of
+      // the design.
+      ...(context.editing_goal.audience ? { audience: context.editing_goal.audience } : {}),
+      ...(context.editing_goal.opening.length > 0
+        ? { wanted_opening: context.editing_goal.opening }
+        : {}),
+      ...(context.editing_goal.middle.length > 0
+        ? { wanted_middle: context.editing_goal.middle }
+        : {}),
+      ...(context.editing_goal.ending.length > 0
+        ? { wanted_ending: context.editing_goal.ending }
+        : {}),
       notes: event.knowledge.notes,
       essential: event.knowledge.essential,
     },
