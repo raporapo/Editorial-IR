@@ -46,10 +46,14 @@ export function describeFromObservations(params: DescribeParams, maxLength = 140
   const speech = params.transcript.filter((t) => t.trim().length > 0);
   const ocr = params.ocr.filter((t) => t.trim().length > 0);
   const audio = params.audio_tags;
+  const seen = params.visual_labels.filter((t) => t.trim().length > 0);
 
   const parts: string[] = [];
   if (speech.length > 0) parts.push(speech.join(' '));
   if (ocr.length > 0) parts.push(`[${ocr.slice(0, 3).join(' / ')}]`);
+  // What was visible is a poor description and a much better one than nothing:
+  // it is the difference between "no speech" and "night view, city lights".
+  if (seen.length > 0) parts.push(seen.slice(0, 4).join(', '));
   if (parts.length === 0 && audio.length > 0) parts.push(audio.join(', '));
 
   const description = truncate(parts.join(' ').trim() || 'no speech or on-screen text', maxLength);
@@ -57,13 +61,13 @@ export function describeFromObservations(params: DescribeParams, maxLength = 140
   return {
     model: 'observation-summary',
     description,
-    event_type: inferEventType(speech, ocr, audio),
+    event_type: inferEventType(speech, [...ocr, ...seen], audio),
     ...(speech[0] ? { title: truncate(speech[0], 40) } : {}),
-    entities: { people: [], places: [], objects: [], topics: keywordsOf(speech, ocr) },
+    entities: { people: [], places: [], objects: seen.slice(0, 6), topics: keywordsOf(speech, ocr) },
     affect: inferAffect(speech, audio),
     // Deliberately low. An observation summary is not an understanding, and the
     // escalation policy reads this number to decide what deserves a real model.
-    confidence: speech.length > 0 ? 0.35 : 0.2,
+    confidence: speech.length > 0 ? 0.35 : seen.length > 0 ? 0.25 : 0.2,
   };
 }
 

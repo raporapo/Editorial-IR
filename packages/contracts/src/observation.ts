@@ -143,6 +143,15 @@ export const ObservationTimeline = obj({
   project_id: z.string(),
   pipeline_version: z.string(),
   generated_at: z.string(),
+  /**
+   * Hash over the media and the models that produced this.
+   *
+   * Compared on the next run to decide whether perception has to happen again.
+   * Adding a sentence to the project background must not re-transcribe an hour
+   * of audio, and this is the field that makes that checkable rather than
+   * assumed.
+   */
+  fingerprint: z.string().default(''),
   utterances: z.array(Utterance).default([]),
   shots: z.array(Shot).default([]),
   audio_events: z.array(AudioEvent).default([]),
@@ -154,7 +163,7 @@ export type ObservationTimeline = z.infer<typeof ObservationTimeline>;
 
 export const EMPTY_OBSERVATIONS: Omit<
   ObservationTimeline,
-  'project_id' | 'pipeline_version' | 'generated_at'
+  'project_id' | 'pipeline_version' | 'generated_at' | 'fingerprint'
 > = {
   utterances: [],
   shots: [],

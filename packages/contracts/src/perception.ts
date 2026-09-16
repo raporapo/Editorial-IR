@@ -107,6 +107,8 @@ export const DescribeParams = obj({
   transcript: z.array(z.string()).default([]),
   ocr: z.array(z.string()).default([]),
   audio_tags: z.array(z.string()).default([]),
+  /** Labels a vision model attached to the sampled frames, when there was one. */
+  visual_labels: z.array(z.string()).default([]),
   previous_summary: z.string().optional(),
   next_summary: z.string().optional(),
   /** User background, verbatim. The worker may use it but must not contradict it. */

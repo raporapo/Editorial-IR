@@ -148,26 +148,28 @@ export class FixturePerception
 }
 
 /**
- * A suite that replays a fixture, with the parts a fixture does not carry filled
- * in by the local zero-dependency implementations.
+ * A suite that replays a fixture.
+ *
+ * Only the capabilities the fixture actually carries are exposed. A suite that
+ * advertised a visual model and then failed on the first call would be worse
+ * than one that admits it has none: the compiler is built to degrade when a
+ * model is missing, and it can only do that if it is told the truth.
  */
-export function createFixtureSuite(
-  fixture: PerceptionFixture,
-  options: { describe?: boolean } = {},
-): PerceptionSuite {
+export function createFixtureSuite(fixture: PerceptionFixture): PerceptionSuite {
   const replay = new FixturePerception(fixture);
-  const suite: PerceptionSuite = {
+  const entries = Object.values(fixture.assets);
+  const has = (field: keyof z.infer<typeof AssetFixture>): boolean =>
+    entries.length > 0 && entries.some((entry) => entry[field] !== undefined);
+
+  return {
     probe: replay,
     preparer: replay,
-    speech: replay,
-    shots: replay,
-    visual: replay,
-    audio: replay,
-    ocr: replay,
     text: new HashingTextEmbedding(),
+    ...(has('transcribe') ? { speech: replay } : {}),
+    ...(has('detect_shots') ? { shots: replay } : {}),
+    ...(has('embed_frames') ? { visual: replay } : {}),
+    ...(has('analyze_audio') ? { audio: replay } : {}),
+    ...(has('ocr') ? { ocr: replay } : {}),
+    ...(Object.keys(fixture.describe).length > 0 ? { context: replay } : {}),
   };
-  if (options.describe !== false && Object.keys(fixture.describe).length > 0) {
-    return { ...suite, context: replay };
-  }
-  return suite;
 }

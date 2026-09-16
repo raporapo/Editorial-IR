@@ -14,6 +14,7 @@ const empty = {
   transcript: [],
   ocr: [],
   audio_tags: [],
+  visual_labels: [],
   user_context: {},
 };
 
@@ -66,6 +67,13 @@ describe('describeFromObservations', () => {
 
   it('says plainly when there is nothing to describe', () => {
     expect(describeFromObservations(empty).description).toContain('no speech');
+  });
+
+  it('describes what was seen when nothing was said', () => {
+    const result = describeFromObservations({ ...empty, visual_labels: ['night_view', 'city_lights'] });
+    expect(result.description).toContain('night_view');
+    // Better than nothing, still not an understanding.
+    expect(result.confidence).toBeLessThan(0.35);
   });
 
   it('includes on-screen text, which is often the only place a name appears', () => {
@@ -124,7 +132,13 @@ describe('createFixtureSuite', () => {
     await expect(suite.probe.probe('/x/missing.mov')).rejects.toThrow(/no entry for "missing.mov"/);
   });
 
-  it('omits the context model when the fixture has no descriptions', () => {
-    expect(createFixtureSuite(fixture).context).toBeUndefined();
+  it('only advertises what the fixture actually carries', () => {
+    const suite = createFixtureSuite(fixture);
+    expect(suite.context).toBeUndefined();
+    expect(suite.shots).toBeDefined();
+    // No transcript in this fixture, so no speech model is offered. A suite that
+    // claimed one and then failed would defeat the compiler's ability to degrade.
+    expect(suite.speech).toBeUndefined();
+    expect(suite.visual).toBeUndefined();
   });
 });

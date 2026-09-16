@@ -1,0 +1,370 @@
+import {
+  overlapMs,
+  rangesOverlap,
+  seqId,
+  type AssetPlacement,
+  type EventObservations,
+  type MediaAsset,
+  type ObservationTimeline,
+  type PrepareResult,
+  type ProjectContext,
+  type SemanticEvent,
+  type UserAnnotation,
+} from '@editorial-ir/contracts';
+import type { ContextModel } from '@editorial-ir/perception';
+import type { SegmentDraft } from './segment.js';
+import { annotationsFor, applyAnnotations, withOverrides } from './annotations.js';
+import { selectForEscalation, type EscalationPolicy, CostBudget } from './budget.js';
+import type { ModelRunRecorder } from './model-runs.js';
+import { framePathFor } from './observe.js';
+
+/**
+ * Turning segments into events that mean something.
+ *
+ * Two passes, and the second is the point. Every event gets a cheap description
+ * first; then the events where a better answer would actually change the edit —
+ * the ones the cheap layer is unsure about, weighted by how much material they
+ * occupy — are sent to the expensive model, within a budget.
+ *
+ * Running the good model over everything is the obvious design and the one that
+ * makes an hour of footage cost more than the edit is worth. Running it nowhere
+ * produces a timeline nobody trusts. The interesting engineering is in choosing.
+ */
+export interface BuildEventsOptions {
+  assets: readonly MediaAsset[];
+  placements: readonly AssetPlacement[];
+  observations: ObservationTimeline;
+  context: ProjectContext;
+  annotations: readonly UserAnnotation[];
+  runs: ModelRunRecorder;
+
+  /** Runs over every event. Cheap and usually rule-based. */
+  baseModel?: ContextModel;
+  /** Runs over the events worth spending on. */
+  escalationModel?: ContextModel;
+  escalation?: EscalationPolicy;
+  budget?: CostBudget;
+  /** Derivative paths, so frames can be handed to a multimodal model. */
+  derived?: Map<string, PrepareResult>;
+  frameFps?: number;
+
+  onProgress?: (stage: string, done: number, total: number) => void;
+}
+
+export interface BuildEventsResult {
+  events: SemanticEvent[];
+  conflicts: import('@editorial-ir/contracts').Conflict[];
+  escalated: string[];
+  /** Why escalation stopped where it did, for reporting to the user. */
+  escalationLimitedBy: string;
+}
+
+export async function buildSemanticEvents(
+  drafts: readonly SegmentDraft[],
+  options: BuildEventsOptions,
+): Promise<BuildEventsResult> {
+  const placementOf = new Map(options.placements.map((p) => [p.asset_id, p.offset_ms]));
+  const ordered = [...drafts].sort((a, b) => {
+    const offsetA = placementOf.get(a.asset_id) ?? 0;
+    const offsetB = placementOf.get(b.asset_id) ?? 0;
+    return offsetA + a.start_ms - (offsetB + b.start_ms);
+  });
+
+  // ---- observations --------------------------------------------------------
+  const skeletons = ordered.map((draft, index) => {
+    const offset = placementOf.get(draft.asset_id) ?? 0;
+    return {
+      draft,
+      id: seqId('evt', index + 1),
+      startMs: offset + draft.start_ms,
+      endMs: offset + draft.end_ms,
+      observed: gatherObservations(draft, options.observations),
+    };
+  });
+
+  // ---- cheap pass ----------------------------------------------------------
+  const descriptions = new Map<string, Awaited<ReturnType<ContextModel['describe']>>>();
+  if (options.baseModel) {
+    const model = options.baseModel;
+    options.runs.fromIdentity('context', model.identity);
+    for (const [index, skeleton] of skeletons.entries()) {
+      options.onProgress?.('describe', index, skeletons.length);
+      descriptions.set(
+        skeleton.id,
+        await model.describe(
+          describeParams(skeleton, skeletons, index, options, { includeFrames: false }),
+        ),
+      );
+    }
+  }
+
+  // ---- escalation ----------------------------------------------------------
+  const escalated: string[] = [];
+  let limitedBy = 'nothing';
+  if (options.escalationModel) {
+    const model = options.escalationModel;
+    const costPerEvent = 0.004;
+    const totalDuration = skeletons.reduce((sum, s) => sum + (s.endMs - s.startMs), 0) || 1;
+
+    const decision = selectForEscalation(
+      skeletons.map((skeleton) => ({
+        id: skeleton.id,
+        value: escalationValue(
+          descriptions.get(skeleton.id)?.confidence ?? 0,
+          (skeleton.endMs - skeleton.startMs) / totalDuration,
+          skeleton.observed,
+        ),
+        costUsd: costPerEvent,
+      })),
+      options.escalation ?? {},
+    );
+    limitedBy = decision.limitedBy;
+
+    const runId = options.runs.fromIdentity('context', model.identity);
+    const selected = new Set(decision.selected);
+    let done = 0;
+    for (const [index, skeleton] of skeletons.entries()) {
+      if (!selected.has(skeleton.id)) continue;
+      options.onProgress?.('inspect', done++, decision.selected.length);
+
+      options.budget?.spend(costPerEvent, `a closer look at ${skeleton.id}`);
+      const result = await model.describe(
+        describeParams(skeleton, skeletons, index, options, { includeFrames: true }),
+      );
+      descriptions.set(skeleton.id, result);
+      escalated.push(skeleton.id);
+      options.runs.addCost(runId, costPerEvent, result.input_tokens, result.output_tokens);
+    }
+  }
+
+  // ---- assemble ------------------------------------------------------------
+  const events: SemanticEvent[] = [];
+  const conflicts: BuildEventsResult['conflicts'] = [];
+
+  for (const skeleton of skeletons) {
+    const described = descriptions.get(skeleton.id);
+    const isEscalated = escalated.includes(skeleton.id);
+
+    const event: SemanticEvent = {
+      id: skeleton.id,
+      start_ms: skeleton.startMs,
+      end_ms: skeleton.endMs,
+      source_ranges: [
+        {
+          asset_id: skeleton.draft.asset_id,
+          source_in_ms: skeleton.draft.start_ms,
+          source_out_ms: skeleton.draft.end_ms,
+        },
+      ],
+      description: {
+        value: described?.description ?? fallbackDescription(skeleton.observed),
+        provenance: 'inferred',
+        confidence: described?.confidence ?? 0.15,
+        ...(described ? { model_run_id: undefined } : {}),
+      },
+      event_type: {
+        value: described?.event_type || 'moment',
+        provenance: 'inferred',
+        confidence: described?.confidence ?? 0.15,
+      },
+      ...(described?.title
+        ? { title: { value: described.title, provenance: 'inferred' as const, confidence: described.confidence } }
+        : {}),
+      entities: {
+        value: {
+          people: described?.entities.people ?? [],
+          places: described?.entities.places ?? [],
+          objects: described?.entities.objects ?? [],
+          topics: described?.entities.topics ?? [],
+          organisations: [],
+        },
+        provenance: 'inferred',
+      },
+      affect: { value: described?.affect ?? {}, provenance: 'inferred' },
+      observed: skeleton.observed,
+      knowledge: { notes: [], essential: false, excluded: false, annotation_refs: [] },
+      segmentation: {
+        method: skeleton.draft.method,
+        boundary_confidence: skeleton.draft.boundary_confidence,
+      },
+      embedding_refs: [],
+      // An escalated event was looked at properly; a cheap one was guessed at.
+      confidence: described ? described.confidence : 0.15,
+    };
+
+    const applicable = annotationsFor(event, options.annotations, placementOf.get(skeleton.draft.asset_id) ?? 0);
+    const applied = applyAnnotations(event, applicable, options.context.background.occasion);
+    conflicts.push(...applied.conflicts);
+    events.push(withOverrides(event, applied));
+
+    void isEscalated;
+  }
+
+  return { events, conflicts, escalated, escalationLimitedBy: limitedBy };
+}
+
+/**
+ * How much a closer look at this event is worth.
+ *
+ * Uncertainty dominates, because a confident cheap answer is usually right.
+ * Duration matters because a long event occupies more of the edit, and speech
+ * matters because an event with words in it has more that can be misread.
+ */
+export function escalationValue(
+  confidence: number,
+  durationShare: number,
+  observed: EventObservations,
+): number {
+  const uncertainty = 1 - confidence;
+  const speech = observed.speech.length > 0 ? 0.2 : 0;
+  const onScreen = observed.ocr.length > 0 ? 0.1 : 0;
+  return 0.6 * uncertainty + 0.3 * Math.min(1, durationShare * 20) + speech + onScreen;
+}
+
+type Skeleton = {
+  draft: SegmentDraft;
+  id: string;
+  startMs: number;
+  endMs: number;
+  observed: EventObservations;
+};
+
+function describeParams(
+  skeleton: Skeleton,
+  all: readonly Skeleton[],
+  index: number,
+  options: BuildEventsOptions,
+  flags: { includeFrames: boolean },
+) {
+  const previous = index > 0 ? all[index - 1] : undefined;
+  const next = all[index + 1];
+
+  const framePaths = flags.includeFrames ? framesFor(skeleton, options) : [];
+
+  return {
+    event_id: skeleton.id,
+    frame_paths: framePaths,
+    transcript: skeleton.observed.speech.map((s) => s.text),
+    ocr: skeleton.observed.ocr,
+    audio_tags: skeleton.observed.audio.map((a) => a.type),
+    visual_labels: skeleton.observed.visual_labels,
+    ...(previous ? { previous_summary: fallbackDescription(previous.observed) } : {}),
+    ...(next ? { next_summary: fallbackDescription(next.observed) } : {}),
+    user_context: userContextFor(options.context),
+    ...(options.context.editing_goal.language ? { language: options.context.editing_goal.language } : {}),
+  };
+}
+
+function framesFor(skeleton: Skeleton, options: BuildEventsOptions): string[] {
+  const prepared = options.derived?.get(skeleton.draft.asset_id);
+  if (!prepared?.frames_dir) return [];
+  const fps = options.frameFps ?? 1;
+
+  // Four frames: the start, two through the middle and the end. More rarely
+  // changes the answer and every one of them costs money on a hosted model.
+  const span = skeleton.draft.end_ms - skeleton.draft.start_ms;
+  const points = [0.1, 0.35, 0.65, 0.9].map((fraction) => skeleton.draft.start_ms + span * fraction);
+  return points
+    .map((ms) => framePathFor(prepared, ms, fps))
+    .filter((path): path is string => path !== undefined);
+}
+
+function userContextFor(context: ProjectContext): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (context.background.occasion) out.occasion = context.background.occasion;
+  if (context.background.summary) out.summary = context.background.summary;
+  if (context.background.people.length > 0) {
+    out.people = context.background.people.map((p) => ({ id: p.id, role: p.role }));
+  }
+  if (context.background.places.length > 0) out.places = context.background.places.map((p) => p.id);
+  if (context.editing_goal.instruction) out.goal = context.editing_goal.instruction;
+  if (context.editing_goal.tone.length > 0) out.tone = context.editing_goal.tone;
+  return out;
+}
+
+/** What the observations alone say, used as a neighbour summary and as a fallback. */
+function fallbackDescription(observed: EventObservations): string {
+  const speech = observed.speech.map((s) => s.text).join(' ');
+  if (speech.trim().length > 0) return speech.slice(0, 120);
+  if (observed.visual_labels.length > 0) return observed.visual_labels.slice(0, 4).join(', ');
+  if (observed.ocr.length > 0) return observed.ocr.slice(0, 2).join(' / ');
+  return 'no speech or on-screen text';
+}
+
+/**
+ * Collects every observation that falls inside a segment.
+ *
+ * Denormalised onto the event on purpose: an event has to be reviewable on its
+ * own, including by an agent that is only allowed to see events.
+ */
+export function gatherObservations(draft: SegmentDraft, observations: ObservationTimeline): EventObservations {
+  const range = { start_ms: draft.start_ms, end_ms: draft.end_ms };
+  const duration = Math.max(1, draft.end_ms - draft.start_ms);
+  const inAsset = <T extends { asset_id: string }>(items: readonly T[]): T[] =>
+    items.filter((item) => item.asset_id === draft.asset_id);
+
+  const speech = inAsset(observations.utterances)
+    .filter((utterance) => rangesOverlap(utterance, range))
+    .sort((a, b) => a.start_ms - b.start_ms)
+    .map((utterance) => ({
+      text: utterance.text,
+      start_ms: utterance.start_ms,
+      end_ms: utterance.end_ms,
+      ...(utterance.speaker_id === undefined ? {} : { speaker_id: utterance.speaker_id }),
+      confidence: utterance.confidence,
+    }));
+
+  const audio = inAsset(observations.audio_events)
+    .filter((event) => rangesOverlap(event, range))
+    .map((event) => ({ type: event.event_type, confidence: event.confidence }));
+
+  const ocr = [
+    ...new Set(
+      inAsset(observations.ocr)
+        .filter((observation) => rangesOverlap(observation, range))
+        .map((observation) => observation.text),
+    ),
+  ];
+
+  const frames = inAsset(observations.frame_features).filter(
+    (frame) => frame.timestamp_ms >= range.start_ms && frame.timestamp_ms < range.end_ms,
+  );
+
+  const labels = [...new Set(frames.flatMap((frame) => frame.labels))];
+
+  const speechMs = speech.reduce((sum, s) => sum + overlapMs(s, range), 0);
+  const silenceMs = inAsset(observations.audio_events)
+    .filter((event) => event.event_type === 'silence')
+    .reduce((sum, event) => sum + overlapMs(event, range), 0);
+
+  const motions = frames.map((f) => f.motion).filter((m): m is number => m !== undefined);
+  const qualities = frames
+    .map((f) => averageDefined([f.sharpness, f.exposure]))
+    .filter((q): q is number => q !== undefined);
+
+  return {
+    speech,
+    visual_labels: labels,
+    ocr,
+    audio,
+    shot_ids: draft.shot_ids,
+    shot_count: Math.max(draft.shot_ids.length, 1),
+    speech_ratio: clamp(speechMs / duration),
+    silence_ratio: clamp(silenceMs / duration),
+    ...(motions.length > 0 ? { motion: clamp(average(motions)) } : {}),
+    ...(qualities.length > 0 ? { technical_quality: clamp(average(qualities)) } : {}),
+  };
+}
+
+function average(values: number[]): number {
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+function averageDefined(values: (number | undefined)[]): number | undefined {
+  const present = values.filter((v): v is number => v !== undefined);
+  return present.length === 0 ? undefined : average(present);
+}
+
+function clamp(value: number): number {
+  return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+}

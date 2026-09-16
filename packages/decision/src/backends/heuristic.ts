@@ -192,7 +192,11 @@ function informationDensity(state: EventState): number {
   // Japanese and English once punctuation is gone.
   const speechDensity = clamp(characters / seconds / 10);
   const onScreen = state.observed.ocr.length > 0 ? 0.15 : 0;
-  return clamp(0.8 * speechDensity + onScreen);
+  // A shot of a night view says nothing and shows something. Counting only
+  // words would rank every wordless shot in a travel film as empty, which is
+  // how an automatic cut ends up being all talking and no place.
+  const seen = clamp(state.observed.visual_labels.length / 5) * 0.25;
+  return clamp(0.7 * speechDensity + onScreen + seen);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -290,10 +294,18 @@ export function narrativeRoleWeights(state: EventState): Record<string, number> 
   if (intensity > 0.8) weights.climax = (weights.climax ?? 0) + 0.3 * intensity;
   else if (intensity > 0.6) weights.payoff = (weights.payoff ?? 0) + 0.25;
 
-  // Nothing said, nothing felt, nothing on screen: that is filler, and calling
-  // it anything else is how a rough cut fills up with material nobody wanted.
-  if (state.observed.speech.length === 0 && intensity < 0.3 && state.observed.ocr.length === 0) {
+  // Nothing said, nothing felt, nothing on screen and nothing distinctive in
+  // frame: that is filler, and calling it anything else is how a rough cut fills
+  // up with material nobody wanted. Requiring all four matters — a wordless shot
+  // of a city at night is not filler, it is the ending.
+  const nothingSeen = state.observed.visual_labels.length === 0;
+  if (state.observed.speech.length === 0 && intensity < 0.3 && state.observed.ocr.length === 0 && nothingSeen) {
     weights.filler = (weights.filler ?? 0) + 0.4;
+  } else if (state.observed.speech.length === 0 && !nothingSeen) {
+    // Wordless but with something in frame: that is what b-roll and
+    // establishing shots are made of.
+    weights.context = (weights.context ?? 0) + 0.2;
+    weights.transition = (weights.transition ?? 0) + 0.15;
   }
 
   return weights;

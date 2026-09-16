@@ -30,10 +30,10 @@
       "$ref": "#/$defs/__schema34"
     },
     {
-      "$ref": "#/$defs/__schema44"
+      "$ref": "#/$defs/__schema45"
     },
     {
-      "$ref": "#/$defs/__schema48"
+      "$ref": "#/$defs/__schema49"
     }
   ],
   "title": "PerceptionRequest",
@@ -564,17 +564,20 @@
         "audio_tags": {
           "$ref": "#/$defs/__schema39"
         },
-        "previous_summary": {
+        "visual_labels": {
           "$ref": "#/$defs/__schema40"
         },
-        "next_summary": {
+        "previous_summary": {
           "$ref": "#/$defs/__schema41"
         },
-        "user_context": {
+        "next_summary": {
           "$ref": "#/$defs/__schema42"
         },
-        "language": {
+        "user_context": {
           "$ref": "#/$defs/__schema43"
+        },
+        "language": {
+          "$ref": "#/$defs/__schema44"
         }
       },
       "required": [
@@ -583,6 +586,7 @@
         "transcript",
         "ocr",
         "audio_tags",
+        "visual_labels",
         "user_context"
       ],
       "additionalProperties": false
@@ -619,12 +623,19 @@
       }
     },
     "__schema40": {
-      "type": "string"
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
     "__schema41": {
       "type": "string"
     },
     "__schema42": {
+      "type": "string"
+    },
+    "__schema43": {
       "default": {},
       "type": "object",
       "propertyNames": {
@@ -632,10 +643,10 @@
       },
       "additionalProperties": {}
     },
-    "__schema43": {
+    "__schema44": {
       "type": "string"
     },
-    "__schema44": {
+    "__schema45": {
       "type": "object",
       "properties": {
         "id": {
@@ -664,10 +675,10 @@
       "type": "object",
       "properties": {
         "texts": {
-          "$ref": "#/$defs/__schema45"
+          "$ref": "#/$defs/__schema46"
         },
         "role": {
-          "$ref": "#/$defs/__schema47"
+          "$ref": "#/$defs/__schema48"
         }
       },
       "required": [
@@ -676,17 +687,17 @@
       ],
       "additionalProperties": false
     },
-    "__schema45": {
+    "__schema46": {
       "minItems": 1,
       "type": "array",
       "items": {
-        "$ref": "#/$defs/__schema46"
+        "$ref": "#/$defs/__schema47"
       }
     },
-    "__schema46": {
+    "__schema47": {
       "type": "string"
     },
-    "__schema47": {
+    "__schema48": {
       "default": "passage",
       "type": "string",
       "enum": [
@@ -694,7 +705,7 @@
         "passage"
       ]
     },
-    "__schema48": {
+    "__schema49": {
       "type": "object",
       "properties": {
         "id": {

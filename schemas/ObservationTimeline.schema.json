@@ -12,29 +12,33 @@
     "generated_at": {
       "$ref": "#/$defs/__schema2"
     },
-    "utterances": {
+    "fingerprint": {
       "$ref": "#/$defs/__schema3"
     },
+    "utterances": {
+      "$ref": "#/$defs/__schema4"
+    },
     "shots": {
-      "$ref": "#/$defs/__schema9"
+      "$ref": "#/$defs/__schema10"
     },
     "audio_events": {
-      "$ref": "#/$defs/__schema12"
+      "$ref": "#/$defs/__schema13"
     },
     "ocr": {
-      "$ref": "#/$defs/__schema15"
+      "$ref": "#/$defs/__schema16"
     },
     "frame_features": {
-      "$ref": "#/$defs/__schema19"
+      "$ref": "#/$defs/__schema20"
     },
     "audio_profiles": {
-      "$ref": "#/$defs/__schema26"
+      "$ref": "#/$defs/__schema27"
     }
   },
   "required": [
     "project_id",
     "pipeline_version",
     "generated_at",
+    "fingerprint",
     "utterances",
     "shots",
     "audio_events",
@@ -55,6 +59,10 @@
       "type": "string"
     },
     "__schema3": {
+      "default": "",
+      "type": "string"
+    },
+    "__schema4": {
       "default": [],
       "type": "array",
       "items": {
@@ -77,22 +85,22 @@
           "$ref": "#/$defs/Milliseconds"
         },
         "speaker_id": {
-          "$ref": "#/$defs/__schema4"
-        },
-        "text": {
           "$ref": "#/$defs/__schema5"
         },
-        "language": {
+        "text": {
           "$ref": "#/$defs/__schema6"
+        },
+        "language": {
+          "$ref": "#/$defs/__schema7"
         },
         "confidence": {
           "$ref": "#/$defs/Confidence"
         },
         "words": {
-          "$ref": "#/$defs/__schema7"
+          "$ref": "#/$defs/__schema8"
         },
         "model_run_id": {
-          "$ref": "#/$defs/__schema8"
+          "$ref": "#/$defs/__schema9"
         }
       },
       "required": [
@@ -119,13 +127,13 @@
       "maximum": 9007199254740991,
       "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
     },
-    "__schema4": {
-      "type": "string"
-    },
     "__schema5": {
       "type": "string"
     },
     "__schema6": {
+      "type": "string"
+    },
+    "__schema7": {
       "type": "string"
     },
     "Confidence": {
@@ -134,7 +142,7 @@
       "maximum": 1,
       "description": "Confidence in [0,1]. 1 means certain, 0 means no support at all."
     },
-    "__schema7": {
+    "__schema8": {
       "type": "array",
       "items": {
         "type": "object",
@@ -160,14 +168,14 @@
         "additionalProperties": false
       }
     },
-    "__schema8": {
+    "__schema9": {
       "$ref": "#/$defs/runId"
     },
     "runId": {
       "type": "string",
       "description": "One execution of a model or rule-based stage."
     },
-    "__schema9": {
+    "__schema10": {
       "default": [],
       "type": "array",
       "items": {
@@ -193,10 +201,10 @@
           "$ref": "#/$defs/Milliseconds"
         },
         "change_score": {
-          "$ref": "#/$defs/__schema10"
+          "$ref": "#/$defs/__schema11"
         },
         "model_run_id": {
-          "$ref": "#/$defs/__schema11"
+          "$ref": "#/$defs/__schema12"
         }
       },
       "required": [
@@ -212,15 +220,15 @@
       "type": "string",
       "description": "A camera shot within one asset."
     },
-    "__schema10": {
+    "__schema11": {
       "type": "number",
       "minimum": 0,
       "maximum": 1
     },
-    "__schema11": {
+    "__schema12": {
       "$ref": "#/$defs/runId"
     },
-    "__schema12": {
+    "__schema13": {
       "default": [],
       "type": "array",
       "items": {
@@ -246,13 +254,13 @@
           "$ref": "#/$defs/AudioEventType"
         },
         "raw_label": {
-          "$ref": "#/$defs/__schema13"
+          "$ref": "#/$defs/__schema14"
         },
         "confidence": {
           "$ref": "#/$defs/Confidence"
         },
         "model_run_id": {
-          "$ref": "#/$defs/__schema14"
+          "$ref": "#/$defs/__schema15"
         }
       },
       "required": [
@@ -285,13 +293,13 @@
         "other"
       ]
     },
-    "__schema13": {
+    "__schema14": {
       "type": "string"
     },
-    "__schema14": {
+    "__schema15": {
       "$ref": "#/$defs/runId"
     },
-    "__schema15": {
+    "__schema16": {
       "default": [],
       "type": "array",
       "items": {
@@ -314,16 +322,16 @@
           "$ref": "#/$defs/Milliseconds"
         },
         "text": {
-          "$ref": "#/$defs/__schema16"
+          "$ref": "#/$defs/__schema17"
         },
         "confidence": {
           "$ref": "#/$defs/Confidence"
         },
         "bbox": {
-          "$ref": "#/$defs/__schema17"
+          "$ref": "#/$defs/__schema18"
         },
         "model_run_id": {
-          "$ref": "#/$defs/__schema18"
+          "$ref": "#/$defs/__schema19"
         }
       },
       "required": [
@@ -340,11 +348,11 @@
       "type": "string",
       "description": "One on-screen text observation."
     },
-    "__schema16": {
+    "__schema17": {
       "type": "string",
       "minLength": 1
     },
-    "__schema17": {
+    "__schema18": {
       "type": "array",
       "prefixItems": [
         {
@@ -364,10 +372,10 @@
       "minItems": 4,
       "maxItems": 4
     },
-    "__schema18": {
+    "__schema19": {
       "$ref": "#/$defs/runId"
     },
-    "__schema19": {
+    "__schema20": {
       "default": [],
       "type": "array",
       "items": {
@@ -387,22 +395,22 @@
           "$ref": "#/$defs/Milliseconds"
         },
         "labels": {
-          "$ref": "#/$defs/__schema20"
-        },
-        "sharpness": {
           "$ref": "#/$defs/__schema21"
         },
-        "exposure": {
+        "sharpness": {
           "$ref": "#/$defs/__schema22"
         },
-        "motion": {
+        "exposure": {
           "$ref": "#/$defs/__schema23"
         },
-        "embedding_ref": {
+        "motion": {
           "$ref": "#/$defs/__schema24"
         },
-        "model_run_id": {
+        "embedding_ref": {
           "$ref": "#/$defs/__schema25"
+        },
+        "model_run_id": {
+          "$ref": "#/$defs/__schema26"
         }
       },
       "required": [
@@ -417,17 +425,12 @@
       "type": "string",
       "description": "One sampled frame."
     },
-    "__schema20": {
+    "__schema21": {
       "default": [],
       "type": "array",
       "items": {
         "type": "string"
       }
-    },
-    "__schema21": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1
     },
     "__schema22": {
       "type": "number",
@@ -440,12 +443,17 @@
       "maximum": 1
     },
     "__schema24": {
-      "type": "string"
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
     },
     "__schema25": {
-      "$ref": "#/$defs/runId"
+      "type": "string"
     },
     "__schema26": {
+      "$ref": "#/$defs/runId"
+    },
+    "__schema27": {
       "default": [],
       "type": "array",
       "items": {
@@ -459,16 +467,16 @@
           "$ref": "#/$defs/assetId"
         },
         "hop_ms": {
-          "$ref": "#/$defs/__schema27"
-        },
-        "rms_db": {
           "$ref": "#/$defs/__schema28"
         },
-        "speech_prob": {
+        "rms_db": {
           "$ref": "#/$defs/__schema29"
         },
-        "model_run_id": {
+        "speech_prob": {
           "$ref": "#/$defs/__schema30"
+        },
+        "model_run_id": {
+          "$ref": "#/$defs/__schema31"
         }
       },
       "required": [
@@ -478,18 +486,18 @@
       ],
       "additionalProperties": false
     },
-    "__schema27": {
+    "__schema28": {
       "type": "integer",
       "minimum": 1,
       "maximum": 9007199254740991
     },
-    "__schema28": {
+    "__schema29": {
       "type": "array",
       "items": {
         "type": "number"
       }
     },
-    "__schema29": {
+    "__schema30": {
       "type": "array",
       "items": {
         "type": "number",
@@ -497,7 +505,7 @@
         "maximum": 1
       }
     },
-    "__schema30": {
+    "__schema31": {
       "$ref": "#/$defs/runId"
     }
   }

@@ -23,6 +23,8 @@
     "@editorial-ir/contracts": "workspace:*",
     "@editorial-ir/perception": "workspace:*",
     "@editorial-ir/decision": "workspace:*",
-    "@editorial-ir/index": "workspace:*"
+    "@editorial-ir/index": "workspace:*",
+    "zod": "^4.6.5",
+    "yaml": "^2.9.1"
   }
 }

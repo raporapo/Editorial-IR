@@ -1,0 +1,47 @@
+# What you know that the footage cannot contain.
+#
+# This file outranks everything the models decide. Nothing here is ever
+# overwritten by analysis, and an occasion written here changes which moments the
+# edit considers important.
+
+project_id: prj_example
+updated_at: 2026-05-17T09:00:00.000Z
+
+background:
+  occasion: 交際1周年旅行
+  summary: 大阪への一泊旅行。USJで一日遊んで、最後は夜景を見に行った。
+  people:
+    - id: me
+      role: 自分
+      aliases: []
+    - id: partner
+      role: 彼女
+      aliases: []
+  places:
+    - id: USJ
+      display_name: ユニバーサル・スタジオ・ジャパン
+      aliases: [ユニバ, universal studios japan]
+    - id: 展望台
+      display_name: 梅田スカイビル空中庭園
+      aliases: []
+  vocabulary: [ユニバ, 梅田スカイビル, たこ焼き]
+  notes: []
+
+editing_goal:
+  target_duration_ms: 180000
+  tolerance_ms: 15000
+  tone: [fun, warm]
+  opening: [energetic]
+  ending: [emotional]
+  language: ja
+  instruction: >-
+    3分くらいで、前半はテンポ良く、最後の夜景からは少し感動的にして。
+    食事は全部見せる必要はない。
+
+constraints:
+  forbidden: []
+  required_assets: []
+  excluded_assets: []
+  allow_speed_change: false
+  allowed_music: []
+  forbidden_music: []
