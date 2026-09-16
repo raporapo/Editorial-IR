@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A run that takes twenty minutes is a run nobody waits for, so the jobs are
+# split and the slow one is the only one that installs Python.
+jobs:
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm build
+      - run: pnpm test
+      # A cross-language contract that exists in only one language is how two
+      # runtimes quietly diverge, so a stale schemas/ fails the build.
+      - run: pnpm schema:check
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pytest ruff
+      - run: ruff check services/perception
+      - run: PYTHONPATH=services/perception/src python -m pytest services/perception/tests -q
+
+  example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The documented quick start, run as written. A quick start that has
+      # quietly stopped working is the fastest way to lose someone on their
+      # first attempt.
+      - run: pnpm oea demo ./tmp/demo
+      - run: pnpm oea timeline --project ./tmp/demo
+      - run: pnpm oea plan --project ./tmp/demo --skill travel-vlog --duration 180 --quiet
+      - run: pnpm oea apply --project ./tmp/demo --editor otio
+      - run: pnpm oea apply --project ./tmp/demo --editor premiere
+      - run: pnpm oea apply --project ./tmp/demo --editor aviutl2
