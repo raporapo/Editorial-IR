@@ -273,6 +273,45 @@ describe('what the cut does with the time it has', () => {
     expect(survivingMs / selectedMs).toBeGreaterThan(0.87);
   }, 60_000);
 
+  it('does not run the same kind of shot past the limit the skill sets', async () => {
+    const { plan } = await planned();
+    const cap = registry.resolve('travel-vlog').constraints.max_consecutive_same_role;
+
+    // Declared in the schema with its purpose written beside it — "to stop six
+    // establishing shots in a row" — and enforced nowhere, so the flagship cut
+    // had seven consecutive transitions: twenty-one seconds of platforms and
+    // train windows in a three-minute piece.
+    let longest = 0;
+    let run = 0;
+    let previous: string | undefined;
+    for (const operation of plan.tracks.video) {
+      run = operation.role === previous ? run + 1 : 1;
+      previous = operation.role;
+      longest = Math.max(longest, run);
+    }
+
+    expect(longest).toBeLessThanOrEqual(cap);
+  }, 60_000);
+
+  it('keeps the best of a run it had to shorten, not the first', async () => {
+    const { ir, observations } = await compiled();
+    const skill = registry.resolve('travel-vlog');
+    const plan = planEdit({ ir, skill, targetDurationMs: 180_000, observations });
+
+    const cut = plan.rationale.filter((entry) => entry.reason.includes('in a row'));
+    expect(cut.length).toBeGreaterThan(0);
+
+    // If the viewer is going to see three shots of travelling, they should be
+    // the three worth seeing.
+    const keptScores = plan.tracks.video
+      .map((operation) => plan.rationale.find((r) => r.event_id === operation.event_id)?.score)
+      .filter((score): score is number => score !== undefined);
+    const droppedScores = cut.map((entry) => entry.score ?? 0);
+    if (keptScores.length > 0 && droppedScores.length > 0) {
+      expect(Math.max(...keptScores)).toBeGreaterThan(Math.min(...droppedScores));
+    }
+  }, 60_000);
+
   it('varies clip length instead of cutting everything the same', async () => {
     const { plan } = await planned();
     const durations = plan.tracks.video.map((o) => o.source_out_ms - o.source_in_ms);

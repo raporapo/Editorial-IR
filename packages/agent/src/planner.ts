@@ -189,6 +189,7 @@ export function planEdit(options: PlanOptions): EditPlan {
   });
 
   enforceContextDependencies(selected, candidates, ir, rationale);
+  capConsecutiveRoles(selected, skill, rationale);
   allocateDurations(selected, targetDurationMs);
 
   // ---- ordering ------------------------------------------------------------
@@ -663,6 +664,71 @@ function enforceContextDependencies(
   }
 
   void candidates;
+}
+
+/**
+ * Stops the same kind of shot running six times in a row.
+ *
+ * The skill declares the cap (`constraints.max_consecutive_same_role`) and says
+ * what it is for: "to stop six establishing shots in a row". It was declared and
+ * never enforced, and the flagship cut showed exactly what that costs — seven
+ * consecutive `transition` clips, twenty-one seconds of platforms and train
+ * windows with no variation, in a three-minute travel vlog whose skill asks for
+ * a cap of three.
+ *
+ * Selection cannot prevent it, because it happens per arc segment and by value,
+ * and a run only becomes visible once the selection is laid out in time. So this
+ * runs afterwards, on the chronological order, and keeps the best of each run:
+ * the answer to "seven shots of travelling" is the three best ones, not the
+ * first three. The time it gives back is spent by `allocateDurations` on what is
+ * left, so the cut does not get shorter, it gets less repetitive.
+ */
+function capConsecutiveRoles(
+  selected: Selected[],
+  skill: SkillManifest,
+  rationale: PlanRationale[],
+): void {
+  const cap = skill.constraints.max_consecutive_same_role;
+  if (!Number.isFinite(cap) || cap < 1) return;
+
+  const ordered = [...selected].sort((a, b) => a.index - b.index);
+  const doomed = new Set<Selected>();
+
+  let run: Selected[] = [];
+  const flush = (): void => {
+    if (run.length > cap) {
+      // Keep the best of the run, not the earliest: if the viewer is going to
+      // see three shots of a train, they should be the three worth seeing.
+      const ranked = [...run].sort(
+        (a, b) => b.value - a.value || a.event.id.localeCompare(b.event.id),
+      );
+      for (const candidate of ranked.slice(cap)) {
+        if (candidate.required || candidate.directive.locked) continue;
+        doomed.add(candidate);
+      }
+    }
+    run = [];
+  };
+
+  for (const candidate of ordered) {
+    const role = candidate.directive.role;
+    if (run.length > 0 && run[0]!.directive.role !== role) flush();
+    run.push(candidate);
+  }
+  flush();
+
+  for (const candidate of doomed) {
+    const at = selected.indexOf(candidate);
+    if (at < 0) continue;
+    selected.splice(at, 1);
+    rationale.push({
+      event_id: candidate.event.id,
+      decision: 'dropped',
+      reason: `${cap} in a row of the same kind is the limit this style sets`,
+      score: candidate.value,
+      skill_rule_ids: candidate.directive.matched_rule_ids,
+    });
+  }
 }
 
 /**
