@@ -11,13 +11,12 @@
     }
   },
   "required": [
+    "model",
     "observations"
   ],
   "additionalProperties": false,
   "$defs": {
-    "__schema0": {
-      "type": "string"
-    },
+    "__schema0": {},
     "__schema1": {
       "default": [],
       "type": "array",
@@ -37,32 +36,14 @@
             "default": 0.5,
             "$ref": "#/$defs/Confidence"
           },
-          "bbox": {
-            "type": "array",
-            "prefixItems": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "number"
-              }
-            ],
-            "items": false,
-            "minItems": 4,
-            "maxItems": 4
-          }
+          "bbox": {}
         },
         "required": [
           "start_ms",
           "end_ms",
           "text",
-          "confidence"
+          "confidence",
+          "bbox"
         ],
         "additionalProperties": false
       }

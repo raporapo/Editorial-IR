@@ -67,8 +67,31 @@ class Session:
         self._out.write(json.dumps(payload, ensure_ascii=False) + "\n")
         self._out.flush()
 
+    @staticmethod
+    def _without_nulls(value: Any) -> Any:
+        """Drops keys whose value is None, recursively.
+
+        JSON has no undefined, so a Python dict with a None in it becomes a null
+        on the wire, and a field that means "there is no value here" arrives
+        looking like a field that has one. The consumer accepts both, but a
+        producer that says nothing is clearer than one that says null.
+        """
+        if isinstance(value, dict):
+            return {k: Session._without_nulls(v) for k, v in value.items() if v is not None}
+        if isinstance(value, list):
+            return [Session._without_nulls(item) for item in value]
+        return value
+
     def reply_ok(self, request_id: str, op: str, result: dict[str, Any]) -> None:
-        self._emit({"v": PROTOCOL_VERSION, "id": request_id, "ok": True, "op": op, "result": result})
+        self._emit(
+            {
+                "v": PROTOCOL_VERSION,
+                "id": request_id,
+                "ok": True,
+                "op": op,
+                "result": self._without_nulls(result),
+            }
+        )
 
     def reply_error(
         self, request_id: str, op: str | None, code: str, message: str, details: dict[str, Any] | None = None

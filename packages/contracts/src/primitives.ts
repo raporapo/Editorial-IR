@@ -85,6 +85,24 @@ export type IdPrefix = (typeof ID_PREFIXES)[keyof typeof ID_PREFIXES];
 
 const ID_BODY = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
+/**
+ * An optional field, as it actually arrives over a JSON boundary.
+ *
+ * JSON has no `undefined`. A producer in another language writes `null` for a
+ * field it has no value for, and a schema that only accepts absence rejects a
+ * perfectly correct message. Both are accepted and normalised to absence, so the
+ * TypeScript type stays `T | undefined` and nothing downstream has to think
+ * about which one arrived.
+ *
+ * Used for every optional field in the perception protocol, which is the one
+ * place a non-TypeScript producer writes into these schemas.
+ */
+export function jsonOptional<T extends z.ZodType>(schema: T) {
+  return schema
+    .nullish()
+    .transform((value) => (value === null ? undefined : value)) as unknown as z.ZodOptional<T>;
+}
+
 /** Builds a Zod schema for an identifier carrying a specific prefix. */
 export function idSchema<P extends string>(prefix: P, description?: string) {
   return z

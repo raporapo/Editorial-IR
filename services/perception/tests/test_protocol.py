@@ -135,3 +135,14 @@ def test_logs_go_to_stderr_where_they_cannot_corrupt_the_stream():
     serve({"chatty": chatty}, io.StringIO(json.dumps({"id": "1", "op": "chatty", "params": {}})), session)
     assert "downloading a model" in err.getvalue()
     assert "downloading" not in out.getvalue()
+
+
+def test_nulls_are_omitted_rather_than_sent():
+    """JSON has no undefined, and a field that says null looks like a field with
+    a value. Saying nothing is clearer."""
+
+    def partial(params, session):
+        return {"present": 1, "absent": None, "nested": {"here": "yes", "gone": None}}
+
+    replies = run([{"id": "1", "op": "partial", "params": {}}], {"partial": partial})
+    assert replies[0]["result"] == {"present": 1, "nested": {"here": "yes"}}

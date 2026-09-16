@@ -142,6 +142,26 @@ export class PythonWorkerClient {
 
     const response = PerceptionResponse.safeParse(parsed);
     if (!response.success) {
+      // A reply this version cannot parse must still settle the request it
+      // belongs to. Leaving it pending turns a protocol mismatch into a hang,
+      // which is a far worse failure than an error message.
+      const id = (parsed as { id?: unknown }).id;
+      if (typeof id === 'string' && this.pending.has(id)) {
+        const pending = this.pending.get(id)!;
+        this.pending.delete(id);
+        if (pending.timer) clearTimeout(pending.timer);
+        pending.reject(
+          new EditorialError(
+            'perception_failed',
+            'the worker sent a reply this version cannot read',
+            {
+              op: pending.op,
+              line: trimmed.slice(0, 300),
+            },
+          ),
+        );
+        return;
+      }
       this.options.onLog?.(`unrecognised message from worker: ${trimmed.slice(0, 200)}`);
       return;
     }
@@ -220,6 +240,9 @@ export class PythonWorkerClient {
     });
 
     const schema = PERCEPTION_RESULT_SCHEMAS[op];
+    if (!schema) {
+      throw new EditorialError('perception_failed', `no result schema for "${op}"`, { op });
+    }
     return parseOrThrow(schema, raw, `perception result for "${op}"`) as PerceptionResultMap[Op];
   }
 

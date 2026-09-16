@@ -14,14 +14,13 @@
     }
   },
   "required": [
+    "model",
     "dim",
     "frames"
   ],
   "additionalProperties": false,
   "$defs": {
-    "__schema0": {
-      "type": "string"
-    },
+    "__schema0": {},
     "__schema1": {
       "type": "integer",
       "minimum": 1,
@@ -49,20 +48,17 @@
               "type": "string"
             }
           },
-          "sharpness": {
-            "$ref": "#/$defs/UnitScore"
-          },
-          "exposure": {
-            "$ref": "#/$defs/UnitScore"
-          },
-          "motion": {
-            "$ref": "#/$defs/UnitScore"
-          }
+          "sharpness": {},
+          "exposure": {},
+          "motion": {}
         },
         "required": [
           "timestamp_ms",
           "vector",
-          "labels"
+          "labels",
+          "sharpness",
+          "exposure",
+          "motion"
         ],
         "additionalProperties": false
       }
@@ -72,11 +68,6 @@
       "minimum": 0,
       "maximum": 9007199254740991,
       "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
-    },
-    "UnitScore": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1
     }
   }
 }

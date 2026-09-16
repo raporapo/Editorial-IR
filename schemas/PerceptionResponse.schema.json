@@ -25,7 +25,7 @@
           "const": true
         },
         "op": {
-          "$ref": "#/$defs/PerceptionOp"
+          "type": "string"
         },
         "result": {}
       },
@@ -37,22 +37,6 @@
         "result"
       ],
       "additionalProperties": false
-    },
-    "PerceptionOp": {
-      "type": "string",
-      "enum": [
-        "health",
-        "probe",
-        "prepare",
-        "transcribe",
-        "detect_shots",
-        "embed_frames",
-        "analyze_audio",
-        "ocr",
-        "describe",
-        "embed_text",
-        "shutdown"
-      ]
     },
     "__schema1": {
       "type": "object",
@@ -67,9 +51,7 @@
           "type": "boolean",
           "const": false
         },
-        "op": {
-          "$ref": "#/$defs/PerceptionOp"
-        },
+        "op": {},
         "error": {
           "type": "object",
           "properties": {
@@ -79,17 +61,12 @@
             "message": {
               "type": "string"
             },
-            "details": {
-              "type": "object",
-              "propertyNames": {
-                "type": "string"
-              },
-              "additionalProperties": {}
-            }
+            "details": {}
           },
           "required": [
             "code",
-            "message"
+            "message",
+            "details"
           ],
           "additionalProperties": false
         }
@@ -98,6 +75,7 @@
         "v",
         "id",
         "ok",
+        "op",
         "error"
       ],
       "additionalProperties": false

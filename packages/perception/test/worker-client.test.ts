@@ -100,3 +100,18 @@ describe('PythonWorkerClient', () => {
     expect(client.running).toBe(false);
   });
 });
+
+describe('version skew', () => {
+  it('settles a request whose reply it cannot read, rather than hanging', async () => {
+    // A worker from a future version answering with a shape this one does not
+    // know. Leaving the request pending would turn a protocol mismatch into a
+    // hang, which is far worse than an error.
+    const client = makeClient('normal');
+    const pending = client.request('detect_shots', {
+      path: '/tmp/a.mov',
+      threshold: 0.3,
+      min_shot_ms: 800,
+    });
+    await expect(pending).rejects.toThrow(/failed validation|cannot read/);
+  });
+});

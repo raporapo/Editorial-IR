@@ -17,19 +17,16 @@
     }
   },
   "required": [
+    "proxy_path",
+    "audio_path",
+    "frames_dir",
     "frame_timestamps_ms"
   ],
   "additionalProperties": false,
   "$defs": {
-    "__schema0": {
-      "type": "string"
-    },
-    "__schema1": {
-      "type": "string"
-    },
-    "__schema2": {
-      "type": "string"
-    },
+    "__schema0": {},
+    "__schema1": {},
+    "__schema2": {},
     "__schema3": {
       "default": [],
       "type": "array",

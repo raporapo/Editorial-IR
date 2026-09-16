@@ -53,6 +53,20 @@ take down a run that was otherwise fine.
 Every result is validated against its schema on arrival. A malformed result is a
 failed call, not something to pass downstream and discover later.
 
+Two rules exist so that a version mismatch is an error rather than a hang:
+
+- **`op` on a reply is informational, and a plain string.** A peer on a different
+  version may name an operation this one has never heard of, and a reply that
+  cannot be parsed is a request that waits forever.
+- **An unreadable reply still settles its request.** If a line carries an id that
+  is pending, that request is rejected with what arrived, rather than left open.
+
+**Optional fields accept `null` as well as absence.** JSON has no `undefined`,
+so a producer in another language writes `null` for a field it has no value for.
+Both are accepted and normalised to absence. The shipped worker omits them
+anyway, because saying nothing is clearer than saying null — but the consumer
+does not depend on that politeness.
+
 ## Progress
 
 ```json

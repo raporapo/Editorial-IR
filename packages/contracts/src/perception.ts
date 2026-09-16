@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Confidence, Milliseconds, UnitScore, obj } from './primitives.js';
+import { Confidence, Milliseconds, UnitScore, jsonOptional, obj } from './primitives.js';
 import { Affect } from './event.js';
 import { AudioEventType } from './observation.js';
 import { PERCEPTION_PROTOCOL_VERSION } from './version.js';
@@ -146,52 +146,52 @@ export type PerceptionRequest = z.infer<typeof PerceptionRequest>;
 export const HealthResult = obj({
   protocol_version: z.string(),
   worker_version: z.string(),
-  python_version: z.string().optional(),
+  python_version: jsonOptional(z.string()),
   /** Which capabilities have their dependencies installed. */
   capabilities: z.record(z.string(), z.boolean()).default({}),
   /** `cuda`, `mps`, `cpu`. */
   device: z.string().default('cpu'),
-  vram_total_mb: z.int().min(0).optional(),
+  vram_total_mb: jsonOptional(z.int().min(0)),
   ffmpeg_available: z.boolean().default(false),
 }).meta({ id: 'HealthResult' });
 export type HealthResult = z.infer<typeof HealthResult>;
 
 export const ProbeResult = obj({
   duration_ms: Milliseconds,
-  width: z.int().min(0).optional(),
-  height: z.int().min(0).optional(),
-  fps_num: z.int().min(0).optional(),
-  fps_den: z.int().min(1).optional(),
-  video_codec: z.string().optional(),
-  audio_codec: z.string().optional(),
-  audio_channels: z.int().min(0).optional(),
-  audio_sample_rate: z.int().min(0).optional(),
-  container: z.string().optional(),
-  bit_rate: z.int().min(0).optional(),
-  rotation: z.int().optional(),
-  creation_time: z.string().optional(),
+  width: jsonOptional(z.int().min(0)),
+  height: jsonOptional(z.int().min(0)),
+  fps_num: jsonOptional(z.int().min(0)),
+  fps_den: jsonOptional(z.int().min(1)),
+  video_codec: jsonOptional(z.string()),
+  audio_codec: jsonOptional(z.string()),
+  audio_channels: jsonOptional(z.int().min(0)),
+  audio_sample_rate: jsonOptional(z.int().min(0)),
+  container: jsonOptional(z.string()),
+  bit_rate: jsonOptional(z.int().min(0)),
+  rotation: jsonOptional(z.int()),
+  creation_time: jsonOptional(z.string()),
   metadata: z.record(z.string(), z.unknown()).default({}),
 }).meta({ id: 'ProbeResult' });
 export type ProbeResult = z.infer<typeof ProbeResult>;
 
 export const PrepareResult = obj({
-  proxy_path: z.string().optional(),
-  audio_path: z.string().optional(),
-  frames_dir: z.string().optional(),
+  proxy_path: jsonOptional(z.string()),
+  audio_path: jsonOptional(z.string()),
+  frames_dir: jsonOptional(z.string()),
   frame_timestamps_ms: z.array(Milliseconds).default([]),
 }).meta({ id: 'PrepareResult' });
 export type PrepareResult = z.infer<typeof PrepareResult>;
 
 export const TranscribeResult = obj({
-  language: z.string().optional(),
-  model: z.string().optional(),
+  language: jsonOptional(z.string()),
+  model: jsonOptional(z.string()),
   utterances: z
     .array(
       obj({
         start_ms: Milliseconds,
         end_ms: Milliseconds,
         text: z.string(),
-        speaker_id: z.string().optional(),
+        speaker_id: jsonOptional(z.string()),
         confidence: Confidence.default(0.5),
         words: z
           .array(
@@ -199,7 +199,7 @@ export const TranscribeResult = obj({
               start_ms: Milliseconds,
               end_ms: Milliseconds,
               text: z.string(),
-              confidence: Confidence.optional(),
+              confidence: jsonOptional(Confidence),
             }),
           )
           .optional(),
@@ -210,14 +210,14 @@ export const TranscribeResult = obj({
 export type TranscribeResult = z.infer<typeof TranscribeResult>;
 
 export const DetectShotsResult = obj({
-  model: z.string().optional(),
+  model: jsonOptional(z.string()),
   shots: z
     .array(
       obj({
         start_ms: Milliseconds,
         end_ms: Milliseconds,
         representative_frame_ms: Milliseconds,
-        change_score: z.number().min(0).max(1).optional(),
+        change_score: jsonOptional(z.number().min(0).max(1)),
       }),
     )
     .default([]),
@@ -225,7 +225,7 @@ export const DetectShotsResult = obj({
 export type DetectShotsResult = z.infer<typeof DetectShotsResult>;
 
 export const EmbedFramesResult = obj({
-  model: z.string().optional(),
+  model: jsonOptional(z.string()),
   dim: z.int().min(1),
   frames: z
     .array(
@@ -233,9 +233,9 @@ export const EmbedFramesResult = obj({
         timestamp_ms: Milliseconds,
         vector: z.array(z.number()),
         labels: z.array(z.string()).default([]),
-        sharpness: UnitScore.optional(),
-        exposure: UnitScore.optional(),
-        motion: UnitScore.optional(),
+        sharpness: jsonOptional(UnitScore),
+        exposure: jsonOptional(UnitScore),
+        motion: jsonOptional(UnitScore),
       }),
     )
     .default([]),
@@ -243,17 +243,17 @@ export const EmbedFramesResult = obj({
 export type EmbedFramesResult = z.infer<typeof EmbedFramesResult>;
 
 export const AnalyzeAudioResult = obj({
-  model: z.string().optional(),
+  model: jsonOptional(z.string()),
   hop_ms: z.int().min(1),
   rms_db: z.array(z.number()).default([]),
-  speech_prob: z.array(UnitScore).optional(),
+  speech_prob: jsonOptional(z.array(UnitScore)),
   events: z
     .array(
       obj({
         start_ms: Milliseconds,
         end_ms: Milliseconds,
         event_type: AudioEventType,
-        raw_label: z.string().optional(),
+        raw_label: jsonOptional(z.string()),
         confidence: Confidence.default(0.5),
       }),
     )
@@ -262,7 +262,7 @@ export const AnalyzeAudioResult = obj({
 export type AnalyzeAudioResult = z.infer<typeof AnalyzeAudioResult>;
 
 export const OcrResult = obj({
-  model: z.string().optional(),
+  model: jsonOptional(z.string()),
   observations: z
     .array(
       obj({
@@ -270,7 +270,7 @@ export const OcrResult = obj({
         end_ms: Milliseconds,
         text: z.string(),
         confidence: Confidence.default(0.5),
-        bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),
+        bbox: jsonOptional(z.tuple([z.number(), z.number(), z.number(), z.number()])),
       }),
     )
     .default([]),
@@ -285,10 +285,10 @@ export type OcrResult = z.infer<typeof OcrResult>;
  * part of the canonical representation.
  */
 export const DescribeResult = obj({
-  model: z.string().optional(),
+  model: jsonOptional(z.string()),
   description: z.string(),
   event_type: z.string().default(''),
-  title: z.string().optional(),
+  title: jsonOptional(z.string()),
   entities: obj({
     people: z.array(z.string()).default([]),
     places: z.array(z.string()).default([]),
@@ -297,13 +297,13 @@ export const DescribeResult = obj({
   }).prefault({}),
   affect: Affect.default({}),
   confidence: Confidence.default(0.5),
-  input_tokens: z.int().min(0).optional(),
-  output_tokens: z.int().min(0).optional(),
+  input_tokens: jsonOptional(z.int().min(0)),
+  output_tokens: jsonOptional(z.int().min(0)),
 }).meta({ id: 'DescribeResult' });
 export type DescribeResult = z.infer<typeof DescribeResult>;
 
 export const EmbedTextResult = obj({
-  model: z.string().optional(),
+  model: jsonOptional(z.string()),
   dim: z.int().min(1),
   vectors: z.array(z.array(z.number())).default([]),
 }).meta({ id: 'EmbedTextResult' });
@@ -327,22 +327,25 @@ export type PerceptionErrorCode = z.infer<typeof PerceptionErrorCode>;
 
 export const PerceptionResponse = z
   .discriminatedUnion('ok', [
+    // `op` on a reply is informational and deliberately a plain string: a peer
+    // on a different version may name an operation this one has never heard of,
+    // and a reply that cannot be parsed is a request that hangs forever.
     obj({
       v: z.string(),
       id: z.string(),
       ok: z.literal(true),
-      op: PerceptionOp,
+      op: z.string(),
       result: z.unknown(),
     }),
     obj({
       v: z.string(),
       id: z.string(),
       ok: z.literal(false),
-      op: PerceptionOp.optional(),
+      op: jsonOptional(z.string()),
       error: obj({
         code: PerceptionErrorCode,
         message: z.string(),
-        details: z.record(z.string(), z.unknown()).optional(),
+        details: jsonOptional(z.record(z.string(), z.unknown())),
       }),
     }),
   ])
@@ -354,9 +357,9 @@ export const PerceptionEvent = obj({
   v: z.string(),
   id: z.string(),
   event: z.enum(['progress', 'log']),
-  progress: UnitScore.optional(),
-  message: z.string().optional(),
-  level: z.enum(['debug', 'info', 'warn', 'error']).optional(),
+  progress: jsonOptional(UnitScore),
+  message: jsonOptional(z.string()),
+  level: jsonOptional(z.enum(['debug', 'info', 'warn', 'error'])),
 }).meta({ id: 'PerceptionEvent' });
 export type PerceptionEvent = z.infer<typeof PerceptionEvent>;
 

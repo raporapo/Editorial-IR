@@ -17,6 +17,12 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # The cross-language test starts the real Python worker. It needs no
+      # models and no ffmpeg, and it is the only check that would notice the two
+      # implementations drifting apart.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
       - run: pnpm typecheck

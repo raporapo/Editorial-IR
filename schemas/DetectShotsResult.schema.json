@@ -11,13 +11,12 @@
     }
   },
   "required": [
+    "model",
     "shots"
   ],
   "additionalProperties": false,
   "$defs": {
-    "__schema0": {
-      "type": "string"
-    },
+    "__schema0": {},
     "__schema1": {
       "default": [],
       "type": "array",
@@ -33,16 +32,13 @@
           "representative_frame_ms": {
             "$ref": "#/$defs/Milliseconds"
           },
-          "change_score": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1
-          }
+          "change_score": {}
         },
         "required": [
           "start_ms",
           "end_ms",
-          "representative_frame_ms"
+          "representative_frame_ms",
+          "change_score"
         ],
         "additionalProperties": false
       }

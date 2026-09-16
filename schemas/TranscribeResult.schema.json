@@ -14,16 +14,14 @@
     }
   },
   "required": [
+    "language",
+    "model",
     "utterances"
   ],
   "additionalProperties": false,
   "$defs": {
-    "__schema0": {
-      "type": "string"
-    },
-    "__schema1": {
-      "type": "string"
-    },
+    "__schema0": {},
+    "__schema1": {},
     "__schema2": {
       "default": [],
       "type": "array",
@@ -39,9 +37,7 @@
           "text": {
             "type": "string"
           },
-          "speaker_id": {
-            "type": "string"
-          },
+          "speaker_id": {},
           "confidence": {
             "default": 0.5,
             "$ref": "#/$defs/Confidence"
@@ -60,14 +56,13 @@
                 "text": {
                   "type": "string"
                 },
-                "confidence": {
-                  "$ref": "#/$defs/Confidence"
-                }
+                "confidence": {}
               },
               "required": [
                 "start_ms",
                 "end_ms",
-                "text"
+                "text",
+                "confidence"
               ],
               "additionalProperties": false
             }
@@ -77,6 +72,7 @@
           "start_ms",
           "end_ms",
           "text",
+          "speaker_id",
           "confidence"
         ],
         "additionalProperties": false
