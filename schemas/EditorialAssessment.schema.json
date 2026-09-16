@@ -1,0 +1,180 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/EditorialAssessment.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/asmId"
+    },
+    "event_id": {
+      "$ref": "#/$defs/evtId"
+    },
+    "model_run_id": {
+      "$ref": "#/$defs/runId"
+    },
+    "metrics": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "flags": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "narrative_role": {
+      "$ref": "#/$defs/NarrativeRoleAssessment"
+    },
+    "rationale": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "confidence": {
+      "$ref": "#/$defs/UnitScore"
+    }
+  },
+  "required": [
+    "id",
+    "event_id",
+    "model_run_id",
+    "metrics",
+    "flags",
+    "narrative_role",
+    "confidence"
+  ],
+  "additionalProperties": false,
+  "title": "EditorialAssessment",
+  "$defs": {
+    "asmId": {
+      "type": "string",
+      "description": "One decision backend's verdict on one event."
+    },
+    "evtId": {
+      "type": "string",
+      "description": "A semantic event: one thing that happened."
+    },
+    "runId": {
+      "type": "string",
+      "description": "One execution of a model or rule-based stage."
+    },
+    "__schema0": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/EditorialMetric"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/UnitScore"
+      },
+      "required": [
+        "story_importance",
+        "emotional_intensity",
+        "context_relevance",
+        "visual_quality",
+        "audio_quality",
+        "uniqueness",
+        "redundancy",
+        "continuity_previous",
+        "continuity_next",
+        "information_density"
+      ]
+    },
+    "EditorialMetric": {
+      "type": "string",
+      "enum": [
+        "story_importance",
+        "emotional_intensity",
+        "context_relevance",
+        "visual_quality",
+        "audio_quality",
+        "uniqueness",
+        "redundancy",
+        "continuity_previous",
+        "continuity_next",
+        "information_density"
+      ]
+    },
+    "UnitScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "__schema1": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/EditorialFlag"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/Probability"
+      },
+      "required": [
+        "preserve",
+        "redundant",
+        "establishing_shot",
+        "b_roll_candidate",
+        "opening_candidate",
+        "ending_candidate",
+        "requires_previous_context",
+        "contains_dead_air"
+      ]
+    },
+    "EditorialFlag": {
+      "type": "string",
+      "enum": [
+        "preserve",
+        "redundant",
+        "establishing_shot",
+        "b_roll_candidate",
+        "opening_candidate",
+        "ending_candidate",
+        "requires_previous_context",
+        "contains_dead_air"
+      ]
+    },
+    "Probability": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Probability in [0,1]. Unlike Confidence this is a belief about the world, not about the model."
+    },
+    "NarrativeRoleAssessment": {
+      "type": "object",
+      "properties": {
+        "selected": {
+          "$ref": "#/$defs/NarrativeRole"
+        },
+        "probabilities": {
+          "$ref": "#/$defs/__schema2"
+        }
+      },
+      "required": [
+        "selected",
+        "probabilities"
+      ],
+      "additionalProperties": false
+    },
+    "NarrativeRole": {
+      "type": "string",
+      "enum": [
+        "setup",
+        "context",
+        "build_up",
+        "transition",
+        "payoff",
+        "climax",
+        "reaction",
+        "resolution",
+        "ending",
+        "filler"
+      ],
+      "description": "The structural job an event does in the finished piece."
+    },
+    "__schema2": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/NarrativeRole"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/Probability"
+      }
+    },
+    "__schema3": {
+      "type": "string"
+    }
+  }
+}

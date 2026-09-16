@@ -1,0 +1,137 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/ValidationReport.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "ok": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "plan_id": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "issues": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "checked_at": {
+      "$ref": "#/$defs/__schema9"
+    }
+  },
+  "required": [
+    "ok",
+    "issues",
+    "checked_at"
+  ],
+  "additionalProperties": false,
+  "title": "ValidationReport",
+  "$defs": {
+    "__schema0": {
+      "type": "boolean"
+    },
+    "__schema1": {
+      "type": "string"
+    },
+    "__schema2": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ValidationIssue"
+      }
+    },
+    "ValidationIssue": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ValidationCode"
+        },
+        "severity": {
+          "$ref": "#/$defs/ValidationSeverity"
+        },
+        "message": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "event_id": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "asset_id": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "path": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "details": {
+          "$ref": "#/$defs/__schema8"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "ValidationCode": {
+      "type": "string",
+      "enum": [
+        "missing_media",
+        "invalid_range",
+        "range_out_of_bounds",
+        "negative_timeline_position",
+        "track_collision",
+        "timeline_gap",
+        "unknown_asset",
+        "unknown_event",
+        "essential_event_missing",
+        "excluded_event_present",
+        "excluded_asset_present",
+        "duration_out_of_tolerance",
+        "clip_too_short",
+        "clip_too_long",
+        "unsupported_capability",
+        "unsupported_transition",
+        "transition_too_long",
+        "duplicate_operation_id",
+        "stale_ir_fingerprint",
+        "empty_plan",
+        "speed_not_supported",
+        "plan_schema_invalid",
+        "sequence_mismatch"
+      ]
+    },
+    "ValidationSeverity": {
+      "type": "string",
+      "enum": [
+        "error",
+        "warning",
+        "info"
+      ]
+    },
+    "__schema3": {
+      "type": "string"
+    },
+    "__schema4": {
+      "type": "string"
+    },
+    "__schema5": {
+      "type": "string"
+    },
+    "__schema6": {
+      "type": "string"
+    },
+    "__schema7": {
+      "type": "string"
+    },
+    "__schema8": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    },
+    "__schema9": {
+      "type": "string"
+    }
+  }
+}

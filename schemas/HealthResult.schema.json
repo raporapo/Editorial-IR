@@ -1,0 +1,70 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/HealthResult.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "worker_version": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "python_version": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "capabilities": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "device": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "vram_total_mb": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "ffmpeg_available": {
+      "$ref": "#/$defs/__schema6"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "worker_version",
+    "capabilities",
+    "device",
+    "ffmpeg_available"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": "string"
+    },
+    "__schema1": {
+      "type": "string"
+    },
+    "__schema2": {
+      "type": "string"
+    },
+    "__schema3": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "__schema4": {
+      "default": "cpu",
+      "type": "string"
+    },
+    "__schema5": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema6": {
+      "default": false,
+      "type": "boolean"
+    }
+  }
+}

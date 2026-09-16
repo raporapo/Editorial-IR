@@ -1,0 +1,25 @@
+{
+  "name": "@editorial-ir/contracts",
+  "version": "0.1.0",
+  "description": "Canonical Zod schemas for Editorial IR, EditPlan, Skills, Decision and Adapter contracts.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  }
+}

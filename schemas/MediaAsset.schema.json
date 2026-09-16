@@ -1,0 +1,188 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/MediaAsset.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/assetId"
+    },
+    "path": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "file_name": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "kind": {
+      "$ref": "#/$defs/MediaKind"
+    },
+    "sha256": {
+      "$ref": "#/$defs/Sha256"
+    },
+    "byte_size": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "duration_ms": {
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "width": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "height": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "fps": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "fps_num": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "fps_den": {
+      "$ref": "#/$defs/__schema7"
+    },
+    "video_codec": {
+      "$ref": "#/$defs/__schema8"
+    },
+    "audio_codec": {
+      "$ref": "#/$defs/__schema9"
+    },
+    "audio_channels": {
+      "$ref": "#/$defs/__schema10"
+    },
+    "audio_sample_rate": {
+      "$ref": "#/$defs/__schema11"
+    },
+    "container": {
+      "$ref": "#/$defs/__schema12"
+    },
+    "bit_rate": {
+      "$ref": "#/$defs/__schema13"
+    },
+    "rotation": {
+      "$ref": "#/$defs/__schema14"
+    },
+    "creation_time": {
+      "$ref": "#/$defs/__schema15"
+    },
+    "metadata": {
+      "$ref": "#/$defs/__schema16"
+    }
+  },
+  "required": [
+    "id",
+    "path",
+    "file_name",
+    "kind",
+    "sha256",
+    "byte_size",
+    "duration_ms",
+    "metadata"
+  ],
+  "additionalProperties": false,
+  "title": "MediaAsset",
+  "$defs": {
+    "assetId": {
+      "type": "string",
+      "description": "A registered source file."
+    },
+    "__schema0": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema1": {
+      "type": "string",
+      "minLength": 1
+    },
+    "MediaKind": {
+      "type": "string",
+      "enum": [
+        "video",
+        "audio",
+        "image"
+      ]
+    },
+    "Sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "__schema2": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "Milliseconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+    },
+    "__schema3": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema4": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema5": {
+      "type": "number",
+      "minimum": 0
+    },
+    "__schema6": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema7": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "__schema8": {
+      "type": "string"
+    },
+    "__schema9": {
+      "type": "string"
+    },
+    "__schema10": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema11": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema12": {
+      "type": "string"
+    },
+    "__schema13": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema14": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "__schema15": {
+      "$ref": "#/$defs/Iso8601"
+    },
+    "Iso8601": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ISO-8601 timestamp, always UTC with a trailing Z."
+    },
+    "__schema16": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    }
+  }
+}

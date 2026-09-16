@@ -1,0 +1,35 @@
+{
+  "name": "@editorial-ir/cli",
+  "version": "0.1.0",
+  "description": "oea — the Editorial IR command line interface.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "oea": "./dist/bin.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@editorial-ir/contracts": "workspace:*",
+    "@editorial-ir/core": "workspace:*",
+    "@editorial-ir/agent": "workspace:*",
+    "@editorial-ir/adapters": "workspace:*",
+    "@editorial-ir/skills": "workspace:*",
+    "@editorial-ir/decision": "workspace:*",
+    "@editorial-ir/perception": "workspace:*",
+    "@editorial-ir/index": "workspace:*"
+  }
+}

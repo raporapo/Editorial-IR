@@ -1,0 +1,93 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/EventRelation.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/relId"
+    },
+    "source_event_id": {
+      "$ref": "#/$defs/evtId"
+    },
+    "target_event_id": {
+      "$ref": "#/$defs/evtId"
+    },
+    "relation_type": {
+      "$ref": "#/$defs/RelationType"
+    },
+    "strength": {
+      "$ref": "#/$defs/UnitScore"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "model_run_id": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "note": {
+      "$ref": "#/$defs/__schema1"
+    }
+  },
+  "required": [
+    "id",
+    "source_event_id",
+    "target_event_id",
+    "relation_type",
+    "strength",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "title": "EventRelation",
+  "$defs": {
+    "relId": {
+      "type": "string",
+      "description": "An edge in the event graph."
+    },
+    "evtId": {
+      "type": "string",
+      "description": "A semantic event: one thing that happened."
+    },
+    "RelationType": {
+      "type": "string",
+      "enum": [
+        "continuation",
+        "payoff_of",
+        "setup_for",
+        "reaction_to",
+        "answers",
+        "same_topic",
+        "same_location",
+        "same_person",
+        "contrast",
+        "callback",
+        "duplicate_of"
+      ]
+    },
+    "UnitScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "Provenance": {
+      "type": "string",
+      "enum": [
+        "observed",
+        "inferred",
+        "user_provided",
+        "skill_derived",
+        "agent_derived",
+        "nle_observed"
+      ]
+    },
+    "__schema0": {
+      "$ref": "#/$defs/runId"
+    },
+    "runId": {
+      "type": "string",
+      "description": "One execution of a model or rule-based stage."
+    },
+    "__schema1": {
+      "type": "string"
+    }
+  }
+}

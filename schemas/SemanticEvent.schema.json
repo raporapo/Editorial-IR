@@ -1,0 +1,570 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/SemanticEvent.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/evtId"
+    },
+    "chapter_id": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "start_ms": {
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "end_ms": {
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "source_ranges": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "description": {
+      "$ref": "#/$defs/ProvenancedString"
+    },
+    "event_type": {
+      "$ref": "#/$defs/ProvenancedString"
+    },
+    "title": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "entities": {
+      "$ref": "#/$defs/ProvenancedEntities"
+    },
+    "affect": {
+      "$ref": "#/$defs/ProvenancedAffect"
+    },
+    "observed": {
+      "$ref": "#/$defs/EventObservations"
+    },
+    "knowledge": {
+      "$ref": "#/$defs/EventKnowledge"
+    },
+    "segmentation": {
+      "$ref": "#/$defs/__schema35"
+    },
+    "embedding_refs": {
+      "$ref": "#/$defs/__schema36"
+    },
+    "confidence": {
+      "$ref": "#/$defs/Confidence"
+    }
+  },
+  "required": [
+    "id",
+    "start_ms",
+    "end_ms",
+    "source_ranges",
+    "description",
+    "event_type",
+    "entities",
+    "affect",
+    "observed",
+    "knowledge",
+    "segmentation",
+    "embedding_refs",
+    "confidence"
+  ],
+  "additionalProperties": false,
+  "title": "SemanticEvent",
+  "$defs": {
+    "evtId": {
+      "type": "string",
+      "description": "A semantic event: one thing that happened."
+    },
+    "__schema0": {
+      "$ref": "#/$defs/chpId"
+    },
+    "chpId": {
+      "type": "string",
+      "description": "A group of consecutive events."
+    },
+    "Milliseconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+    },
+    "__schema1": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/EventSourceRange"
+      }
+    },
+    "EventSourceRange": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "$ref": "#/$defs/assetId"
+        },
+        "source_in_ms": {
+          "$ref": "#/$defs/Milliseconds"
+        },
+        "source_out_ms": {
+          "$ref": "#/$defs/Milliseconds"
+        }
+      },
+      "required": [
+        "asset_id",
+        "source_in_ms",
+        "source_out_ms"
+      ],
+      "additionalProperties": false
+    },
+    "assetId": {
+      "type": "string",
+      "description": "A registered source file."
+    },
+    "ProvenancedString": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "confidence": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "model_run_id": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/__schema5"
+        }
+      },
+      "required": [
+        "value",
+        "provenance"
+      ],
+      "additionalProperties": false
+    },
+    "__schema2": {
+      "type": "string"
+    },
+    "Provenance": {
+      "type": "string",
+      "enum": [
+        "observed",
+        "inferred",
+        "user_provided",
+        "skill_derived",
+        "agent_derived",
+        "nle_observed"
+      ]
+    },
+    "__schema3": {
+      "$ref": "#/$defs/Confidence"
+    },
+    "Confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence in [0,1]. 1 means certain, 0 means no support at all."
+    },
+    "__schema4": {
+      "$ref": "#/$defs/runId"
+    },
+    "runId": {
+      "type": "string",
+      "description": "One execution of a model or rule-based stage."
+    },
+    "__schema5": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema6": {
+      "$ref": "#/$defs/ProvenancedString"
+    },
+    "ProvenancedEntities": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/Entities"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "confidence": {
+          "$ref": "#/$defs/__schema12"
+        },
+        "model_run_id": {
+          "$ref": "#/$defs/__schema13"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/__schema14"
+        }
+      },
+      "required": [
+        "value",
+        "provenance"
+      ],
+      "additionalProperties": false
+    },
+    "Entities": {
+      "type": "object",
+      "properties": {
+        "people": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "places": {
+          "$ref": "#/$defs/__schema8"
+        },
+        "objects": {
+          "$ref": "#/$defs/__schema9"
+        },
+        "topics": {
+          "$ref": "#/$defs/__schema10"
+        },
+        "organisations": {
+          "$ref": "#/$defs/__schema11"
+        }
+      },
+      "required": [
+        "people",
+        "places",
+        "objects",
+        "topics",
+        "organisations"
+      ],
+      "additionalProperties": false
+    },
+    "__schema7": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema8": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema9": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema10": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema11": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema12": {
+      "$ref": "#/$defs/Confidence"
+    },
+    "__schema13": {
+      "$ref": "#/$defs/runId"
+    },
+    "__schema14": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ProvenancedAffect": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/Affect"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "confidence": {
+          "$ref": "#/$defs/__schema16"
+        },
+        "model_run_id": {
+          "$ref": "#/$defs/__schema17"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/__schema18"
+        }
+      },
+      "required": [
+        "value",
+        "provenance"
+      ],
+      "additionalProperties": false
+    },
+    "Affect": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/__schema15"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/UnitScore"
+      },
+      "description": "Named affect intensities in [0,1], e.g. {\"excitement\":0.88,\"happiness\":0.83}."
+    },
+    "__schema15": {
+      "type": "string"
+    },
+    "UnitScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "__schema16": {
+      "$ref": "#/$defs/Confidence"
+    },
+    "__schema17": {
+      "$ref": "#/$defs/runId"
+    },
+    "__schema18": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "EventObservations": {
+      "type": "object",
+      "properties": {
+        "speech": {
+          "$ref": "#/$defs/__schema19"
+        },
+        "visual_labels": {
+          "$ref": "#/$defs/__schema20"
+        },
+        "ocr": {
+          "$ref": "#/$defs/__schema21"
+        },
+        "audio": {
+          "$ref": "#/$defs/__schema22"
+        },
+        "shot_ids": {
+          "$ref": "#/$defs/__schema23"
+        },
+        "shot_count": {
+          "$ref": "#/$defs/__schema24"
+        },
+        "speech_ratio": {
+          "$ref": "#/$defs/__schema25"
+        },
+        "silence_ratio": {
+          "$ref": "#/$defs/__schema26"
+        },
+        "motion": {
+          "$ref": "#/$defs/__schema27"
+        },
+        "technical_quality": {
+          "$ref": "#/$defs/__schema28"
+        }
+      },
+      "required": [
+        "speech",
+        "visual_labels",
+        "ocr",
+        "audio",
+        "shot_ids",
+        "shot_count",
+        "speech_ratio",
+        "silence_ratio"
+      ],
+      "additionalProperties": false
+    },
+    "__schema19": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "start_ms": {
+            "$ref": "#/$defs/Milliseconds"
+          },
+          "end_ms": {
+            "$ref": "#/$defs/Milliseconds"
+          },
+          "speaker_id": {
+            "type": "string"
+          },
+          "confidence": {
+            "$ref": "#/$defs/Confidence"
+          }
+        },
+        "required": [
+          "text",
+          "start_ms",
+          "end_ms",
+          "confidence"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "__schema20": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema21": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema22": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "confidence": {
+            "$ref": "#/$defs/Confidence"
+          }
+        },
+        "required": [
+          "type",
+          "confidence"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "__schema23": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema24": {
+      "default": 0,
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema25": {
+      "default": 0,
+      "$ref": "#/$defs/UnitScore"
+    },
+    "__schema26": {
+      "default": 0,
+      "$ref": "#/$defs/UnitScore"
+    },
+    "__schema27": {
+      "$ref": "#/$defs/UnitScore"
+    },
+    "__schema28": {
+      "$ref": "#/$defs/UnitScore"
+    },
+    "EventKnowledge": {
+      "type": "object",
+      "properties": {
+        "occasion": {
+          "$ref": "#/$defs/__schema29"
+        },
+        "notes": {
+          "$ref": "#/$defs/__schema30"
+        },
+        "essential": {
+          "$ref": "#/$defs/__schema31"
+        },
+        "excluded": {
+          "$ref": "#/$defs/__schema32"
+        },
+        "importance_override": {
+          "$ref": "#/$defs/__schema33"
+        },
+        "annotation_refs": {
+          "$ref": "#/$defs/__schema34"
+        }
+      },
+      "required": [
+        "notes",
+        "essential",
+        "excluded",
+        "annotation_refs"
+      ],
+      "additionalProperties": false
+    },
+    "__schema29": {
+      "type": "string"
+    },
+    "__schema30": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema31": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema32": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema33": {
+      "$ref": "#/$defs/UnitScore"
+    },
+    "__schema34": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/annId"
+      }
+    },
+    "annId": {
+      "type": "string",
+      "description": "A user override."
+    },
+    "__schema35": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": [
+            "shot",
+            "speech",
+            "silence",
+            "similarity",
+            "user",
+            "asset",
+            "fixed"
+          ]
+        },
+        "boundary_confidence": {
+          "$ref": "#/$defs/Confidence"
+        }
+      },
+      "required": [
+        "method",
+        "boundary_confidence"
+      ],
+      "additionalProperties": false
+    },
+    "__schema36": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

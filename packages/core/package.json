@@ -1,0 +1,28 @@
+{
+  "name": "@editorial-ir/core",
+  "version": "0.1.0",
+  "description": "The compiler: ingestion, observation, segmentation, context, decision and Editorial IR.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@editorial-ir/contracts": "workspace:*",
+    "@editorial-ir/perception": "workspace:*",
+    "@editorial-ir/decision": "workspace:*",
+    "@editorial-ir/index": "workspace:*"
+  }
+}

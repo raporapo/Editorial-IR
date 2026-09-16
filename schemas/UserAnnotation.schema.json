@@ -1,0 +1,608 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/UserAnnotation.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/__schema0"
+    },
+    {
+      "$ref": "#/$defs/__schema8"
+    },
+    {
+      "$ref": "#/$defs/__schema9"
+    },
+    {
+      "$ref": "#/$defs/__schema10"
+    },
+    {
+      "$ref": "#/$defs/__schema11"
+    },
+    {
+      "$ref": "#/$defs/__schema12"
+    },
+    {
+      "$ref": "#/$defs/__schema14"
+    },
+    {
+      "$ref": "#/$defs/__schema16"
+    },
+    {
+      "$ref": "#/$defs/__schema17"
+    },
+    {
+      "$ref": "#/$defs/__schema18"
+    },
+    {
+      "$ref": "#/$defs/__schema19"
+    }
+  ],
+  "title": "UserAnnotation",
+  "$defs": {
+    "__schema0": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/annId"
+        },
+        "target": {
+          "$ref": "#/$defs/AnnotationTarget"
+        },
+        "priority": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Iso8601"
+        },
+        "type": {
+          "type": "string",
+          "const": "essential"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "priority",
+        "created_at",
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "annId": {
+      "type": "string",
+      "description": "A user override."
+    },
+    "AnnotationTarget": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/__schema1"
+        },
+        {
+          "$ref": "#/$defs/__schema2"
+        },
+        {
+          "$ref": "#/$defs/__schema3"
+        },
+        {
+          "$ref": "#/$defs/__schema4"
+        },
+        {
+          "$ref": "#/$defs/__schema5"
+        }
+      ]
+    },
+    "__schema1": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "time_range"
+        },
+        "start_ms": {
+          "$ref": "#/$defs/Milliseconds"
+        },
+        "end_ms": {
+          "$ref": "#/$defs/Milliseconds"
+        },
+        "asset_id": {
+          "$ref": "#/$defs/assetId"
+        }
+      },
+      "required": [
+        "kind",
+        "start_ms",
+        "end_ms"
+      ],
+      "additionalProperties": false
+    },
+    "Milliseconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+    },
+    "assetId": {
+      "type": "string",
+      "description": "A registered source file."
+    },
+    "__schema2": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "event"
+        },
+        "event_id": {
+          "$ref": "#/$defs/evtId"
+        }
+      },
+      "required": [
+        "kind",
+        "event_id"
+      ],
+      "additionalProperties": false
+    },
+    "evtId": {
+      "type": "string",
+      "description": "A semantic event: one thing that happened."
+    },
+    "__schema3": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "event_pair"
+        },
+        "event_a": {
+          "$ref": "#/$defs/evtId"
+        },
+        "event_b": {
+          "$ref": "#/$defs/evtId"
+        }
+      },
+      "required": [
+        "kind",
+        "event_a",
+        "event_b"
+      ],
+      "additionalProperties": false
+    },
+    "__schema4": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "asset"
+        },
+        "asset_id": {
+          "$ref": "#/$defs/assetId"
+        }
+      },
+      "required": [
+        "kind",
+        "asset_id"
+      ],
+      "additionalProperties": false
+    },
+    "__schema5": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "project"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "__schema6": {
+      "default": 0,
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "__schema7": {
+      "type": "string"
+    },
+    "Iso8601": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ISO-8601 timestamp, always UTC with a trailing Z."
+    },
+    "__schema8": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/annId"
+        },
+        "target": {
+          "$ref": "#/$defs/AnnotationTarget"
+        },
+        "priority": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Iso8601"
+        },
+        "type": {
+          "type": "string",
+          "const": "exclude"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "priority",
+        "created_at",
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "__schema9": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/annId"
+        },
+        "target": {
+          "$ref": "#/$defs/AnnotationTarget"
+        },
+        "priority": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Iso8601"
+        },
+        "type": {
+          "type": "string",
+          "const": "importance"
+        },
+        "value": {
+          "$ref": "#/$defs/UnitScore"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "priority",
+        "created_at",
+        "type",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "UnitScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "__schema10": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/annId"
+        },
+        "target": {
+          "$ref": "#/$defs/AnnotationTarget"
+        },
+        "priority": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Iso8601"
+        },
+        "type": {
+          "type": "string",
+          "const": "continuity"
+        },
+        "strength": {
+          "$ref": "#/$defs/UnitScore"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "priority",
+        "created_at",
+        "type",
+        "strength"
+      ],
+      "additionalProperties": false
+    },
+    "__schema11": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/annId"
+        },
+        "target": {
+          "$ref": "#/$defs/AnnotationTarget"
+        },
+        "priority": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Iso8601"
+        },
+        "type": {
+          "type": "string",
+          "const": "rename"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "priority",
+        "created_at",
+        "type",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "__schema12": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/annId"
+        },
+        "target": {
+          "$ref": "#/$defs/AnnotationTarget"
+        },
+        "priority": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Iso8601"
+        },
+        "type": {
+          "type": "string",
+          "const": "label"
+        },
+        "labels": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema13"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "priority",
+        "created_at",
+        "type",
+        "labels"
+      ],
+      "additionalProperties": false
+    },
+    "__schema13": {
+      "type": "string"
+    },
+    "__schema14": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/annId"
+        },
+        "target": {
+          "$ref": "#/$defs/AnnotationTarget"
+        },
+        "priority": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Iso8601"
+        },
+        "type": {
+          "type": "string",
+          "const": "person"
+        },
+        "people": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema15"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "priority",
+        "created_at",
+        "type",
+        "people"
+      ],
+      "additionalProperties": false
+    },
+    "__schema15": {
+      "type": "string"
+    },
+    "__schema16": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/annId"
+        },
+        "target": {
+          "$ref": "#/$defs/AnnotationTarget"
+        },
+        "priority": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Iso8601"
+        },
+        "type": {
+          "type": "string",
+          "const": "mood"
+        },
+        "mood": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/UnitScore"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "priority",
+        "created_at",
+        "type",
+        "mood"
+      ],
+      "additionalProperties": false
+    },
+    "__schema17": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/annId"
+        },
+        "target": {
+          "$ref": "#/$defs/AnnotationTarget"
+        },
+        "priority": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Iso8601"
+        },
+        "type": {
+          "type": "string",
+          "const": "narrative_role"
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "priority",
+        "created_at",
+        "type",
+        "role"
+      ],
+      "additionalProperties": false
+    },
+    "__schema18": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/annId"
+        },
+        "target": {
+          "$ref": "#/$defs/AnnotationTarget"
+        },
+        "priority": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Iso8601"
+        },
+        "type": {
+          "type": "string",
+          "const": "boundary"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "split",
+            "merge_with_next"
+          ]
+        },
+        "at_ms": {
+          "$ref": "#/$defs/Milliseconds"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "priority",
+        "created_at",
+        "type",
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "__schema19": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/annId"
+        },
+        "target": {
+          "$ref": "#/$defs/AnnotationTarget"
+        },
+        "priority": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Iso8601"
+        },
+        "type": {
+          "type": "string",
+          "const": "note"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "priority",
+        "created_at",
+        "type",
+        "text"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

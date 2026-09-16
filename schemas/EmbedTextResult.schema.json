@@ -1,0 +1,41 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/EmbedTextResult.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "model": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "dim": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "vectors": {
+      "$ref": "#/$defs/__schema2"
+    }
+  },
+  "required": [
+    "dim",
+    "vectors"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": "string"
+    },
+    "__schema1": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "__schema2": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

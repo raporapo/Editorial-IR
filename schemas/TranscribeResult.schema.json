@@ -1,0 +1,98 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/TranscribeResult.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "language": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "model": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "utterances": {
+      "$ref": "#/$defs/__schema2"
+    }
+  },
+  "required": [
+    "utterances"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": "string"
+    },
+    "__schema1": {
+      "type": "string"
+    },
+    "__schema2": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start_ms": {
+            "$ref": "#/$defs/Milliseconds"
+          },
+          "end_ms": {
+            "$ref": "#/$defs/Milliseconds"
+          },
+          "text": {
+            "type": "string"
+          },
+          "speaker_id": {
+            "type": "string"
+          },
+          "confidence": {
+            "default": 0.5,
+            "$ref": "#/$defs/Confidence"
+          },
+          "words": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "start_ms": {
+                  "$ref": "#/$defs/Milliseconds"
+                },
+                "end_ms": {
+                  "$ref": "#/$defs/Milliseconds"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "$ref": "#/$defs/Confidence"
+                }
+              },
+              "required": [
+                "start_ms",
+                "end_ms",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "start_ms",
+          "end_ms",
+          "text",
+          "confidence"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "Milliseconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+    },
+    "Confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence in [0,1]. 1 means certain, 0 means no support at all."
+    }
+  }
+}

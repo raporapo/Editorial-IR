@@ -1,0 +1,119 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/PerceptionResponse.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/__schema0"
+    },
+    {
+      "$ref": "#/$defs/__schema1"
+    }
+  ],
+  "title": "PerceptionResponse",
+  "$defs": {
+    "__schema0": {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "op": {
+          "$ref": "#/$defs/PerceptionOp"
+        },
+        "result": {}
+      },
+      "required": [
+        "v",
+        "id",
+        "ok",
+        "op",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    "PerceptionOp": {
+      "type": "string",
+      "enum": [
+        "health",
+        "probe",
+        "prepare",
+        "transcribe",
+        "detect_shots",
+        "embed_frames",
+        "analyze_audio",
+        "ocr",
+        "describe",
+        "embed_text",
+        "shutdown"
+      ]
+    },
+    "__schema1": {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean",
+          "const": false
+        },
+        "op": {
+          "$ref": "#/$defs/PerceptionOp"
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/PerceptionErrorCode"
+            },
+            "message": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "ok",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "PerceptionErrorCode": {
+      "type": "string",
+      "enum": [
+        "bad_request",
+        "unsupported_op",
+        "missing_dependency",
+        "media_error",
+        "model_error",
+        "out_of_memory",
+        "cancelled",
+        "internal"
+      ]
+    }
+  }
+}

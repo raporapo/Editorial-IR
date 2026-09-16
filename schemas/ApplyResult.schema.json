@@ -1,0 +1,138 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/ApplyResult.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "adapter": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "artifacts": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "downgrades": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "warnings": {
+      "$ref": "#/$defs/__schema10"
+    },
+    "elapsed_ms": {
+      "$ref": "#/$defs/__schema11"
+    }
+  },
+  "required": [
+    "adapter",
+    "artifacts",
+    "downgrades",
+    "warnings"
+  ],
+  "additionalProperties": false,
+  "title": "ApplyResult",
+  "$defs": {
+    "__schema0": {
+      "type": "string"
+    },
+    "__schema1": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AdapterArtifact"
+      }
+    },
+    "AdapterArtifact": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "kind": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "description": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "byte_size": {
+          "$ref": "#/$defs/__schema5"
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "__schema2": {
+      "type": "string"
+    },
+    "__schema3": {
+      "type": "string",
+      "enum": [
+        "project",
+        "interchange",
+        "script",
+        "report",
+        "preview"
+      ]
+    },
+    "__schema4": {
+      "default": "",
+      "type": "string"
+    },
+    "__schema5": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema6": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/CapabilityDowngrade"
+      }
+    },
+    "CapabilityDowngrade": {
+      "type": "object",
+      "properties": {
+        "operation_id": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "capability": {
+          "$ref": "#/$defs/__schema8"
+        },
+        "action": {
+          "$ref": "#/$defs/__schema9"
+        }
+      },
+      "required": [
+        "capability",
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "__schema7": {
+      "type": "string"
+    },
+    "__schema8": {
+      "type": "string"
+    },
+    "__schema9": {
+      "type": "string"
+    },
+    "__schema10": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema11": {
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "Milliseconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+    }
+  }
+}

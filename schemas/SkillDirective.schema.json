@@ -1,0 +1,192 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/SkillDirective.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "base_score": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "score": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "min_duration_ms": {
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "max_duration_ms": {
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "dropped": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "required": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "locked": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "as_b_roll": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "preserve_reaction": {
+      "$ref": "#/$defs/__schema7"
+    },
+    "prefer_higher_quality_only": {
+      "$ref": "#/$defs/__schema8"
+    },
+    "place_at": {
+      "$ref": "#/$defs/__schema9"
+    },
+    "role": {
+      "$ref": "#/$defs/__schema10"
+    },
+    "transition_in": {
+      "$ref": "#/$defs/__schema11"
+    },
+    "transition_out": {
+      "$ref": "#/$defs/__schema13"
+    },
+    "tags": {
+      "$ref": "#/$defs/__schema14"
+    },
+    "matched_rule_ids": {
+      "$ref": "#/$defs/__schema15"
+    }
+  },
+  "required": [
+    "event_id",
+    "base_score",
+    "score",
+    "min_duration_ms",
+    "max_duration_ms",
+    "dropped",
+    "required",
+    "locked",
+    "as_b_roll",
+    "preserve_reaction",
+    "prefer_higher_quality_only",
+    "tags",
+    "matched_rule_ids"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": "string"
+    },
+    "__schema1": {
+      "type": "number"
+    },
+    "__schema2": {
+      "type": "number"
+    },
+    "Milliseconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+    },
+    "__schema3": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema4": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema5": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema6": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema7": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema8": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema9": {
+      "type": "string",
+      "enum": [
+        "opening",
+        "ending"
+      ]
+    },
+    "__schema10": {
+      "$ref": "#/$defs/NarrativeRole"
+    },
+    "NarrativeRole": {
+      "type": "string",
+      "enum": [
+        "setup",
+        "context",
+        "build_up",
+        "transition",
+        "payoff",
+        "climax",
+        "reaction",
+        "resolution",
+        "ending",
+        "filler"
+      ],
+      "description": "The structural job an event does in the finished piece."
+    },
+    "__schema11": {
+      "$ref": "#/$defs/Transition"
+    },
+    "Transition": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/TransitionType"
+        },
+        "duration_ms": {
+          "$ref": "#/$defs/__schema12"
+        }
+      },
+      "required": [
+        "type",
+        "duration_ms"
+      ],
+      "additionalProperties": false
+    },
+    "TransitionType": {
+      "type": "string",
+      "enum": [
+        "hard_cut",
+        "cross_dissolve",
+        "dip_to_black",
+        "dip_to_white",
+        "fade_in",
+        "fade_out"
+      ]
+    },
+    "__schema12": {
+      "default": 0,
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "__schema13": {
+      "$ref": "#/$defs/Transition"
+    },
+    "__schema14": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema15": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

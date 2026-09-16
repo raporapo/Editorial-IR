@@ -1,0 +1,7 @@
+dist/
+coverage/
+schemas/
+pnpm-lock.yaml
+*.otio
+*.xml
+*.exo

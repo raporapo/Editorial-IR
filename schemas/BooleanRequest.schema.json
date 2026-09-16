@@ -1,0 +1,26 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/BooleanRequest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "question_id": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "statement": {
+      "$ref": "#/$defs/__schema1"
+    }
+  },
+  "required": [
+    "question_id",
+    "statement"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": "string"
+    },
+    "__schema1": {
+      "type": "string"
+    }
+  }
+}

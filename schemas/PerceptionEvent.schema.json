@@ -1,0 +1,66 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/PerceptionEvent.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "v": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "id": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "event": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "progress": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "message": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "level": {
+      "$ref": "#/$defs/__schema5"
+    }
+  },
+  "required": [
+    "v",
+    "id",
+    "event"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": "string"
+    },
+    "__schema1": {
+      "type": "string"
+    },
+    "__schema2": {
+      "type": "string",
+      "enum": [
+        "progress",
+        "log"
+      ]
+    },
+    "__schema3": {
+      "$ref": "#/$defs/UnitScore"
+    },
+    "UnitScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "__schema4": {
+      "type": "string"
+    },
+    "__schema5": {
+      "type": "string",
+      "enum": [
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ]
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "editorial-ir",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An editor-independent intermediate representation that turns video into an editable meaning structure.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "clean": "tsc -b tsconfig.build.json --clean && rm -rf packages/*/dist apps/*/dist",
+    "typecheck": "tsc -b tsconfig.build.json --noEmit false --dry 2>/dev/null || tsc -b tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "schema:export": "tsx scripts/export-schemas.ts schemas",
+    "schema:check": "tsx scripts/check-schemas.ts schemas",
+    "oea": "tsx apps/cli/src/bin.ts",
+    "verify": "pnpm format:check && pnpm lint && pnpm build && pnpm test && pnpm schema:check"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.3",
+    "@vitest/coverage-v8": "^5.0.1",
+    "eslint": "^9.39.5",
+    "prettier": "^3.6.2",
+    "tsx": "^4.23.13",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^5.0.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
