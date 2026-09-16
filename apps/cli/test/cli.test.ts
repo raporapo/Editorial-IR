@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -294,6 +294,48 @@ describe('re-analysing a project', () => {
     expect(
       await main(['annotate', 'evt_0031..evt_0032', 'continuity', '0.9', '--project', root]),
     ).toBe(0);
+  }, 60_000);
+});
+
+describe('the first five minutes', () => {
+  it('says a file could not be read as a failure, not as "ok 0 added"', async () => {
+    // This is the first command anyone runs on their own footage, and on a
+    // machine without ffmpeg every file fails. It used to print "ok 0 added"
+    // above a list of errors: a headline contradicting its own body.
+    const root = mkdtempSync(join(tmpdir(), 'oea-cli-'));
+    await main(['init', root, '--title', 'test']);
+
+    // A real file ffprobe cannot read, which is what a machine with no ffmpeg
+    // sees for every file it is given.
+    const media = join(root, 'clip.mov');
+    writeFileSync(media, 'not really a movie');
+
+    output = [];
+    errors = [];
+    const code = await main(['ingest', media, '--project', root]);
+
+    expect(code).toBe(1);
+    expect(stdout() + stderr()).not.toContain('ok 0 added');
+    expect(stdout() + stderr()).toContain('could not read');
+  }, 60_000);
+
+  it('says a path that is not there is not there, rather than throwing ENOENT', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'oea-cli-'));
+    await main(['init', root, '--title', 'test']);
+
+    // A typo used to surface a Node stack trace through statSync.
+    await expect(
+      main(['ingest', join(root, 'nothing-here.mov'), '--project', root]),
+    ).rejects.toThrow(/there is nothing at/);
+  }, 60_000);
+
+  it('lists the skills it does have when asked for one it does not', async () => {
+    output = [];
+    errors = [];
+    expect(await main(['skills', 'travelvlog'])).toBe(1);
+    // Every other command that takes a name does this. For a typo it is the
+    // difference between a dead end and an answer.
+    expect(stdout() + stderr()).toContain('travel-vlog');
   }, 60_000);
 });
 

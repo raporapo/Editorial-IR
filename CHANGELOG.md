@@ -102,6 +102,15 @@ is compatible with.
   it. Retrieval now drops zero-overlap hits when the encoder declares itself
   lexical; a real embedding model is unaffected, since finding "night view" for
   夜景 with nothing in common is exactly what one is for.
+- **The first five minutes.** On a machine without ffmpeg — which is every
+  machine before someone installs it — `oea ingest` printed `ok 0 added` above a
+  list of errors, and each error read `ffprobe failed: spawn ffprobe ENOENT`.
+  A headline contradicting its own body, and a Node error that reads like a
+  crash rather than like something to fix. It now reports the failure as one,
+  says the program is not installed, and says once how to install it. A path
+  that does not exist says so instead of throwing ENOENT through `statSync`, and
+  `oea skills <typo>` lists the skills that do exist, which every other command
+  taking a name already did.
 - `oea demo` works on an installed package. The worked example it needs lives
   outside the CLI package and was not being shipped with it.
 - Piping any command into something that stops reading — `| head`, or quitting

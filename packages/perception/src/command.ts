@@ -29,6 +29,17 @@ export interface CommandRunner {
   available(command: string): Promise<boolean>;
 }
 
+/**
+ * How to get the programs this project shells out to.
+ *
+ * Both of these come from the same package on every platform, which is worth
+ * saying explicitly: someone told to install "ffprobe" will search for ffprobe.
+ */
+const INSTALL_HINTS: Record<string, string> = {
+  ffprobe: 'part of ffmpeg — macOS: brew install ffmpeg, Debian/Ubuntu: apt install ffmpeg',
+  ffmpeg: 'macOS: brew install ffmpeg, Debian/Ubuntu: apt install ffmpeg',
+};
+
 export class NodeCommandRunner implements CommandRunner {
   private readonly availability = new Map<string, Promise<boolean>>();
 
@@ -48,6 +59,19 @@ export class NodeCommandRunner implements CommandRunner {
             const code = typeof error.code === 'number' ? error.code : 1;
             if (options.allowFailure) {
               resolve({ stdout, stderr, code });
+              return;
+            }
+            // "spawn ffprobe ENOENT" is Node telling you a program is missing,
+            // and it is the first thing a new user sees if they have not
+            // installed ffmpeg. It reads like a crash rather than like a thing
+            // they can fix, so say which one it is.
+            if (error.code === 'ENOENT') {
+              reject(
+                new EditorialError('media_error', `${command} is not installed, or not on PATH`, {
+                  command,
+                  install: INSTALL_HINTS[command] ?? 'install it and make sure it is on your PATH',
+                }),
+              );
               return;
             }
             reject(

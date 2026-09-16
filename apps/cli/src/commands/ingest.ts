@@ -32,7 +32,14 @@ export async function runIngest(args: IngestArgs): Promise<number> {
     const placements = placeAssets(result.assets);
     const total = result.assets.reduce((sum, a) => sum + a.duration_ms, 0);
 
-    success(`${result.added.length} added, ${result.assets.length} in the project`);
+    // "ok 0 added" above a list of errors is a headline contradicting its own
+    // body, and this is the first command a new user runs on their own footage.
+    const nothingWorked = result.added.length === 0 && result.failed.length > 0;
+    if (nothingWorked) {
+      fail(`could not read any of the ${result.failed.length} file(s) given`);
+    } else {
+      success(`${result.added.length} added, ${result.assets.length} in the project`);
+    }
 
     if (result.added.length > 0) {
       heading('added');
@@ -55,7 +62,19 @@ export async function runIngest(args: IngestArgs): Promise<number> {
 
     if (result.failed.length > 0) {
       heading('could not read');
-      for (const failure of result.failed) fail(`  ${failure.path}: ${failure.reason}`);
+      const fixes = new Set<string>();
+      for (const failure of result.failed) {
+        fail(`  ${failure.path}: ${failure.reason}`);
+        if (failure.fix) fixes.add(failure.fix);
+      }
+      // One remedy, once, rather than repeated under every file that hit it.
+      for (const fix of fixes) note(`  ${fix}`);
+    }
+
+    if (nothingWorked) {
+      note('Nothing was added, so there is no timeline yet.');
+      note('Run "oea doctor" to see what is installed.');
+      return 1;
     }
 
     heading('the capture timeline');

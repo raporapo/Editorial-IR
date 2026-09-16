@@ -14,7 +14,7 @@ import { NodeCommandRunner, createLocalSuite } from '@editorial-ir/perception';
 import { SkillRegistry, validateSkill } from '@editorial-ir/skills';
 import { listAdapters } from '@editorial-ir/adapters';
 import { createProject, openProject } from '../project.js';
-import { colour, detail, heading, line, note, success, table, warn } from '../ui.js';
+import { colour, detail, fail, heading, line, note, success, table, warn } from '../ui.js';
 
 /* -------------------------------------------------------------------------- */
 /* skills                                                                      */
@@ -37,7 +37,16 @@ export function runSkills(args: { name?: string; skillsDir?: string }): number {
 
   const source = registry.source(args.name);
   if (!source) {
-    note(`no skill called ${args.name}`);
+    // Every other command that takes a name lists the alternatives when it does
+    // not recognise one. This one did not, which for a typo is the difference
+    // between a dead end and an answer.
+    fail(`no skill called "${args.name}"`);
+    note(
+      `  available: ${registry
+        .list()
+        .map((s) => s.name)
+        .join(', ')}`,
+    );
     return 1;
   }
 

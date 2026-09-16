@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
   CAPTURE_TIMELINE_GAP_MS,
@@ -45,6 +45,11 @@ export function mediaKindOf(path: string): MediaKind | undefined {
 
 /** Every media file under a path, recursively, in a stable order. */
 export function findMedia(target: string): string[] {
+  // A path that is not there is a typo, which is a thing to say plainly rather
+  // than a Node ENOENT with a stack trace through statSync.
+  if (!existsSync(target)) {
+    throw new EditorialError('not_found', `there is nothing at ${target}`);
+  }
   const stat = statSync(target);
   if (stat.isFile()) return mediaKindOf(target) ? [target] : [];
 
@@ -78,8 +83,8 @@ export interface IngestResult {
   added: MediaAsset[];
   /** Files skipped because the same content is already registered. */
   duplicates: { path: string; existingId: string }[];
-  /** Files that could not be probed, with the reason. */
-  failed: { path: string; reason: string }[];
+  /** Files that could not be probed, with the reason and anything that would fix it. */
+  failed: { path: string; reason: string; fix?: string }[];
 }
 
 export async function ingestPaths(
@@ -115,7 +120,16 @@ export async function ingestPaths(
       probe = await probeWithCache(file, sha256, options);
     } catch (error) {
       // One unreadable file should not abandon an ingest of thirty.
-      failed.push({ path: file, reason: error instanceof Error ? error.message : String(error) });
+      failed.push({
+        path: file,
+        reason: error instanceof Error ? error.message : String(error),
+        // A missing program is the commonest first-run failure and the one
+        // thing here the user can actually act on, so carry the remedy up
+        // rather than making them go and find it.
+        ...(EditorialError.is(error) && typeof error.details.install === 'string'
+          ? { fix: error.details.install }
+          : {}),
+      });
       continue;
     }
 
