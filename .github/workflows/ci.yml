@@ -43,6 +43,18 @@ jobs:
       - run: pip install pytest ruff
       - run: ruff check services/perception
       - run: PYTHONPATH=services/perception/src python -m pytest services/perception/tests -q
+      # The tests above run against src/, where every module is present whether
+      # or not the packaging lists it — the same blind spot the `package` job
+      # covers on the TypeScript side. Install it the way a user would, and ask
+      # it what it can do.
+      - name: Install the built package and ask it for a health report
+        run: |
+          python -m venv /tmp/worker
+          /tmp/worker/bin/pip install ./services/perception
+          echo '{"id":"1","op":"health","params":{}}' \
+            | /tmp/worker/bin/editorial-perception \
+            | tee /tmp/health.json
+          python -c "import json,sys; r=json.load(open('/tmp/health.json')); sys.exit(0 if r.get('ok') else 'the worker did not answer health')"
 
   example:
     runs-on: ubuntu-latest

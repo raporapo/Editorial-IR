@@ -1,0 +1,75 @@
+name: Release
+
+# Publishing is deliberately manual to start: a tag is a decision, and this
+# workflow only carries it out. Nothing here runs on a push to a branch.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  # Required for npm provenance, which signs each package with a link back to
+  # the workflow run that built it. It is what lets someone installing this
+  # check that the tarball came from this repository rather than from whoever
+  # had the token.
+  id-token: write
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      # The full check, again, on the exact commit being published. CI having
+      # passed on the branch is not the same claim.
+      - run: pnpm verify
+      - name: Check the tag matches the version being published
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(node -p "require('./packages/contracts/package.json').version")
+          if [ "$tag" != "$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package version $version" >&2
+            exit 1
+          fi
+      # Dependencies before dependents, so that each package resolves against
+      # versions already on the registry.
+      - name: Publish
+        run: |
+          for dir in \
+            packages/contracts \
+            packages/perception \
+            packages/decision \
+            packages/index \
+            packages/skills \
+            packages/core \
+            packages/agent \
+            packages/adapters \
+            apps/cli
+          do
+            (cd "$dir" && pnpm publish --access public --no-git-checks --provenance)
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  pypi:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install build
+      - run: python -m build services/perception
+      # Trusted publishing: PyPI verifies this workflow rather than a stored
+      # password, so there is no long-lived token to leak.
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: services/perception/dist

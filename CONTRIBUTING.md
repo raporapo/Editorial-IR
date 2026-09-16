@@ -74,6 +74,11 @@ Say what changed and why it is the right change. If you moved a boundary or
 reversed an earlier decision, say so explicitly — a year from now the commit
 message is the only place that reasoning survives.
 
+If the change is one a user would notice — a new skill or adapter, a different
+cut from the same footage, a flag, a breaking contract change — add a line to
+`CHANGELOG.md` under `Unreleased`. Anything internal does not need one.
+[docs/releasing.md](docs/releasing.md) covers how a version is cut.
+
 ## Good first contributions
 
 - **A skill.** `docs/skills.md` is the guide; a skill is a YAML file and a

@@ -8,6 +8,7 @@
 - [Decision backends](decision-backends.md) — swapping how events are judged
 - [The perception protocol](perception-protocol.md) — the TypeScript/Python boundary
 - [Privacy](privacy.md) — what leaves the machine, and when
+- [Releasing](releasing.md) — cutting a version across npm and PyPI
 
 Start with the architecture. Everything else assumes you know why there is a
 representation in the middle.
