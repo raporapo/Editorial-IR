@@ -15,8 +15,12 @@
       "default": "./dist/index.js"
     }
   },
+  "scripts": {
+    "prepack": "node scripts/bundle-example.mjs"
+  },
   "files": [
     "dist",
+    "example",
     "README.md"
   ],
   "publishConfig": {

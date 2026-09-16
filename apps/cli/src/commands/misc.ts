@@ -220,28 +220,52 @@ export function runContext(args: { project?: string; json?: boolean }): number {
 /* demo                                                                        */
 /* -------------------------------------------------------------------------- */
 
-const EXAMPLE_DIR = resolve(
-  fileURLToPath(new URL('../../../../examples/anniversary-trip', import.meta.url)),
-);
+/**
+ * Where the worked example lives, which is two different places.
+ *
+ * In this repository it is `examples/anniversary-trip`, shared by the tests and
+ * the golden snapshot. In a published package it is copied to `example/` at pack
+ * time, because `files` cannot reach outside the package directory and `oea
+ * demo` has to work on a fresh install — it is the first command in the README
+ * and the only one that needs no footage of your own.
+ */
+const EXAMPLE_CANDIDATES = [
+  // This repository, and deliberately first: the copy the tests and the golden
+  // snapshot use wins over any stale one left behind by a local `pnpm pack`.
+  // apps/cli/{src,dist}/commands/misc.* -> the workspace root.
+  '../../../../examples/anniversary-trip',
+  // Packaged: dist/commands/misc.js -> the package root.
+  '../../example',
+].map((candidate) => resolve(fileURLToPath(new URL(candidate, import.meta.url))));
+
+function exampleDir(): string {
+  // Checked by a file it must contain rather than by the directory, so that a
+  // directory which happens to sit at one of these paths cannot shadow it.
+  const found = EXAMPLE_CANDIDATES.find((candidate) =>
+    existsSync(join(candidate, 'perception.fixture.json')),
+  );
+  if (!found) {
+    throw new EditorialError('not_found', 'the worked example is not installed beside this build', {
+      looked_in: EXAMPLE_CANDIDATES,
+    });
+  }
+  return found;
+}
 
 export function runDemo(args: { directory?: string }): { root: string; fixture: string } {
   const root = resolve(args.directory ?? './oea-demo');
-  if (!existsSync(EXAMPLE_DIR)) {
-    throw new EditorialError('not_found', 'the worked example is not installed beside this build', {
-      looked_in: EXAMPLE_DIR,
-    });
-  }
+  const example = exampleDir();
 
   mkdirSync(root, { recursive: true });
-  cpSync(join(EXAMPLE_DIR, 'footage'), join(root, 'footage'), { recursive: true });
+  cpSync(join(example, 'footage'), join(root, 'footage'), { recursive: true });
   const fixture = join(root, 'perception.fixture.json');
-  cpSync(join(EXAMPLE_DIR, 'perception.fixture.json'), fixture);
+  cpSync(join(example, 'perception.fixture.json'), fixture);
 
   const store = createProject(root, { title: '大阪1周年旅行', type: 'travel_vlog' });
   const project = store.readProject();
   store.writeContext(
     ProjectContext.parse({
-      ...(parseYaml(readFileSync(join(EXAMPLE_DIR, 'context.yaml'), 'utf8')) as Record<
+      ...(parseYaml(readFileSync(join(example, 'context.yaml'), 'utf8')) as Record<
         string,
         unknown
       >),

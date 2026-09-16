@@ -1,6 +1,8 @@
+import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { main } from '../src/index.js';
 import { displayWidth, truncate } from '../src/ui.js';
@@ -223,5 +225,40 @@ describe('the agent command', () => {
       if (saved.base) process.env.OEA_AGENT_BASE_URL = saved.base;
       if (saved.decision) process.env.OEA_DECISION_BASE_URL = saved.decision;
     }
+  }, 60_000);
+});
+
+describe('the binary itself', () => {
+  /**
+   * Everything else in this file calls `main()` directly, which is the right
+   * way to test the commands and the wrong way to test the process: the entry
+   * point installs the handler that keeps a closed pipe from looking like a
+   * crash, and only a real process has a real pipe to close.
+   */
+  const entry = fileURLToPath(new URL('../src/bin.ts', import.meta.url));
+
+  function runPipedToHead(args: string[]): Promise<{ code: number | null; stderr: string }> {
+    return new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, ['--import', 'tsx', entry, ...args], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stderr = '';
+      child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+      // Read one chunk and slam the pipe shut, which is what `| head -1` does.
+      child.stdout.once('data', () => child.stdout.destroy());
+      child.stdout.on('error', () => undefined);
+      child.on('error', reject);
+      child.on('close', (code) => resolve({ code, stderr }));
+    });
+  }
+
+  it('does not crash when its output is piped into something that stops reading', async () => {
+    // `oea timeline | head` and quitting `less` halfway are both normal. Node's
+    // default for either is an unhandled EPIPE and a stack trace, which reads
+    // as a crash caused by doing nothing wrong.
+    const { code, stderr } = await runPipedToHead(['skills']);
+    expect(stderr).not.toContain('EPIPE');
+    expect(stderr).not.toContain('Unhandled');
+    expect(code).toBe(0);
   }, 60_000);
 });

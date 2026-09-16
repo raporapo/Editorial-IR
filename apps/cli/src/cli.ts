@@ -292,7 +292,7 @@ function printHelp(command: string | undefined): void {
   line('  oea analyze                  compile the Editorial IR');
 
   heading('what it understood');
-  line('  oea timeline                 events, chapters and how they were judged');
+  line('  oea timeline [--full]        events, chapters and how they were judged');
   line('  oea search <query>           find a moment by describing it');
   line('  oea explain <event>          why a moment was kept or cut');
   line('  oea annotate <target> <kind> correct it; you outrank every model');
@@ -318,6 +318,7 @@ function printHelp(command: string | undefined): void {
   line('  --budget <usd>               refuse to spend more than this');
   line('  --force                      re-run perception even if nothing changed');
   line('  --json                       machine-readable output');
+  line('  --quiet                      the summary without the list of clips');
 
   heading('stronger models, when you want them');
   line('  OEA_VLM_BASE_URL, OEA_VLM_MODEL            a closer look at hard events');

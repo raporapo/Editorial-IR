@@ -3,6 +3,22 @@ import { EditorialError } from '@editorial-ir/contracts';
 import { main } from './cli.js';
 import { fail, note } from './ui.js';
 
+/**
+ * `oea timeline | head` is a normal thing to do, and so is quitting `less`
+ * halfway. Both close the pipe while there is still output to write, and Node's
+ * default for that is an unhandled 'error' event and a stack trace — which looks
+ * exactly like a crash, in response to the user doing nothing wrong.
+ *
+ * Reading to the end of the pipe is not this program's job. Stop writing and
+ * leave, the way every other command line tool does.
+ */
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EPIPE') process.exit(0);
+    throw error;
+  });
+}
+
 /** Details can hold anything, and `[object Object]` helps nobody. */
 function formatDetail(value: unknown): string {
   if (Array.isArray(value)) return value.map((item) => formatDetail(item)).join(', ');

@@ -63,3 +63,53 @@ jobs:
       - run: pnpm oea apply --project ./tmp/demo --editor otio
       - run: pnpm oea apply --project ./tmp/demo --editor premiere
       - run: pnpm oea apply --project ./tmp/demo --editor aviutl2
+
+  # The repository is not what people install. Everything above this job runs
+  # against the source tree, where every file exists and every workspace link
+  # resolves — which is exactly why it cannot see a file missing from `files`, a
+  # wrong `bin` path, or a runtime import of a devDependency. This job packs the
+  # tarballs, installs them into an empty directory with npm, and runs the
+  # documented walkthrough from the installed binary.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Pack every publishable package
+        run: |
+          mkdir -p /tmp/tarballs
+          for dir in packages/* apps/cli; do
+            [ -f "$dir/package.json" ] || continue
+            (cd "$dir" && pnpm pack --pack-destination /tmp/tarballs)
+          done
+          ls -l /tmp/tarballs
+      - name: Install them into an empty project
+        run: |
+          mkdir -p /tmp/install
+          cd /tmp/install
+          echo '{"name":"install-check","private":true,"version":"1.0.0"}' > package.json
+          npm install --no-audit --no-fund /tmp/tarballs/*.tgz
+      - name: Run the walkthrough from the installed binary
+        working-directory: /tmp/install
+        run: |
+          export PATH="$PWD/node_modules/.bin:$PATH"
+          oea --version
+          # `demo` needs the worked example, which lives outside the package and
+          # has to be copied in at pack time. This is the step that notices when
+          # it was not.
+          oea demo ./demo
+          oea timeline --project ./demo
+          oea plan --project ./demo --skill travel-vlog --duration 180 --quiet
+          oea apply --project ./demo --editor otio
+          # doctor reports a non-zero status when something needs attention, and
+          # a runner without ffmpeg is exactly that. Run it for the output, not
+          # for the status.
+          oea doctor || true
+          # A closed pipe must not look like a crash.
+          oea skills | head -2

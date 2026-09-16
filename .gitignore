@@ -24,6 +24,10 @@ venv/
 .ruff_cache/
 *.egg-info/
 
+# The worked example, copied into apps/cli by its prepack script so that the
+# published package carries it. The source of truth is examples/anniversary-trip.
+/apps/cli/example/
+
 # --- editors / os ----------------------------------------------------------
 .DS_Store
 .idea/
