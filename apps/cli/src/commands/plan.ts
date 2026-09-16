@@ -58,7 +58,12 @@ export function runPlan(args: PlanArgs): number {
       : {}),
   });
 
-  const report = validatePlan(plan, { ir, projectRoot: store.paths.root, checkMediaExists: true });
+  const report = validatePlan(plan, {
+    ir,
+    skill,
+    projectRoot: store.paths.root,
+    checkMediaExists: true,
+  });
   if (!report.ok) {
     fail(`the plan did not validate: ${summariseReport(report)}`);
     for (const issue of report.issues.filter((i) => i.severity === 'error')) {

@@ -449,6 +449,49 @@ describe('the caller outranks the skill', () => {
   });
 });
 
+describe('a floor the skill states but its scoring cannot guarantee', () => {
+  it('says so when a cut falls below the speech share its style asks for', async () => {
+    const { ir, observations } = await compiled();
+    // A travel-vlog cut of travel footage is mostly pictures; talking-head asks
+    // for seven tenths of its runtime to carry speech. Judging one by the
+    // other's floor is the situation the check exists for — a talking-head cut
+    // where nobody is talking is not that thing at all.
+    const plan = planEdit({
+      ir,
+      skill: registry.resolve('travel-vlog'),
+      targetDurationMs: 180_000,
+      observations,
+    });
+
+    const report = validatePlan(plan, { ir, skill: registry.resolve('talking-head') });
+    const issue = report.issues.find((i) => i.code === 'below_minimum_speech_share');
+    expect(issue).toBeDefined();
+    // A warning, not an error: on quiet material the floor may be unreachable,
+    // and refusing to produce a cut is worse than producing one and saying so.
+    expect(issue!.severity).toBe('warning');
+    expect(report.ok).toBe(true);
+  }, 60_000);
+
+  it('says nothing when the cut meets it', async () => {
+    const { ir, observations } = await compiled();
+    const skill = registry.resolve('talking-head');
+    const plan = planEdit({ ir, skill, targetDurationMs: 180_000, observations });
+
+    const report = validatePlan(plan, { ir, skill });
+    expect(report.issues.some((i) => i.code === 'below_minimum_speech_share')).toBe(false);
+  }, 60_000);
+
+  it('says nothing when the skill did not ask for one', async () => {
+    const { ir, observations } = await compiled();
+    const skill = registry.resolve('travel-vlog');
+    const plan = planEdit({ ir, skill, targetDurationMs: 180_000, observations });
+
+    expect(skill.constraints.min_speech_share).toBeUndefined();
+    const report = validatePlan(plan, { ir, skill });
+    expect(report.issues.some((i) => i.code === 'below_minimum_speech_share')).toBe(false);
+  }, 60_000);
+});
+
 describe('the toolkit', () => {
   it('answers the questions an agent would ask', async () => {
     const { ir } = await compiled();

@@ -28,6 +28,7 @@ export const VALIDATION_CODES = [
   'excluded_event_present',
   'excluded_asset_present',
   'duration_out_of_tolerance',
+  'below_minimum_speech_share',
   'clip_too_short',
   'clip_too_long',
   'unsupported_capability',

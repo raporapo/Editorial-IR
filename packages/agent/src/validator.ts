@@ -10,6 +10,7 @@ import {
   type AdapterCapabilities,
   type EditPlan,
   type EditorialIR,
+  type SkillManifest,
   type ValidationIssue,
   type ValidationReport,
 } from '@editorial-ir/contracts';
@@ -29,6 +30,8 @@ export interface ValidateOptions {
   ir?: EditorialIR;
   /** What the target editing application can actually do. */
   capabilities?: AdapterCapabilities;
+  /** The resolved skill, for the constraints only it knows about. */
+  skill?: SkillManifest;
   /** Resolve and check that media files exist. */
   projectRoot?: string;
   checkMediaExists?: boolean;
@@ -236,6 +239,32 @@ export function validatePlan(plan: unknown, options: ValidateOptions = {}): Vali
       message: `the cut is ${formatSeconds(duration)} against a target of ${formatSeconds(target)}`,
       details: { duration_ms: duration, target_ms: target, tolerance_ms: tolerance },
     });
+  }
+
+  // ---- what the skill asked for --------------------------------------------
+  // A style can state a floor its own scoring cannot guarantee. `talking-head`
+  // says seven tenths of its runtime must carry speech, because a talking-head
+  // cut where nobody is talking is not that thing at all. It is a warning rather
+  // than an error: on quiet material the floor may simply be unreachable, and
+  // refusing to produce a cut is worse than producing one and saying so.
+  const minimumSpeech = options.skill?.constraints.min_speech_share;
+  if (minimumSpeech !== undefined && ir && duration > 0) {
+    let speaking = 0;
+    for (const operation of editPlan.tracks.video) {
+      const event = ir.events.find((candidate) => candidate.id === operation.event_id);
+      if (event && event.observed.speech.length > 0) {
+        speaking += operationTimelineDuration(operation);
+      }
+    }
+    const share = speaking / duration;
+    if (share < minimumSpeech) {
+      issues.push({
+        code: 'below_minimum_speech_share',
+        severity: 'warning',
+        message: `${Math.round(share * 100)}% of this cut carries speech; ${options.skill?.name} asks for ${Math.round(minimumSpeech * 100)}%`,
+        details: { share, minimum: minimumSpeech },
+      });
+    }
   }
 
   for (const operation of editPlan.tracks.video) {

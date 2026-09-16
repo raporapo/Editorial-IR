@@ -102,6 +102,12 @@ is compatible with.
   it. Retrieval now drops zero-overlap hits when the encoder declares itself
   lexical; a real embedding model is unaffected, since finding "night view" for
   夜景 with nothing in common is exactly what one is for.
+- **`min_speech_share` was declared and unenforced.** `talking-head` states that
+  seven tenths of its runtime must carry speech, because a talking-head cut
+  where nobody is talking is not that thing at all. The validator now checks it
+  and warns rather than errors: on quiet material the floor may simply be
+  unreachable, and refusing to produce a cut is worse than producing one and
+  saying so.
 - **`--perception python` died instead of degrading.** Every layer of this
   project promises that a missing model costs you that stage and not the run,
   and the Python path broke it: the CLI wired every worker model regardless of
