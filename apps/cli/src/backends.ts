@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs';
 import { EditorialError } from '@editorial-ir/contracts';
 import {
-  HeuristicContextModel,
   OpenAiCompatibleContextModel,
   OpenAiCompatibleTextEmbedding,
   PythonWorkerClient,
@@ -119,10 +118,6 @@ export function resolveBackends(options: BackendOptions = {}): ResolvedBackends 
     description.push(`embeddings: ${embedModel} at ${embedBase}`);
   } else {
     description.push('embeddings: hashing (lexical, no model)');
-  }
-
-  if (!suite.context) {
-    suite = { ...suite, context: new HeuristicContextModel() };
   }
 
   // The expensive look, for the events that earn it.

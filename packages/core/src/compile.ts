@@ -12,7 +12,11 @@ import {
   type UserAnnotation,
 } from '@editorial-ir/contracts';
 import type { ContextModel, PerceptionSuite } from '@editorial-ir/perception';
-import { ModelScheduler, availableCapabilities } from '@editorial-ir/perception';
+import {
+  HeuristicContextModel,
+  ModelScheduler,
+  availableCapabilities,
+} from '@editorial-ir/perception';
 import type { EditorialDecisionModel } from '@editorial-ir/decision';
 import { FlatVectorIndex } from '@editorial-ir/index';
 import type { ProjectStore } from './store.js';
@@ -161,6 +165,12 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   );
 
   // ---- meaning -------------------------------------------------------------
+  // A suite with no context model gets the rule-based one rather than no
+  // descriptions at all. Leaving it to the caller meant the CLI and the tests
+  // compiled the same footage differently, which is the kind of difference that
+  // makes a golden file useless.
+  const baseContextModel = options.suite.context ?? new HeuristicContextModel();
+
   const built = await buildSemanticEvents(drafts, {
     assets,
     placements,
@@ -168,7 +178,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     context,
     annotations,
     runs,
-    ...(options.suite.context ? { baseModel: options.suite.context } : {}),
+    baseModel: baseContextModel,
     ...(options.escalationContext ? { escalationModel: options.escalationContext } : {}),
     ...(options.escalation ? { escalation: options.escalation } : {}),
     budget,
