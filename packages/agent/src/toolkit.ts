@@ -1,4 +1,5 @@
 import {
+  EditorialError,
   assessmentFor,
   chapterById,
   eventById,
@@ -16,6 +17,35 @@ import {
 import type { SemanticIndex, SearchHit } from '@editorial-ir/index';
 import { planEdit, type PlanOptions } from './planner.js';
 import { validatePlan, type ValidateOptions } from './validator.js';
+
+/**
+ * The two layers below the event, supplied by whoever built the toolkit.
+ *
+ * The toolkit itself reads an in-memory document and nothing else, which is what
+ * makes it testable without a project on disk. Shots and frames live on disk, so
+ * they arrive through this rather than through a filesystem call in here.
+ */
+export interface InspectionSource {
+  /** The shots one event is made of. */
+  shots(event: SemanticEvent): ShotDetail[];
+  /** Sampled frames for one event, or none if the media was never sampled. */
+  frames(event: SemanticEvent, options?: { count?: number; perShot?: boolean }): FrameRef[];
+  /** Lays frames out as a single image and returns where it was written. */
+  contactSheet?(event: SemanticEvent, options?: { count?: number }): Promise<string>;
+}
+
+export interface ShotDetail {
+  shot: { id: string; asset_id: string; start_ms: number; end_ms: number };
+  offset_ms: number;
+  duration_ms: number;
+  whole: boolean;
+}
+
+export interface FrameRef {
+  path: string;
+  asset_id: string;
+  source_ms: number;
+}
 
 /**
  * What an editing agent is allowed to do.
@@ -63,6 +93,7 @@ export class AgentToolkit {
   constructor(
     private readonly ir: EditorialIR,
     private readonly index?: SemanticIndex,
+    private readonly inspection?: InspectionSource,
   ) {}
 
   /** Everything the user said this piece is for. */
@@ -181,6 +212,55 @@ export class AgentToolkit {
     return eventIds
       .map((id) => this.inspectEvent(id, 'detailed'))
       .filter((event): event is Record<string, unknown> => event !== undefined);
+  }
+
+  /* --- below the event ----------------------------------------------------- */
+
+  /**
+   * The shots one event is made of.
+   *
+   * An event is a stretch of meaning and a shot is a stretch of camera, and they
+   * do not line up. "Why does this event look like that" is often answered by
+   * "because it is four shots and one of them is of the ground".
+   */
+  listShots(eventId: string): ShotDetail[] {
+    const event = eventById(this.ir, eventId);
+    if (!event || !this.inspection) return [];
+    return this.inspection.shots(event);
+  }
+
+  /**
+   * Sampled frames for one event.
+   *
+   * Empty when the media was ingested without frame sampling, or when the work
+   * directory has since been deleted — both are normal, and neither is an error.
+   */
+  listFrames(eventId: string, options: { count?: number; perShot?: boolean } = {}): FrameRef[] {
+    const event = eventById(this.ir, eventId);
+    if (!event || !this.inspection) return [];
+    return this.inspection.frames(event, options);
+  }
+
+  /**
+   * One image showing what an event looks like.
+   *
+   * The bottom of the staircase, and the step that costs money: a hosted vision
+   * model charges per image. A grid answers "what actually happens here" about
+   * as well as the separate frames do, for a fraction of the price, and it shows
+   * the order.
+   */
+  async getContactSheet(eventId: string, options: { count?: number } = {}): Promise<string> {
+    const event = eventById(this.ir, eventId);
+    if (!event) {
+      throw new EditorialError('not_found', `no event called ${eventId}`);
+    }
+    if (!this.inspection?.contactSheet) {
+      throw new EditorialError(
+        'unsupported',
+        'this toolkit was built without a way to look at frames',
+      );
+    }
+    return this.inspection.contactSheet(event, options);
   }
 
   relationsFor(eventId: string): { type: string; other: string; strength: number }[] {
@@ -312,6 +392,34 @@ export const AGENT_TOOL_DEFINITIONS = [
       properties: {
         eventId: { type: 'string' },
         detail: { type: 'string', enum: ['summary', 'detailed', 'full'] },
+      },
+      required: ['eventId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'list_shots',
+    description:
+      'The shots one event is made of. Use when an event behaves oddly and you want to know whether it is one continuous take or five.',
+    parameters: {
+      type: 'object',
+      properties: { eventId: { type: 'string' } },
+      required: ['eventId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'look_at_event',
+    description:
+      'Actually look at an event, as a grid of frames. The last resort and the only tool that costs money per call: everything above is text. Use it when the description and the shots still do not tell you what is on screen.',
+    parameters: {
+      type: 'object',
+      properties: {
+        eventId: { type: 'string' },
+        count: {
+          type: 'integer',
+          description: 'How many frames to show. 4 to 9 is usually enough.',
+        },
       },
       required: ['eventId'],
       additionalProperties: false,

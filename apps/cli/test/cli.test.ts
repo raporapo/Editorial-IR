@@ -233,6 +233,39 @@ describe('the agent command', () => {
   }, 60_000);
 });
 
+describe('oea inspect', () => {
+  it('shows what an event is actually made of', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+    output = [];
+
+    expect(await main(['inspect', 'evt_0014', '--project', root])).toBe(0);
+    expect(stdout()).toContain('shots');
+    expect(stdout()).toMatch(/sht_|shot_/);
+  }, 60_000);
+
+  it('explains an empty result instead of printing nothing', async () => {
+    // The worked example replays a recorded analysis, so it genuinely has no
+    // frames. "frames (0)" on its own reads as a broken tool.
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+    output = [];
+
+    expect(await main(['inspect', 'evt_0014', '--project', root, '--frames'])).toBe(0);
+    expect(stdout()).toContain('no sampled frames');
+    expect(stdout()).toContain('oea ingest');
+  }, 60_000);
+
+  it('names the event it cannot find', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+    output = [];
+
+    expect(await main(['inspect', 'evt_9999', '--project', root])).toBe(1);
+    expect(stderr() + stdout()).toContain('evt_9999');
+  }, 60_000);
+});
+
 describe('the binary itself', () => {
   /**
    * Everything else in this file calls `main()` directly, which is the right

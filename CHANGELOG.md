@@ -9,6 +9,16 @@ is compatible with.
 
 ## Unreleased
 
+### Added
+
+- **Progressive inspection below the event.** The representation is a hierarchy
+  — project, asset, chapter, event, shot, frame — and until now everything
+  stopped at the event. `oea inspect <event>` is the staircase down: the shots an
+  event is made of, the frames behind them, and `--sheet` for one image with the
+  frames laid out in order. An agent gets the same two steps as `list_shots` and
+  `look_at_event`, which is the last resort and the only tool it has that costs
+  money per call.
+
 ### Changed
 
 - The planner allocates each clip the duration selection budgeted for it,

@@ -445,6 +445,75 @@ describe('the toolkit', () => {
   });
 });
 
+describe('descending below the event', () => {
+  // The toolkit reads a document and nothing else; shots and frames live on
+  // disk, so they arrive through an injected source. That seam is what lets an
+  // agent be tested without a project directory at all.
+  function stubInspection(frameCount: number) {
+    const calls: string[] = [];
+    return {
+      calls,
+      source: {
+        shots: () => [
+          {
+            shot: { id: 'sht_1', asset_id: 'asset_001', start_ms: 0, end_ms: 4000 },
+            offset_ms: 0,
+            duration_ms: 4000,
+            whole: true,
+          },
+        ],
+        frames: () =>
+          Array.from({ length: frameCount }, (_, i) => ({
+            path: `/w/${i}.jpg`,
+            asset_id: 'asset_001',
+            source_ms: i * 1000,
+          })),
+        contactSheet: async () => {
+          calls.push('sheet');
+          return '/w/sheet.jpg';
+        },
+      },
+    };
+  }
+
+  it('reports the shots an event is made of', async () => {
+    const { ir } = await compiled();
+    const toolkit = new AgentToolkit(ir, undefined, stubInspection(4).source);
+    expect(toolkit.listShots(ir.events[0]!.id)).toHaveLength(1);
+  });
+
+  it('says nothing rather than failing when there is no way to look', async () => {
+    // A project ingested without frame sampling is normal, not broken, and an
+    // agent asking to look at one should get an answer it can act on.
+    const { ir } = await compiled();
+    const toolkit = new AgentToolkit(ir);
+    expect(toolkit.listShots(ir.events[0]!.id)).toEqual([]);
+    expect(toolkit.listFrames(ir.events[0]!.id)).toEqual([]);
+    await expect(toolkit.getContactSheet(ir.events[0]!.id)).rejects.toThrow(
+      /without a way to look/,
+    );
+  });
+
+  it('refuses an event that does not exist rather than looking at nothing', async () => {
+    const { ir } = await compiled();
+    const toolkit = new AgentToolkit(ir, undefined, stubInspection(4).source);
+    await expect(toolkit.getContactSheet('evt_9999')).rejects.toThrow(/evt_9999/);
+  });
+
+  it('builds the contact sheet only when asked', async () => {
+    const { ir } = await compiled();
+    const stub = stubInspection(4);
+    const toolkit = new AgentToolkit(ir, undefined, stub.source);
+
+    // Listing frames is a directory read; the sheet is an ffmpeg run. The step
+    // that costs something should not happen as a side effect of the one above.
+    toolkit.listFrames(ir.events[0]!.id);
+    expect(stub.calls).toEqual([]);
+    await toolkit.getContactSheet(ir.events[0]!.id);
+    expect(stub.calls).toEqual(['sheet']);
+  });
+});
+
 describe('reviewing a cut', () => {
   it('reads the plan back and reports what is wrong with it', async () => {
     const { ir, plan } = await planned();

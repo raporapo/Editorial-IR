@@ -9,6 +9,7 @@ import { runPlan } from './commands/plan.js';
 import { runApply, runEditors } from './commands/apply.js';
 import { runSearch } from './commands/search.js';
 import { runExplain } from './commands/explain.js';
+import { runInspect } from './commands/inspect.js';
 import { runAnnotate } from './commands/annotate.js';
 import { runContext, runDemo, runDoctor, runSchema, runSkills } from './commands/misc.js';
 import { runReview } from './commands/review.js';
@@ -40,6 +41,9 @@ const OPTIONS = {
   aspect: { type: 'string' as const },
   limit: { type: 'string' as const },
   chapter: { type: 'string' as const },
+  shots: { type: 'boolean' as const },
+  frames: { type: 'boolean' as const },
+  sheet: { type: 'boolean' as const },
   require: { type: 'string' as const, multiple: true },
   drop: { type: 'string' as const, multiple: true },
   budget: { type: 'string' as const },
@@ -171,6 +175,20 @@ export async function main(argv: string[]): Promise<number> {
         ...(values.json ? { json: true } : {}),
       });
 
+    case 'inspect':
+      if (!rest[0]) {
+        fail('inspect needs an event id, such as evt_0031');
+        return 2;
+      }
+      return runInspect({
+        target: rest[0],
+        ...(values.project ? { project: values.project } : {}),
+        ...(values.shots ? { shots: true } : {}),
+        ...(values.frames ? { frames: true } : {}),
+        ...(values.sheet ? { sheet: true } : {}),
+        ...(values.json ? { json: true } : {}),
+      });
+
     case 'annotate':
       return runAnnotate({
         ...(rest[0] ? { target: rest[0] } : {}),
@@ -295,6 +313,7 @@ function printHelp(command: string | undefined): void {
   line('  oea timeline [--full]        events, chapters and how they were judged');
   line('  oea search <query>           find a moment by describing it');
   line('  oea explain <event>          why a moment was kept or cut');
+  line('  oea inspect <event>          what is actually in it: shots, frames, a contact sheet');
   line('  oea annotate <target> <kind> correct it; you outrank every model');
 
   heading('a cut');

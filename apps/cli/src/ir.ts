@@ -1,7 +1,9 @@
+import { join } from 'node:path';
 import { EditorialError, type EditorialIR } from '@editorial-ir/contracts';
 import { FlatVectorIndex, SemanticIndex } from '@editorial-ir/index';
 import { HashingTextEmbedding } from '@editorial-ir/perception';
-import type { FileProjectStore } from '@editorial-ir/core';
+import { contactSheet, framesIn, shotsIn, type FileProjectStore } from '@editorial-ir/core';
+import type { InspectionSource } from '@editorial-ir/agent';
 
 /** Loads the analysis, with a message that says what to do when there is none. */
 export function requireIr(store: FileProjectStore): EditorialIR {
@@ -32,4 +34,30 @@ export function openIndex(
   const stored = store.readEmbeddings();
   if (stored) vectors.add(stored.records);
   return new SemanticIndex(ir, vectors, encoder ?? new HashingTextEmbedding());
+}
+
+/**
+ * The two layers below the event, read from the project on disk.
+ *
+ * Kept here rather than inside the toolkit so that `packages/agent` stays a pure
+ * function of a document: an agent can be tested without a project directory,
+ * and a hosted deployment can supply these from object storage instead.
+ */
+export function openInspection(
+  store: FileProjectStore,
+  ir: EditorialIR,
+): InspectionSource | undefined {
+  const observations = store.readObservations();
+  if (!observations) return undefined;
+
+  return {
+    shots: (event) => shotsIn(observations, event),
+    frames: (event, options = {}) =>
+      framesIn(ir, store.paths.root, event, { ...options, observations }),
+    contactSheet: async (event, options = {}) => {
+      const frames = framesIn(ir, store.paths.root, event, { ...options, observations });
+      const path = join(store.paths.workDir, 'sheets', `${event.id}.jpg`);
+      return contactSheet(frames, path, { columns: frames.length > 4 ? 3 : 2 });
+    },
+  };
 }

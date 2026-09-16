@@ -274,6 +274,34 @@ export class LlmEditingAgent {
         );
       case 'get_neighbours':
         return this.toolkit.getNeighbours(String(args.eventId));
+      case 'list_shots':
+        return this.toolkit.listShots(String(args.eventId));
+      case 'look_at_event': {
+        // The bottom of the staircase. A model that cannot see gets told so
+        // rather than being handed a path it cannot open, and a project whose
+        // media was never sampled is a normal answer, not a failure.
+        const frames = this.toolkit.listFrames(String(args.eventId), {
+          ...(typeof args.count === 'number' ? { count: args.count } : {}),
+        });
+        if (frames.length === 0) {
+          return {
+            looked: false,
+            reason:
+              'this project has no sampled frames, so there is nothing to look at. Decide from the description, the speech and the shots.',
+          };
+        }
+        try {
+          const sheet = await this.toolkit.getContactSheet(String(args.eventId), {
+            ...(typeof args.count === 'number' ? { count: args.count } : {}),
+          });
+          return { looked: true, contact_sheet: sheet, frames: frames.length };
+        } catch (error) {
+          return {
+            looked: false,
+            reason: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
       case 'compare_events':
         return this.toolkit.compareEvents((args.eventIds as string[]) ?? []);
       case 'search': {

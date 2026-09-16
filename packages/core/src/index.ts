@@ -14,3 +14,4 @@ export * from './graph.js';
 export * from './embed.js';
 export * from './assess-stage.js';
 export * from './compile.js';
+export * from './inspect.js';
