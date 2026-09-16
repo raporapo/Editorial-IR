@@ -9,7 +9,25 @@ is compatible with.
 
 ## Unreleased
 
-Nothing yet.
+### Changed
+
+- The planner allocates each clip the duration selection budgeted for it,
+  instead of resetting every clip to its floor and redistributing by value.
+  Selection and allocation were using two different notions of how long a clip
+  should be, so the cut that came out was not the cut that was chosen. On the
+  worked example the three-minute travel vlog now carries 89.5% of the speech it
+  selected rather than 82.8% — four more seconds of people finishing their
+  sentences, at the same length and with the same clips.
+- `oea plan --require <id>` now recovers a moment the skill dropped, rather than
+  only reweighting one it had already kept, and an event id that names nothing
+  is an error instead of silently producing the default cut.
+
+### Fixed
+
+- `oea demo` works on an installed package. The worked example it needs lives
+  outside the CLI package and was not being shipped with it.
+- Piping any command into something that stops reading — `| head`, or quitting
+  `less` halfway — printed a Node stack trace instead of exiting quietly.
 
 ## 0.1.0
 

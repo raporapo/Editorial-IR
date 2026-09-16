@@ -243,6 +243,52 @@ describe('the user outranks the planner', () => {
   });
 });
 
+describe('what the cut does with the time it has', () => {
+  it('lets the people in it finish their sentences', async () => {
+    const { ir, plan } = await planned();
+
+    // A plan is valid long before it is good, and the difference is mostly
+    // here: a clip trimmed under the length of the thing someone is saying cuts
+    // them off mid-word, and no schema notices. This measures how much of the
+    // speech inside the clips the planner chose actually survives its trim.
+    let selectedMs = 0;
+    let survivingMs = 0;
+    for (const operation of plan.tracks.video) {
+      const event = ir.events.find((e) => e.id === operation.event_id);
+      for (const speech of event?.observed.speech ?? []) {
+        selectedMs += speech.end_ms - speech.start_ms;
+        survivingMs += Math.max(
+          0,
+          Math.min(operation.source_out_ms, speech.end_ms) -
+            Math.max(operation.source_in_ms, speech.start_ms),
+        );
+      }
+    }
+
+    expect(selectedMs).toBeGreaterThan(0);
+    // Allocating each clip the duration selection budgeted for it, rather than
+    // resetting everything to its floor, took this from 82.8% to 89.5%. The
+    // floor here is below that on purpose: it is a guard against the regression,
+    // not a restatement of today's number.
+    expect(survivingMs / selectedMs).toBeGreaterThan(0.87);
+  }, 60_000);
+
+  it('varies clip length instead of cutting everything the same', async () => {
+    const { plan } = await planned();
+    const durations = plan.tracks.video.map((o) => o.source_out_ms - o.source_in_ms);
+    const mean = durations.reduce((sum, d) => sum + d, 0) / durations.length;
+    const spread = Math.sqrt(
+      durations.reduce((sum, d) => sum + (d - mean) ** 2, 0) / durations.length,
+    );
+
+    // A cut where every clip is the same length reads as a slideshow. The
+    // moments worth watching should visibly get more time than the ones that
+    // are there to carry the viewer between them.
+    expect(spread / mean).toBeGreaterThan(0.5);
+    expect(Math.max(...durations)).toBeGreaterThan(Math.min(...durations) * 3);
+  }, 60_000);
+});
+
 describe('the caller outranks the skill', () => {
   it('keeps an event it asked for by name, even one the skill turned down', async () => {
     const { ir, observations } = await compiled();
