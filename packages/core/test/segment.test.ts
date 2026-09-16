@@ -27,6 +27,7 @@ function shot(id: string, start: number, end: number, changeScore?: number): Sho
 function observations(overrides: Partial<ObservationTimeline> = {}): ObservationTimeline {
   return {
     project_id: 'prj_test',
+    fingerprint: 'test',
     pipeline_version: '0.1.0',
     generated_at: '2026-09-16T00:00:00.000Z',
     utterances: [],
