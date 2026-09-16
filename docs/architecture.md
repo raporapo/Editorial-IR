@@ -172,3 +172,6 @@ would be worth — uncertainty first, weighted by how much of the piece they
 occupy — and the expensive model runs on as many as the budget allows. A budget
 that would be exceeded stops the run with an error, because discovering a limit
 on an invoice is not an acceptable way to learn it.
+
+The cache keys, what each kind of edit invalidates, and the three ways of running
+it are in [cost.md](cost.md).

@@ -32,6 +32,9 @@ jobs:
       # A cross-language contract that exists in only one language is how two
       # runtimes quietly diverge, so a stale schemas/ fails the build.
       - run: pnpm schema:check
+      # A broken link in the README is read by somebody deciding whether to use
+      # this at all.
+      - run: pnpm docs:check
 
   python:
     runs-on: ubuntu-latest

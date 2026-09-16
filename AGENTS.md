@@ -90,6 +90,10 @@ one language is how two runtimes quietly diverge.
 - Test behaviour that matters, with a name that says why it matters. "never lets
   an event straddle two recordings" is a test; "returns an array" is not.
 - Determinism is a property worth testing directly, and several tests do.
+- A change to how events are understood, judged, selected or trimmed is not
+  finished when the tests pass. Read the cut.
+  [docs/evaluation.md](docs/evaluation.md) is how quality is judged here, and how
+  to turn "this feels better" into something that can be asserted.
 
 ## Things that will be rejected
 

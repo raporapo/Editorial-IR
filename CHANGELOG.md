@@ -40,6 +40,12 @@ is compatible with.
   against its own 20-second ceiling. A skill's own rules are unaffected.
 - `docs/skills.md` documents the `defaults` block, which it had only ever shown
   by example.
+- Three new documents for things that were implemented but written down nowhere:
+  [the hierarchy and what each step down costs](docs/inspection.md), [caching,
+  incremental recompute, escalation and budgets](docs/cost.md), and [how quality
+  is judged here](docs/evaluation.md).
+- `pnpm docs:check` fails on a broken relative link in any markdown file, and
+  runs in CI.
 
 ### Fixed
 

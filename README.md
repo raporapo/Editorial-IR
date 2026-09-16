@@ -98,6 +98,17 @@ excluded does not come back. A misspelt id is an error, not a silent no-op.
 Use `oea annotate` instead when the correction is about the footage rather than
 about this cut — an annotation survives re-analysis, and a flag does not.
 
+And when you want to know what is actually inside a moment rather than why it was
+chosen:
+
+```bash
+oea inspect evt_0014              # the shots it is made of
+oea inspect evt_0014 --sheet      # its frames, as one image
+```
+
+A thirty-eight second event described as "train window, city" turning out to be
+four separate nine-second shots is the kind of thing the summary cannot tell you.
+
 Ingesting media needs `ffprobe` on your PATH. Everything else is optional.
 
 ## What it costs to run
@@ -175,6 +186,8 @@ understood.
 - [Writing an adapter](docs/adapters.md) — supporting another editing application
 - [Decision backends](docs/decision-backends.md) — swapping how events are judged
 - [The perception protocol](docs/perception-protocol.md) — the TypeScript/Python boundary
+- [Looking closer](docs/inspection.md) — the hierarchy, and what each step down costs
+- [What it costs](docs/cost.md) — caching, incremental recompute, escalation, budgets
 - [Privacy](docs/privacy.md) — what leaves the machine, and when
 - [Contributing](CONTRIBUTING.md)
 
