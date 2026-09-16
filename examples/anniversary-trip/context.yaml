@@ -11,19 +11,26 @@ background:
   occasion: 交際1周年旅行
   summary: 大阪への一泊旅行。USJで一日遊んで、最後は夜景を見に行った。
   people:
+    # An alias does not have to be a name. The camera label two_people means both
+    # of us are in shot, and saying so here is what lets a skill ask for the
+    # moments we are both in — without it, the people section does nothing on
+    # footage where nobody says a name out loud, which is most footage.
     - id: me
       role: 自分
-      aliases: []
+      aliases: [two_people]
     - id: partner
       role: 彼女
-      aliases: []
+      aliases: [two_people]
   places:
     - id: USJ
       display_name: ユニバーサル・スタジオ・ジャパン
       aliases: [ユニバ, universal studios japan]
     - id: 展望台
       display_name: 梅田スカイビル空中庭園
-      aliases: []
+      # Aliases are how a name you use reaches footage that never says it: the
+      # transcript here says きれいだね, not 展望台, and the label on the picture is
+      # in English.
+      aliases: [observation_deck, 空中庭園]
   vocabulary: [ユニバ, 梅田スカイビル, たこ焼き]
   notes: []
 

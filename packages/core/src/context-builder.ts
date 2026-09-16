@@ -19,6 +19,7 @@ import { annotationsFor, applyAnnotations, withOverrides } from './annotations.j
 import { selectForEscalation, type EscalationPolicy, type CostBudget } from './budget.js';
 import type { ModelRunRecorder } from './model-runs.js';
 import { framePathFor } from './observe.js';
+import { linkKnownEntities, withKnownEntities } from './entities.js';
 import type { PerceptionCache } from './cache.js';
 import { hashObject } from './fingerprint.js';
 
@@ -191,13 +192,28 @@ export async function buildSemanticEvents(
           }
         : {}),
       entities: {
-        value: {
-          people: described?.entities.people ?? [],
-          places: described?.entities.places ?? [],
-          objects: described?.entities.objects ?? [],
-          topics: described?.entities.topics ?? [],
-          organisations: [],
-        },
+        // What the user named, found where it is mentioned, merged with what the
+        // model found. Both are inferred — the vocabulary is the user's, but the
+        // claim "this is in this event" is ours — and the user's ids go first
+        // because they are the ones a skill rule and a reader use.
+        value: withKnownEntities(
+          {
+            people: described?.entities.people ?? [],
+            places: described?.entities.places ?? [],
+            objects: described?.entities.objects ?? [],
+            topics: described?.entities.topics ?? [],
+            organisations: [],
+          },
+          linkKnownEntities(
+            {
+              speech: skeleton.observed.speech.map((utterance) => utterance.text),
+              ocr: skeleton.observed.ocr,
+              visual_labels: skeleton.observed.visual_labels,
+              ...(described?.description ? { description: described.description } : {}),
+            },
+            options.context,
+          ),
+        ),
         provenance: 'inferred',
       },
       affect: { value: described?.affect ?? {}, provenance: 'inferred' },

@@ -214,6 +214,39 @@ describe('compiling the worked example', () => {
   });
 });
 
+describe('what the user named', () => {
+  it('appears on the events that mention it', async () => {
+    // context.yaml is documented as the authority on who is in the footage and
+    // where it was shot, and it used to be neither: every event in this example
+    // had no people and no places, while the transcript said 今日はUSJだね.
+    const { ir } = await compile();
+
+    const withPlace = ir.events.filter((e) => e.entities.value.places.length > 0);
+    const withPerson = ir.events.filter((e) => e.entities.value.people.length > 0);
+    expect(withPlace.length).toBeGreaterThan(0);
+    expect(withPerson.length).toBeGreaterThan(0);
+
+    // Always the id from context.yaml, never the form that matched: one name for
+    // one thing, or a skill rule works on some events and not others.
+    const declared = new Set(ir.context.background.places.map((place) => place.id));
+    for (const event of withPlace) {
+      expect(event.entities.value.places.some((place) => declared.has(place))).toBe(true);
+    }
+  }, 60_000);
+
+  it('reaches the search index, so a name finds its footage', async () => {
+    // The labels on this footage are in English and the place is named in
+    // Japanese, which lexical search can never bridge on its own. The user's own
+    // vocabulary is what bridges it.
+    const { ir, embeddings } = await compile();
+    const texts = ir.events
+      .filter((e) => e.entities.value.places.includes('展望台'))
+      .map((e) => e.id);
+    expect(texts.length).toBeGreaterThan(0);
+    expect(embeddings.records.length).toBeGreaterThan(0);
+  }, 60_000);
+});
+
 describe('the corrections a user can make', () => {
   async function compiledWith(annotations: unknown[]) {
     const store = await makeExampleProject();

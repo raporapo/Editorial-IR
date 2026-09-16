@@ -11,6 +11,17 @@ is compatible with.
 
 ### Added
 
+- **`context.yaml`'s people and places now reach the footage.** They are
+  documented as the authority on who is in a video and where it was shot, and
+  they were neither: the rule-based context model returned empty arrays
+  unconditionally, so every event in the worked example had no people and no
+  places while the transcript said 今日はUSJだね. Declared names, display names and
+  aliases are now matched against speech, on-screen text and visual labels, and
+  the canonical id is what lands on the event — so a skill rule asking for the
+  moments with both people in them works, and searching 展望台 finds footage whose
+  labels are all in English, which lexical search could never bridge on its own.
+  `aliases`, documented since the beginning as "used to link transcript
+  mentions", had been read by nothing.
 - **Every correction the compiler understands is now reachable.** `oea annotate`
   exposed five kinds; the contract and the compiler supported eleven. "This is
   not a sad scene", "this person is my partner", "these two run together" and
