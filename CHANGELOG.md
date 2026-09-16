@@ -21,6 +21,15 @@ is compatible with.
 - `oea plan --require <id>` now recovers a moment the skill dropped, rather than
   only reweighting one it had already kept, and an event id that names nothing
   is an error instead of silently producing the default cut.
+- An inherited skill rule can no longer take a clip outside the bounds the
+  skill declared for itself. A duration written in a parent skill means
+  something different inside a child: `base-editor`'s `trim-dead-air` shortens a
+  silent stretch to 4 seconds against that skill's 12-second ceiling, and
+  inherited unchanged by `shorts`, whose ceiling is 3.5, it was lengthening
+  clips instead. `tech-youtube` was silently inheriting a 40-second allowance
+  against its own 20-second ceiling. A skill's own rules are unaffected.
+- `docs/skills.md` documents the `defaults` block, which it had only ever shown
+  by example.
 
 ### Fixed
 

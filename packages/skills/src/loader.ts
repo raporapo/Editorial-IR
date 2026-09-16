@@ -7,6 +7,7 @@ import {
   SkillManifest,
   parseOrThrow,
   type SkillManifest as SkillManifestType,
+  type SkillRule as SkillRuleType,
 } from '@editorial-ir/contracts';
 
 /**
@@ -177,15 +178,18 @@ export class SkillRegistry {
  *   arc whose segment budgets no longer sum to one is not a useful shape.
  * - `rules` are concatenated, parent first. At equal priority the child's rule
  *   is applied later and therefore wins.
+ * - An inherited rule's clip bounds are clamped to the child's own defaults. A
+ *   rule may tighten the window the child declared; it may not widen it.
  */
 export function mergeSkills(
   parent: SkillManifestType,
   child: SkillManifestType,
 ): SkillManifestType {
+  const defaults = { ...parent.defaults, ...child.defaults };
   return {
     ...parent,
     ...child,
-    defaults: { ...parent.defaults, ...child.defaults },
+    defaults,
     scoring: {
       ...parent.scoring,
       ...child.scoring,
@@ -195,7 +199,44 @@ export function mergeSkills(
     arc: child.arc.segments.length > 0 ? child.arc : parent.arc,
     constraints: { ...parent.constraints, ...child.constraints },
     intent: { ...parent.intent, ...child.intent },
-    rules: [...parent.rules, ...child.rules],
+    rules: [...parent.rules.map((rule) => clampToDefaults(rule, defaults)), ...child.rules],
+  };
+}
+
+/**
+ * Holds an inherited rule inside the bounds the child skill declared.
+ *
+ * A rule's duration bound is written against the defaults of the skill it was
+ * written in, and inheritance can invert what it means. `base-editor` has a
+ * rule called `trim-dead-air` whose whole purpose is to shorten a silent
+ * stretch: 4 seconds, against that skill's ceiling of 12. Inherited by
+ * `shorts`, which declares a ceiling of 3.5 seconds, the same rule made a
+ * wordless shot of a train window the longest clip in a 37-second cut — longer
+ * than any moment where somebody speaks. The rule that exists to make things
+ * shorter was making one thing longer.
+ *
+ * So an inherited bound may only narrow the window. A skill's own rule is left
+ * alone: `talking-head` deliberately lets a dense explanation run past its own
+ * ceiling, and that is the author saying what their style is, in the file where
+ * the style lives.
+ */
+function clampToDefaults(
+  rule: SkillRuleType,
+  defaults: SkillManifestType['defaults'],
+): SkillRuleType {
+  const { minimum_duration_sec: min, maximum_duration_sec: max } = rule.action;
+  const clampedMin =
+    min === undefined ? undefined : Math.max(min, defaults.min_clip_duration_ms / 1000);
+  const clampedMax =
+    max === undefined ? undefined : Math.min(max, defaults.max_clip_duration_ms / 1000);
+  if (clampedMin === min && clampedMax === max) return rule;
+  return {
+    ...rule,
+    action: {
+      ...rule.action,
+      ...(clampedMin === undefined ? {} : { minimum_duration_sec: clampedMin }),
+      ...(clampedMax === undefined ? {} : { maximum_duration_sec: clampedMax }),
+    },
   };
 }
 

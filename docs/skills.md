@@ -47,6 +47,24 @@ rules:
 
 Everything not mentioned is inherited. `oea skills wedding` shows the result.
 
+## Defaults
+
+How every clip in this style is cut, before any rule has an opinion.
+
+| Field                  | Default | What it is                                                         |
+| ---------------------- | ------- | ------------------------------------------------------------------ |
+| `min_clip_duration_ms` | 1200    | the shortest a clip may be; below this a shot does not register    |
+| `max_clip_duration_ms` | 12000   | the longest a clip may be                                          |
+| `pad_in_ms`            | 150     | handle taken before the in point, where the source allows it       |
+| `pad_out_ms`           | 250     | handle taken after the out point                                   |
+| `snap_to_silence`      | true    | move a cut point to the nearest silence rather than cutting a word |
+| `snap_window_ms`       | 600     | how far a cut point may move to find one                           |
+| `default_transition`   | cut     | `{ type, duration_ms }` between clips that do not say otherwise    |
+
+The two duration fields are the shape of the style, and most of what makes one
+skill feel different from another: `shorts` caps at 3.5 seconds and `talking-head`
+at 25.
+
 ## Inheritance
 
 - `defaults`, `constraints` and `intent` merge field by field.
@@ -56,6 +74,20 @@ Everything not mentioned is inherited. `oea skills wedding` shows the result.
   budgets no longer sum to one is not a useful shape.
 - `rules` are concatenated, parent first. At equal priority the child's rule is
   applied later and therefore wins.
+- **An inherited rule's `minimum_duration_sec` and `maximum_duration_sec` are
+  clamped to your `defaults`.** An inherited rule may make a clip shorter than
+  your ceiling or longer than your floor; it may not take one outside them.
+
+That last rule is there because a duration written in a parent skill means
+something different inside yours. `base-editor` has a rule called `trim-dead-air`
+that shortens a silent stretch to 4 seconds — against that skill's ceiling of 12,
+that is a substantial trim. Inherited unchanged by `shorts`, whose ceiling is 3.5,
+the same rule made a wordless shot of a train window the longest clip in a
+37-second cut. A rule whose purpose is to shorten things was lengthening one.
+
+Your own rules are not clamped, because there the number and the ceiling are both
+yours: `talking-head` caps clips at 25 seconds and then has a rule letting a dense
+explanation run to 40, which is the style saying what it is.
 
 Cycles are rejected at load time.
 

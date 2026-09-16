@@ -164,6 +164,58 @@ describe('mergeSkills', () => {
     });
     expect(mergeSkills(parent, child).rules.map((r) => r.id)).toEqual(['p1', 'c1']);
   });
+
+  it('does not let an inherited rule run past the child’s own ceiling', () => {
+    // A bound is written against the defaults of the skill it was written in,
+    // and inheritance can invert what it means. A parent rule that shortens a
+    // clip to 4 seconds against a 10-second ceiling is a rule that *lengthens*
+    // it inside a skill whose ceiling is 3.5.
+    const shortening = SkillManifest.parse({
+      name: 'parent',
+      defaults: { max_clip_duration_ms: 10_000 },
+      rules: [{ id: 'trim', when: {}, action: { maximum_duration_sec: 4 } }],
+    });
+    const brisk = SkillManifest.parse({
+      name: 'child',
+      defaults: { max_clip_duration_ms: 3500 },
+    });
+
+    const merged = mergeSkills(shortening, brisk);
+    expect(merged.rules.find((r) => r.id === 'trim')?.action.maximum_duration_sec).toBe(3.5);
+  });
+
+  it('does not let an inherited rule reach below the child’s own floor', () => {
+    const permissive = SkillManifest.parse({
+      name: 'parent',
+      defaults: { min_clip_duration_ms: 500 },
+      rules: [{ id: 'brief', when: {}, action: { minimum_duration_sec: 0.8 } }],
+    });
+    const unhurried = SkillManifest.parse({
+      name: 'child',
+      defaults: { min_clip_duration_ms: 2500 },
+    });
+
+    expect(
+      mergeSkills(permissive, unhurried).rules.find((r) => r.id === 'brief')?.action
+        .minimum_duration_sec,
+    ).toBe(2.5);
+  });
+
+  it('leaves a skill’s own rule alone, even one that runs past its ceiling', () => {
+    // talking-head does exactly this on purpose: a dense explanation is allowed
+    // to run longer than the style's usual limit. That is the author saying
+    // what their style is, in the file where the style lives.
+    const child = SkillManifest.parse({
+      name: 'child',
+      defaults: { max_clip_duration_ms: 25_000 },
+      rules: [{ id: 'earns-it', when: {}, action: { maximum_duration_sec: 40 } }],
+    });
+
+    expect(
+      mergeSkills(parent, child).rules.find((r) => r.id === 'earns-it')?.action
+        .maximum_duration_sec,
+    ).toBe(40);
+  });
 });
 
 describe('validateSkill', () => {

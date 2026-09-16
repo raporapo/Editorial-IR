@@ -79,7 +79,7 @@
     "shorts": {
       "clips": 14,
       "duration": "00:00:37",
-      "duration_error_seconds": -2.4,
+      "duration_error_seconds": -2.9,
       "events_selected": 14,
       "events_available": 62,
       "mean_clip_seconds": 2.7,
@@ -89,7 +89,7 @@
         "op_0001   3.5s payoff      やっと着いた！ ここまで長かったね [UNIVERSAL STUDIOS JAPAN] ",
         "op_0002   2.0s transition  そろそろ出発しよう hotel_room, suitcase",
         "op_0003   2.0s setup       今日はUSJだね 楽しみすぎる hotel_lobby, two_people",
-        "op_0004   4.0s transition  train_window, city",
+        "op_0004   3.5s transition  train_window, city",
         "op_0005   2.0s build_up    もう見えてきた walkway, two_people",
         "op_0006   2.0s build_up    待ち時間90分だって ride_queue, crowd",
         "op_0007   3.5s reaction    うわ、すごい！ ride, two_people",
