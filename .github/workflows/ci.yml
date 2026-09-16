@@ -79,6 +79,23 @@ jobs:
       - run: pnpm oea apply --project ./tmp/demo --editor premiere
       - run: pnpm oea apply --project ./tmp/demo --editor aviutl2
 
+      # The Python perception path, end to end, against a bare install with no
+      # models. This is the shape of run that used to fail outright rather than
+      # degrade, and the unit tests could not see it: they exercise the protocol,
+      # not the CLI's wiring of it.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Analyse through the Python worker with no models installed
+        run: |
+          python -m venv /tmp/worker
+          /tmp/worker/bin/pip install ./services/perception
+          pnpm oea demo ./tmp/py
+          pnpm oea analyze --project ./tmp/py \
+            --perception "python:/tmp/worker/bin/python" --force
+          # A missing model costs you that stage, not the run.
+          test -f ./tmp/py/.oea/ir.json
+
   # The repository is not what people install. Everything above this job runs
   # against the source tree, where every file exists and every workspace link
   # resolves — which is exactly why it cannot see a file missing from `files`, a
