@@ -21,5 +21,23 @@
   },
   "dependencies": {
     "@editorial-ir/contracts": "workspace:*"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raporapo/Editorial-IR.git",
+    "directory": "packages/adapters"
+  },
+  "homepage": "https://github.com/raporapo/Editorial-IR#readme",
+  "bugs": {
+    "url": "https://github.com/raporapo/Editorial-IR/issues"
+  },
+  "keywords": [
+    "video",
+    "editing",
+    "editorial",
+    "opentimelineio",
+    "premiere",
+    "aviutl",
+    "ffmpeg"
+  ]
 }

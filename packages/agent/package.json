@@ -24,5 +24,23 @@
     "@editorial-ir/core": "workspace:*",
     "@editorial-ir/skills": "workspace:*",
     "@editorial-ir/index": "workspace:*"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raporapo/Editorial-IR.git",
+    "directory": "packages/agent"
+  },
+  "homepage": "https://github.com/raporapo/Editorial-IR#readme",
+  "bugs": {
+    "url": "https://github.com/raporapo/Editorial-IR/issues"
+  },
+  "keywords": [
+    "video",
+    "editing",
+    "editorial",
+    "opentimelineio",
+    "premiere",
+    "aviutl",
+    "ffmpeg"
+  ]
 }
