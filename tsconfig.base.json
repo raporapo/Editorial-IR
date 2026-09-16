@@ -17,7 +17,6 @@
     "useUnknownInCatchVariables": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
-    "erasableSyntaxOnly": true,
 
     "declaration": true,
     "declarationMap": true,

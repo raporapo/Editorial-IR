@@ -38,8 +38,10 @@ export type PerceptionOp = z.infer<typeof PerceptionOp>;
 const base = { id: z.string().min(1), v: z.string().default(PERCEPTION_PROTOCOL_VERSION) };
 
 export const HealthParams = obj({}).meta({ id: 'HealthParams' });
+export type HealthParams = z.infer<typeof HealthParams>;
 
 export const ProbeParams = obj({ path: z.string().min(1) }).meta({ id: 'ProbeParams' });
+export type ProbeParams = z.infer<typeof ProbeParams>;
 
 export const PrepareParams = obj({
   path: z.string().min(1),
@@ -51,6 +53,7 @@ export const PrepareParams = obj({
   /** Frames per second to sample for visual analysis. 0 disables frame sampling. */
   frame_fps: z.number().min(0).default(1),
 }).meta({ id: 'PrepareParams' });
+export type PrepareParams = z.infer<typeof PrepareParams>;
 
 export const TranscribeParams = obj({
   audio_path: z.string().min(1),
@@ -61,6 +64,7 @@ export const TranscribeParams = obj({
   word_timestamps: z.boolean().default(true),
   diarize: z.boolean().default(false),
 }).meta({ id: 'TranscribeParams' });
+export type TranscribeParams = z.infer<typeof TranscribeParams>;
 
 export const DetectShotsParams = obj({
   path: z.string().min(1),
@@ -68,6 +72,7 @@ export const DetectShotsParams = obj({
   threshold: z.number().min(0).max(1).default(0.3),
   min_shot_ms: Milliseconds.default(800),
 }).meta({ id: 'DetectShotsParams' });
+export type DetectShotsParams = z.infer<typeof DetectShotsParams>;
 
 export const EmbedFramesParams = obj({
   path: z.string().min(1),
@@ -75,6 +80,7 @@ export const EmbedFramesParams = obj({
   /** Candidate labels for zero-shot tagging. Empty means embeddings only. */
   label_vocabulary: z.array(z.string()).default([]),
 }).meta({ id: 'EmbedFramesParams' });
+export type EmbedFramesParams = z.infer<typeof EmbedFramesParams>;
 
 export const AnalyzeAudioParams = obj({
   audio_path: z.string().min(1),
@@ -84,12 +90,14 @@ export const AnalyzeAudioParams = obj({
   /** Classify laughter, applause, music and so on. Needs a tagging model. */
   classify_events: z.boolean().default(true),
 }).meta({ id: 'AnalyzeAudioParams' });
+export type AnalyzeAudioParams = z.infer<typeof AnalyzeAudioParams>;
 
 export const OcrParams = obj({
   path: z.string().min(1),
   timestamps_ms: z.array(Milliseconds).min(1),
   language: z.string().optional(),
 }).meta({ id: 'OcrParams' });
+export type OcrParams = z.infer<typeof OcrParams>;
 
 /** The one genuinely expensive call: a multimodal look at a single event. */
 export const DescribeParams = obj({
@@ -105,12 +113,14 @@ export const DescribeParams = obj({
   user_context: z.record(z.string(), z.unknown()).default({}),
   language: z.string().optional(),
 }).meta({ id: 'DescribeParams' });
+export type DescribeParams = z.infer<typeof DescribeParams>;
 
 export const EmbedTextParams = obj({
   texts: z.array(z.string()).min(1),
   /** `query` and `passage` may be encoded differently by asymmetric models. */
   role: z.enum(['query', 'passage']).default('passage'),
 }).meta({ id: 'EmbedTextParams' });
+export type EmbedTextParams = z.infer<typeof EmbedTextParams>;
 
 export const PerceptionRequest = z
   .discriminatedUnion('op', [
