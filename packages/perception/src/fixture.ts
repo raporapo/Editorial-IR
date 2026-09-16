@@ -62,6 +62,19 @@ export const PerceptionFixture = z
   .loose();
 export type PerceptionFixture = z.infer<typeof PerceptionFixture>;
 
+/** Reads and validates a fixture file. */
+export function loadPerceptionFixture(path: string): PerceptionFixture {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    throw new EditorialError('io_error', `could not read the perception fixture at ${path}`, {
+      cause: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return parseOrThrow(PerceptionFixture, raw, `perception fixture ${path}`);
+}
+
 const FIXTURE_IDENTITY: ModelIdentity = {
   backend: 'fixture',
   model: 'replay',
@@ -78,15 +91,7 @@ export class FixturePerception
   constructor(private readonly fixture: PerceptionFixture) {}
 
   static fromFile(path: string): FixturePerception {
-    let raw: unknown;
-    try {
-      raw = JSON.parse(readFileSync(path, 'utf8'));
-    } catch (error) {
-      throw new EditorialError('io_error', `could not read perception fixture at ${path}`, {
-        cause: String(error),
-      });
-    }
-    return new FixturePerception(parseOrThrow(PerceptionFixture, raw, `perception fixture ${path}`));
+    return new FixturePerception(loadPerceptionFixture(path));
   }
 
   private assetFixture(path: string): z.infer<typeof AssetFixture> {

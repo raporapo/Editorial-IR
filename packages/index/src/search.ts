@@ -49,6 +49,12 @@ export interface SearchHit {
   snippet: string;
 }
 
+/** Aspects whose stored vectors could not be searched with this query. */
+export interface SearchDiagnostics {
+  /** Aspects where the query and the index are in different embedding spaces. */
+  unsearchableKinds: EmbeddingKind[];
+}
+
 const DEFAULT_VECTOR_WEIGHT = 0.65;
 
 /**
@@ -73,6 +79,9 @@ export class SemanticIndex {
     return this.events.size;
   }
 
+  /** Aspects the last search could not compare vectors for. */
+  lastDiagnostics: SearchDiagnostics = { unsearchableKinds: [] };
+
   /** Searches one aspect, or all of them and keeps each event's best. */
   async search(query: string, options: SearchOptions = {}): Promise<SearchHit[]> {
     const kinds = options.kinds ?? EMBEDDING_KINDS;
@@ -84,12 +93,17 @@ export class SemanticIndex {
     const [queryVector] = await this.encoder.embed([query], 'query');
 
     const best = new Map<string, SearchHit>();
+    const unsearchable: EmbeddingKind[] = [];
+
     for (const kind of kinds) {
       const vectorHits = new Map<string, number>();
       if (queryVector) {
         for (const hit of this.vectors.search({ vector: queryVector, kind, ownerIds: candidates })) {
           vectorHits.set(hit.ownerId, hit.score);
         }
+        // Stored vectors that the query could not be compared against: the
+        // search still works lexically, and the caller is told why it is weaker.
+        if (vectorHits.size === 0 && this.vectors.owners(kind).length > 0) unsearchable.push(kind);
       }
 
       for (const eventId of candidates) {
@@ -116,6 +130,8 @@ export class SemanticIndex {
         }
       }
     }
+
+    this.lastDiagnostics = { unsearchableKinds: unsearchable };
 
     const minScore = options.minScore ?? 0;
     return [...best.values()]

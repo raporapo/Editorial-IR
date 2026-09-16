@@ -124,7 +124,7 @@ describe('snapTo', () => {
 });
 
 describe('preferredDuration', () => {
-  it('spends the ceiling on the good moments and the floor on the rest', () => {
+  it('spends the ceiling on the best-ranked moments and the floor on the worst', () => {
     expect(preferredDuration(1500, 9000, 0)).toBe(1500);
     expect(preferredDuration(1500, 9000, 1)).toBe(9000);
     expect(preferredDuration(1500, 9000, 0.5)).toBe(5250);

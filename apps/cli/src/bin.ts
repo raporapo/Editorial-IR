@@ -1,1 +1,23 @@
-export {};
+#!/usr/bin/env node
+import { EditorialError } from '@editorial-ir/contracts';
+import { main } from './cli.js';
+import { fail, note } from './ui.js';
+
+try {
+  process.exitCode = await main(process.argv.slice(2));
+} catch (error) {
+  if (EditorialError.is(error)) {
+    fail(error.message);
+    // Details are the difference between "not found" and "not found, here is
+    // what does exist".
+    for (const [key, value] of Object.entries(error.details)) {
+      if (value === undefined) continue;
+      note(`  ${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`);
+    }
+    process.exitCode = 1;
+  } else {
+    fail(error instanceof Error ? error.message : String(error));
+    if (process.env.OEA_DEBUG && error instanceof Error && error.stack) note(error.stack);
+    process.exitCode = 1;
+  }
+}

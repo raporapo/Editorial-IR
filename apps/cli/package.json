@@ -30,6 +30,7 @@
     "@editorial-ir/skills": "workspace:*",
     "@editorial-ir/decision": "workspace:*",
     "@editorial-ir/perception": "workspace:*",
-    "@editorial-ir/index": "workspace:*"
+    "@editorial-ir/index": "workspace:*",
+    "yaml": "^2.9.1"
   }
 }

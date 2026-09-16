@@ -80,6 +80,13 @@ export class FlatVectorIndex implements VectorIndex {
     const hits: VectorHit[] = [];
     for (const [ownerId, vector] of map) {
       if (allowed && !allowed.has(ownerId)) continue;
+      // Vectors of different widths came from different models and are not in
+      // the same space. Comparing the overlapping prefix produces a number, and
+      // the number is noise — which is far worse than no answer, because it
+      // ranks confidently. A text query cannot search vision vectors unless the
+      // two models share an embedding space, and width is the cheap proxy for
+      // "they do not".
+      if (vector.length !== needle.length) continue;
       const score = dot(needle, vector);
       if (score >= minScore) hits.push({ ownerId, kind: query.kind, score });
     }

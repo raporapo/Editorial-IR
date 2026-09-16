@@ -1,0 +1,162 @@
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { main } from '../src/index.js';
+import { displayWidth, truncate } from '../src/ui.js';
+
+/**
+ * The CLI is tested by running it.
+ *
+ * Every command in the documented walkthrough is exercised here, in order,
+ * against the worked example: a quick start that has quietly stopped working is
+ * the fastest way to lose someone on their first attempt.
+ */
+let output: string[] = [];
+let errors: string[] = [];
+
+beforeEach(() => {
+  output = [];
+  errors = [];
+  vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+    output.push(String(chunk));
+    return true;
+  });
+  vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+    errors.push(String(chunk));
+    return true;
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+const stdout = () => output.join('');
+const stderr = () => errors.join('');
+
+describe('the walkthrough in the README', () => {
+  it('runs from demo to an exported timeline', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+
+    expect(await main(['demo', root])).toBe(0);
+    expect(stdout()).toContain('73 events');
+    expect(stdout()).toContain('cost: nothing');
+
+    output = [];
+    expect(await main(['timeline', '--project', root])).toBe(0);
+    expect(stdout()).toContain('evt_0001');
+
+    output = [];
+    expect(await main(['plan', '--project', root, '--skill', 'travel-vlog', '--duration', '180'])).toBe(0);
+    expect(stdout()).toContain('clips');
+    expect(stdout()).toMatch(/00:0[23]:\d\d/);
+
+    output = [];
+    expect(await main(['apply', '--project', root, '--editor', 'otio'])).toBe(0);
+    const timeline = join(root, 'output', 'timeline.otio');
+    expect(existsSync(timeline)).toBe(true);
+    expect(JSON.parse(readFileSync(timeline, 'utf8')).OTIO_SCHEMA).toBe('Timeline.1');
+  }, 60_000);
+
+  it('explains why a moment was kept or cut', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+    await main(['plan', '--project', root, '--skill', 'travel-vlog', '--duration', '180']);
+
+    output = [];
+    expect(await main(['explain', 'evt_0002', '--project', root])).toBe(0);
+    const text = stdout();
+    expect(text).toContain('how it was judged');
+    expect(text).toContain('story_importance');
+    expect(text).toContain('in the latest plan');
+  }, 60_000);
+
+  it('records an annotation and honours it on the next plan', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+
+    output = [];
+    expect(await main(['annotate', 'evt_0005', 'essential', '--project', root])).toBe(0);
+    expect(stdout()).toContain('essential on evt_0005');
+
+    output = [];
+    expect(await main(['analyze', '--project', root, '--perception', `fixture:${join(root, 'perception.fixture.json')}`])).toBe(0);
+    output = [];
+    expect(await main(['plan', '--project', root, '--skill', 'shorts', '--duration', '40', '--json'])).toBe(0);
+
+    const plan = JSON.parse(stdout());
+    // A short has room for fourteen clips; this one is in because it was asked for.
+    expect(plan.tracks.video.some((o: { event_id: string }) => o.event_id === 'evt_0005')).toBe(true);
+  }, 90_000);
+
+  it('produces machine-readable output when asked', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+
+    output = [];
+    expect(await main(['timeline', '--project', root, '--json'])).toBe(0);
+    expect(Array.isArray(JSON.parse(stdout()))).toBe(true);
+
+    output = [];
+    expect(await main(['context', '--project', root, '--json'])).toBe(0);
+    expect(JSON.parse(stdout()).background.occasion).toBe('交際1周年旅行');
+  }, 60_000);
+});
+
+describe('the commands that need no project', () => {
+  it('lists the skills and explains one', async () => {
+    expect(await main(['skills'])).toBe(0);
+    expect(stdout()).toContain('travel-vlog');
+
+    output = [];
+    expect(await main(['skills', 'travel-vlog'])).toBe(0);
+    expect(stdout()).toContain('what it weighs');
+    expect(stdout()).toContain('story_importance');
+  });
+
+  it('lists the editors and what each can take', async () => {
+    expect(await main(['editors'])).toBe(0);
+    for (const id of ['otio', 'premiere', 'aviutl2']) expect(stdout()).toContain(id);
+  });
+
+  it('prints a schema', async () => {
+    expect(await main(['schema', 'EditPlan'])).toBe(0);
+    const schema = JSON.parse(stdout());
+    expect(schema.$id).toContain('EditPlan');
+  });
+
+  it('reports what is installed', async () => {
+    const code = await main(['doctor']);
+    // Exits non-zero when something needs attention, which is the point.
+    expect([0, 1]).toContain(code);
+    expect(stdout()).toContain('what is configured');
+  });
+
+  it('shows help, and says so when a command does not exist', async () => {
+    expect(await main(['--help'])).toBe(0);
+    expect(stdout()).toContain('oea init');
+
+    errors = [];
+    expect(await main(['frobnicate'])).toBe(2);
+    expect(stderr()).toContain('no command called');
+  });
+
+  it('rejects an unknown flag rather than ignoring it', async () => {
+    expect(await main(['timeline', '--colour'])).toBe(2);
+    expect(stderr()).toContain('--colour');
+  });
+});
+
+describe('terminal widths', () => {
+  it('counts Japanese as full width, or every table would misalign', () => {
+    expect(displayWidth('abc')).toBe(3);
+    expect(displayWidth('やっと')).toBe(6);
+    expect(displayWidth('aあ')).toBe(3);
+  });
+
+  it('truncates on column width rather than code points', () => {
+    expect(displayWidth(truncate('ややややややや', 8))).toBeLessThanOrEqual(8);
+    expect(truncate('short', 20)).toBe('short');
+  });
+});

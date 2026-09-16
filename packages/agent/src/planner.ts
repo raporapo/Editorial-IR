@@ -114,7 +114,9 @@ export function planEdit(options: PlanOptions): EditPlan {
       value: directive.score,
       minMs,
       maxMs,
-      preferredMs: preferredDuration(minMs, maxMs, directive.score),
+      // Filled in once every candidate is known: how long a clip should be is a
+      // question about how it compares to the others, not about its raw score.
+      preferredMs: minMs,
       required: directive.required,
       segment: 0,
       index,
@@ -125,6 +127,7 @@ export function planEdit(options: PlanOptions): EditPlan {
     throw new EditorialError('plan_invalid', 'every event was dropped or excluded; there is nothing to cut');
   }
 
+  assignPreferredDurations(candidates);
   assignArcSegments(candidates, skill);
   suppressDuplicates(candidates, ir, rationale);
 
@@ -358,9 +361,36 @@ function density(candidate: Candidate, preferRoles: readonly string[]): number {
  * about the moment, and spending it on the good ones is the difference between
  * a cut that breathes and one that is uniformly clipped.
  */
-export function preferredDuration(minMs: number, maxMs: number, value: number): number {
-  const scaled = Math.min(1, Math.max(0, value));
+export function preferredDuration(minMs: number, maxMs: number, rank: number): number {
+  const scaled = Math.min(1, Math.max(0, rank));
   return Math.round(minMs + (maxMs - minMs) * scaled);
+}
+
+/**
+ * Sets each candidate's preferred duration from its rank, not its raw score.
+ *
+ * Absolute scores are not comparable across projects or across decision
+ * backends: rules produce a narrow band where a model produces a wide one, and
+ * using the raw number means the same footage is cut at a uniform three seconds
+ * under one backend and properly varied under another. Rank is the same
+ * question — which of these moments is worth more time — asked in a way that
+ * does not depend on how a particular backend spreads its numbers.
+ */
+export function assignPreferredDurations(candidates: Candidate[]): void {
+  if (candidates.length === 0) return;
+  if (candidates.length === 1) {
+    const only = candidates[0]!;
+    only.preferredMs = Math.round((only.minMs + only.maxMs) / 2);
+    return;
+  }
+
+  const ranked = [...candidates].sort(
+    (a, b) => a.value - b.value || a.event.id.localeCompare(b.event.id),
+  );
+  for (const [position, candidate] of ranked.entries()) {
+    const rank = position / (ranked.length - 1);
+    candidate.preferredMs = preferredDuration(candidate.minMs, candidate.maxMs, rank);
+  }
 }
 
 /**
