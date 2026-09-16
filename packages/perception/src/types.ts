@@ -89,6 +89,18 @@ export interface ContextModel extends PerceptionModel {
 
 export interface TextEmbeddingModel extends PerceptionModel {
   readonly dim: number;
+  /**
+   * True when similarity from this encoder comes only from shared surface forms.
+   *
+   * A hashing vectoriser is lexical: two texts with no feature in common can
+   * only score above zero through a hash collision. Retrieval uses this to throw
+   * those away, because a collision is noise dressed as evidence — searching for
+   * ラーメン otherwise returns 最高だった at a confident-looking 0.29.
+   *
+   * A real embedding model must leave this unset. Finding "night view" for 夜景
+   * with nothing in common is exactly what it is for.
+   */
+  readonly lexical?: boolean;
   embed(texts: string[], role?: 'query' | 'passage'): Promise<number[][]>;
 }
 

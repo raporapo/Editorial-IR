@@ -71,6 +71,13 @@ is compatible with.
   assessment the way `importance` does, keeping the model's answer in the
   history, and a role outside the vocabulary is refused rather than stored and
   ignored.
+- **Search returned hash collisions as matches.** The default encoder is a
+  hashing vectoriser, so a vector score with no shared word can only be a
+  collision — and collisions are not small. Searching the worked example for
+  ラーメン returned 最高だった second of four at 0.29, with a confidence bar beside
+  it. Retrieval now drops zero-overlap hits when the encoder declares itself
+  lexical; a real embedding model is unaffected, since finding "night view" for
+  夜景 with nothing in common is exactly what one is for.
 - `oea demo` works on an installed package. The worked example it needs lives
   outside the CLI package and was not being shipped with it.
 - Piping any command into something that stops reading — `| head`, or quitting

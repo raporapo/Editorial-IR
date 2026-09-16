@@ -16,6 +16,13 @@ import { aspectText } from './aspects.js';
  * perception package: what it needs is one method, not a model registry.
  */
 export interface TextEncoder {
+  /**
+   * True when this encoder's similarity comes only from shared surface forms.
+   *
+   * See `TextEmbeddingModel.lexical`. Retrieval reads it to tell a real match
+   * from a hash collision; a semantic encoder leaves it unset.
+   */
+  readonly lexical?: boolean;
   embed(texts: string[], role?: 'query' | 'passage'): Promise<number[][]>;
 }
 
@@ -118,6 +125,16 @@ export class SemanticIndex {
 
         const vectorScore = vectorHits.get(eventId) ?? 0;
         const lexicalScore = coverage(query, text);
+
+        // A lexical encoder's vector score is not independent evidence: it is an
+        // approximation of the same shared-word signal `coverage` measures
+        // exactly. So a vector score with no shared word at all is a hash
+        // collision, and collisions are not small — searching the worked example
+        // for ラーメン returned 最高だった at 0.29, ranked second of four, with a
+        // confidence bar beside it. One real match presented as four is worse
+        // than one real match.
+        if (this.encoder.lexical && lexicalScore <= 0) continue;
+
         const score = vectorWeight * vectorScore + (1 - vectorWeight) * lexicalScore;
         if (score <= 0) continue;
 

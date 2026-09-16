@@ -29,6 +29,8 @@ const DEFAULT_NGRAMS = [2, 3];
 
 export class HashingTextEmbedding implements TextEmbeddingModel {
   readonly dim: number;
+  /** Its similarity is shared surface forms and nothing else. See the interface. */
+  readonly lexical = true;
   readonly identity: ModelIdentity;
   private readonly charNgrams: number[];
   private readonly includeWords: boolean;

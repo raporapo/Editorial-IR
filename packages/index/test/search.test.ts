@@ -49,7 +49,7 @@ const ir = makeIR({
   ],
 });
 
-async function buildIndex(): Promise<SemanticIndex> {
+async function buildIndex(options: { lexical?: boolean } = {}): Promise<SemanticIndex> {
   const vectors = new FlatVectorIndex();
   const records: EmbeddingRecord[] = [];
   for (const event of ir.events) {
@@ -65,7 +65,13 @@ async function buildIndex(): Promise<SemanticIndex> {
     }
   }
   vectors.add(records);
-  return new SemanticIndex(ir, vectors, encoder);
+  // The same vectors either way: what changes is whether retrieval is told that
+  // a score without shared words can only be a collision.
+  const lexical = options.lexical ?? true;
+  return new SemanticIndex(ir, vectors, {
+    lexical,
+    embed: (texts) => encoder.embed(texts),
+  });
 }
 
 describe('aspectText', () => {
@@ -193,6 +199,36 @@ describe('SemanticIndex', () => {
     const index = await buildIndex();
     const hits = await index.search('夜景', { timeRange: { start_ms: 0, end_ms: 15_000 } });
     expect(hits.every((h) => ['evt_0001', 'evt_0002'].includes(h.event_id))).toBe(true);
+  });
+
+  it('does not return a hash collision as a match', async () => {
+    // The default encoder is a hashing vectoriser, so a vector score with no
+    // shared word is a collision by construction — and collisions are not
+    // small. Searching the worked example for ラーメン used to return 最高だった
+    // second of four at 0.29, with a confidence bar beside it. One real match
+    // presented as four is worse than one real match.
+    const index = await buildIndex();
+    const hits = await index.search('ラーメン', { limit: 10 });
+
+    expect(hits.length).toBeGreaterThan(0);
+    for (const hit of hits) expect(hit.lexical_score).toBeGreaterThan(0);
+  });
+
+  it('still returns every real match', async () => {
+    // The guard must not become a stricter search: a term that genuinely
+    // appears in several events still finds all of them.
+    const index = await buildIndex();
+    const hits = await index.search('夜景', { limit: 10 });
+    expect(hits.length).toBeGreaterThan(0);
+  });
+
+  it('does not apply the guard to an encoder that is not lexical', async () => {
+    // A real embedding model finds "night view" for 夜景 with nothing in common,
+    // which is exactly what it is for. Dropping its zero-overlap hits would
+    // delete the entire benefit of configuring one.
+    const semantic = await buildIndex({ lexical: false });
+    const hits = await semantic.search('ラーメン', { limit: 10 });
+    expect(hits.some((hit) => hit.lexical_score === 0)).toBe(true);
   });
 
   it('returns nothing for an empty query rather than everything', async () => {
