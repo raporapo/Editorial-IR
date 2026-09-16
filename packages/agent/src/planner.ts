@@ -56,8 +56,13 @@ export interface PlanOptions {
  * duration, the user's must-keeps and the validator's invariants are still
  * satisfied by construction, whoever asked for what.
  *
+ * It does override the skill: `require` recovers an event a skill rule dropped,
+ * because the skill is a style and this is a particular request.
+ *
  * It cannot override the user. An event the user marked essential stays, and an
- * event they excluded stays out, whatever is passed here.
+ * event they excluded stays out, whatever is passed here. An id that names no
+ * event is an error rather than a no-op — planning the default cut after being
+ * asked for a different one is a failure that reports success.
  */
 export interface PlanOverrides {
   /** Select these if at all possible. */
@@ -106,10 +111,16 @@ export function planEdit(options: PlanOptions): EditPlan {
 
   // ---- candidates ----------------------------------------------------------
   const candidates: Candidate[] = [];
+  // Events the skill turned down, kept to one side so that a caller asking for
+  // one by name can have it back. The skill is a style; the caller is this
+  // particular request, and the request wins.
+  const setAside = new Map<string, Candidate>();
+  const knownEventIds = new Set<string>();
   for (const [index, event] of ordered.entries()) {
     const directive = directives.get(event.id);
     const assessment = assessmentFor(ir, event.id);
     if (!directive || !assessment) continue;
+    knownEventIds.add(event.id);
 
     if (event.knowledge.excluded) {
       rationale.push({
@@ -120,21 +131,11 @@ export function planEdit(options: PlanOptions): EditPlan {
       });
       continue;
     }
-    if (directive.dropped) {
-      rationale.push({
-        event_id: event.id,
-        decision: 'dropped',
-        reason: `dropped by ${describeRules(directive)}`,
-        score: directive.score,
-        skill_rule_ids: directive.matched_rule_ids,
-      });
-      continue;
-    }
 
     const available = event.end_ms - event.start_ms;
     const minMs = Math.min(directive.min_duration_ms, available);
     const maxMs = Math.max(minMs, Math.min(directive.max_duration_ms, available));
-    candidates.push({
+    const candidate: Candidate = {
       event,
       assessment,
       directive,
@@ -147,8 +148,28 @@ export function planEdit(options: PlanOptions): EditPlan {
       required: directive.required,
       segment: 0,
       index,
-    });
+    };
+
+    if (directive.dropped) {
+      rationale.push({
+        event_id: event.id,
+        decision: 'dropped',
+        reason: `dropped by ${describeRules(directive)}`,
+        score: directive.score,
+        skill_rule_ids: directive.matched_rule_ids,
+      });
+      setAside.set(event.id, candidate);
+      continue;
+    }
+
+    candidates.push(candidate);
   }
+
+  applyOverrides(candidates, options.overrides, {
+    rationale,
+    setAside,
+    knownEventIds,
+  });
 
   if (candidates.length === 0) {
     throw new EditorialError(
@@ -156,8 +177,6 @@ export function planEdit(options: PlanOptions): EditPlan {
       'every event was dropped or excluded; there is nothing to cut',
     );
   }
-
-  applyOverrides(candidates, options.overrides, rationale);
   assignPreferredDurations(candidates);
   assignArcSegments(candidates, skill);
   suppressDuplicates(candidates, ir, rationale);
@@ -394,12 +413,48 @@ function select(
 function applyOverrides(
   candidates: Candidate[],
   overrides: PlanOverrides | undefined,
-  rationale: PlanRationale[],
+  world: {
+    rationale: PlanRationale[];
+    /** Candidates the skill turned down, available for `require` to recover. */
+    setAside: Map<string, Candidate>;
+    /** Every event the plan could possibly have named. */
+    knownEventIds: Set<string>;
+  },
 ): void {
   if (!overrides) return;
+  const { rationale, setAside, knownEventIds } = world;
+
+  // A misspelt id used to do nothing at all, which is the worst outcome
+  // available: the caller asked for a different cut, got the default one, and
+  // was told it succeeded.
+  const unknown = [...new Set([...(overrides.require ?? []), ...(overrides.drop ?? [])])].filter(
+    (id) => !knownEventIds.has(id),
+  );
+  if (unknown.length > 0) {
+    throw new EditorialError(
+      'invalid_input',
+      `no such event: ${unknown.join(', ')}. Run "oea timeline" for the ids in this project.`,
+      { unknown_event_ids: unknown },
+    );
+  }
 
   const required = new Set(overrides.require ?? []);
   const dropped = new Set(overrides.drop ?? []);
+
+  // Asked for by name, turned down by the skill. Put it back where it belongs
+  // in the order, and take back the rationale line that said it was dropped —
+  // a plan that records both decisions for one event explains nothing.
+  for (const id of required) {
+    const recovered = setAside.get(id);
+    if (!recovered || dropped.has(id)) continue;
+    setAside.delete(id);
+    const at = candidates.findIndex((candidate) => candidate.index > recovered.index);
+    candidates.splice(at === -1 ? candidates.length : at, 0, recovered);
+    const line = rationale.findIndex(
+      (entry) => entry.event_id === id && entry.decision === 'dropped',
+    );
+    if (line !== -1) rationale.splice(line, 1);
+  }
 
   for (let i = candidates.length - 1; i >= 0; i--) {
     const candidate = candidates[i]!;

@@ -243,6 +243,127 @@ describe('the user outranks the planner', () => {
   });
 });
 
+describe('the caller outranks the skill', () => {
+  it('keeps an event it asked for by name, even one the skill turned down', async () => {
+    const { ir, observations } = await compiled();
+    const skill = registry.resolve('travel-vlog');
+
+    // An event the skill drops outright is the hard case: it never reaches
+    // selection, so a "require" that only reweights candidates does nothing at
+    // all and reports success.
+    const baseline = planEdit({ ir, skill, targetDurationMs: 180_000, observations });
+    const droppedBySkill = baseline.rationale.find((entry) => entry.decision === 'dropped');
+    expect(droppedBySkill).toBeDefined();
+    const wanted = droppedBySkill!.event_id;
+    expect(baseline.tracks.video.some((o) => o.event_id === wanted)).toBe(false);
+
+    const plan = planEdit({
+      ir,
+      skill,
+      targetDurationMs: 180_000,
+      observations,
+      overrides: { require: [wanted] },
+    });
+
+    expect(plan.tracks.video.some((o) => o.event_id === wanted)).toBe(true);
+    // And the plan no longer claims to have dropped something it kept.
+    expect(
+      plan.rationale.some((entry) => entry.event_id === wanted && entry.decision === 'dropped'),
+    ).toBe(false);
+    expect(validatePlan(plan, { ir }).ok).toBe(true);
+  });
+
+  it('keeps the recovered event in its place in the story', async () => {
+    const { ir, observations } = await compiled();
+    const skill = registry.resolve('travel-vlog');
+    const baseline = planEdit({ ir, skill, targetDurationMs: 180_000, observations });
+    const wanted = baseline.rationale.find((entry) => entry.decision === 'dropped')!.event_id;
+
+    const plan = planEdit({
+      ir,
+      skill,
+      targetDurationMs: 180_000,
+      observations,
+      overrides: { require: [wanted] },
+    });
+
+    // Chronological order is the planner's invariant, not something an override
+    // gets to break by appending to the end.
+    const order = plan.tracks.video.map((operation) => operation.event_id);
+    const byTime = [...plan.tracks.video].sort((a, b) => a.timeline_start_ms - b.timeline_start_ms);
+    expect(order).toEqual(byTime.map((operation) => operation.event_id));
+  });
+
+  it('leaves out an event it asked to drop', async () => {
+    const { ir, observations } = await compiled();
+    const skill = registry.resolve('travel-vlog');
+    const baseline = planEdit({ ir, skill, targetDurationMs: 180_000, observations });
+    const kept = baseline.tracks.video[2]!.event_id!;
+
+    const plan = planEdit({
+      ir,
+      skill,
+      targetDurationMs: 180_000,
+      observations,
+      overrides: { drop: [kept], reasons: { [kept]: 'the user has seen this already' } },
+    });
+
+    expect(plan.tracks.video.some((o) => o.event_id === kept)).toBe(false);
+    expect(
+      plan.rationale.some(
+        (entry) => entry.event_id === kept && entry.reason === 'the user has seen this already',
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses an event id that does not exist rather than ignoring it', async () => {
+    const { ir, observations } = await compiled();
+    const skill = registry.resolve('travel-vlog');
+
+    // Silently planning the default cut after being asked for a different one
+    // is the failure that looks like success.
+    expect(() =>
+      planEdit({
+        ir,
+        skill,
+        targetDurationMs: 180_000,
+        observations,
+        overrides: { require: ['evt_9999'] },
+      }),
+    ).toThrow(/evt_9999/);
+  });
+
+  it('still cannot drop what the user called essential', async () => {
+    const { store, ir } = await compiled();
+    const essential = ir.events[4]!;
+
+    store.writeAnnotations([
+      {
+        id: 'ann_0001',
+        type: 'essential',
+        target: { kind: 'event', event_id: essential.id },
+        priority: 0,
+        created_at: '2026-05-17T09:00:00.000Z',
+      },
+    ]);
+    const recompiled = await compileProject({
+      store,
+      suite: exampleSuite(),
+      decision: new HeuristicDecisionBackend(),
+    });
+
+    const plan = planEdit({
+      ir: recompiled.ir,
+      skill: registry.resolve('travel-vlog'),
+      targetDurationMs: 180_000,
+      observations: recompiled.observations,
+      overrides: { drop: [essential.id] },
+    });
+
+    expect(plan.tracks.video.some((o) => o.event_id === essential.id)).toBe(true);
+  });
+});
+
 describe('the toolkit', () => {
   it('answers the questions an agent would ask', async () => {
     const { ir } = await compiled();

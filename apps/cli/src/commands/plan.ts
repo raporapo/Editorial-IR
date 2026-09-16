@@ -30,6 +30,10 @@ export interface PlanArgs {
   skillsDir?: string;
   json?: boolean;
   quiet?: boolean;
+  /** Events to keep, whatever they score. */
+  require?: string[];
+  /** Events to leave out, whatever they score. */
+  drop?: string[];
 }
 
 export function runPlan(args: PlanArgs): number {
@@ -44,6 +48,14 @@ export function runPlan(args: PlanArgs): number {
     ...(args.duration === undefined ? {} : { targetDurationMs: Math.round(args.duration * 1000) }),
     ...(args.tolerance === undefined ? {} : { toleranceMs: Math.round(args.tolerance * 1000) }),
     ...(store.readObservations() ? { observations: store.readObservations()! } : {}),
+    ...(args.require?.length || args.drop?.length
+      ? {
+          overrides: {
+            ...(args.require?.length ? { require: args.require } : {}),
+            ...(args.drop?.length ? { drop: args.drop } : {}),
+          },
+        }
+      : {}),
   });
 
   const report = validatePlan(plan, { ir, projectRoot: store.paths.root, checkMediaExists: true });

@@ -81,6 +81,22 @@ Nothing in the system ever overwrites it, and it changes which moments the edit
 thinks are important. Delete the `occasion` line and compile again to see how
 much it moves.
 
+When you disagree with one decision rather than with the whole style, argue with
+the cut directly:
+
+```bash
+oea plan --skill travel-vlog --duration 180 --require evt_0005 --drop evt_0031
+```
+
+`--require` keeps a moment even if the skill threw it out; `--drop` leaves one
+out even if it scored well. The planner still owns the target length, so asking
+for one more moment shortens the others rather than overrunning. Neither flag can
+overrule you: an event you marked `essential` cannot be dropped, and one you
+excluded does not come back. A misspelt id is an error, not a silent no-op.
+
+Use `oea annotate` instead when the correction is about the footage rather than
+about this cut — an annotation survives re-analysis, and a flag does not.
+
 Ingesting media needs `ffprobe` on your PATH. Everything else is optional.
 
 ## What it costs to run

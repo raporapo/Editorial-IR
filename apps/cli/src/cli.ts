@@ -40,6 +40,8 @@ const OPTIONS = {
   aspect: { type: 'string' as const },
   limit: { type: 'string' as const },
   chapter: { type: 'string' as const },
+  require: { type: 'string' as const, multiple: true },
+  drop: { type: 'string' as const, multiple: true },
   budget: { type: 'string' as const },
   'max-escalations': { type: 'string' as const },
   force: { type: 'boolean' as const },
@@ -81,6 +83,15 @@ export async function main(argv: string[]): Promise<number> {
       throw new EditorialError('invalid_input', `"${value}" is not a number`);
     }
     return parsedNumber;
+  };
+
+  // `multiple: true` in a non-literal options object widens to
+  // `string | string[]`, and a single `--require evt_0001` really does arrive as
+  // a bare string. Normalising here keeps the command signatures honest.
+  const list = (value: string | string[] | undefined): string[] | undefined => {
+    if (value === undefined) return undefined;
+    const values_ = Array.isArray(value) ? value : [value];
+    return values_.length > 0 ? values_ : undefined;
   };
 
   const common = {
@@ -145,6 +156,8 @@ export async function main(argv: string[]): Promise<number> {
         ...(number(values.tolerance) === undefined ? {} : { tolerance: number(values.tolerance) }),
         ...(values.json ? { json: true } : {}),
         ...(values.quiet ? { quiet: true } : {}),
+        ...(list(values.require) ? { require: list(values.require)! } : {}),
+        ...(list(values.drop) ? { drop: list(values.drop)! } : {}),
       });
 
     case 'explain':
@@ -287,6 +300,8 @@ function printHelp(command: string | undefined): void {
   heading('a cut');
   line('  oea skills [name]            what each editing style does');
   line('  oea plan --skill <name> --duration <seconds>');
+  line('               --require evt_0031  keep a moment, whatever it scores');
+  line('               --drop evt_0044     leave one out');
   line('  oea agent "<what you want>"  plan with a model in the loop (needs one)');
   line('  oea review                   what is wrong with the latest cut');
   line('  oea editors                  what each editing application can take');

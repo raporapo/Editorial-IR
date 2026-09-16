@@ -183,6 +183,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     ...(options.escalation ? { escalation: options.escalation } : {}),
     budget,
     derived,
+    cache: store.cache,
     ...(options.frameFps === undefined ? {} : { frameFps: options.frameFps }),
     ...(options.onProgress
       ? { onProgress: (stage, done, total) => options.onProgress?.(stage, '', done, total) }
@@ -208,6 +209,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     ...(options.escalationDecision ? { escalationModel: options.escalationDecision } : {}),
     ...(options.escalation ? { escalation: options.escalation } : {}),
     budget,
+    cache: store.cache,
     similarities,
     ...(options.onProgress
       ? { onProgress: (stage, done, total) => options.onProgress?.(stage, '', done, total) }

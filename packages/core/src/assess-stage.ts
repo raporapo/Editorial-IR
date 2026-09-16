@@ -1,4 +1,5 @@
 import {
+  PIPELINE_VERSION,
   seqId,
   type EditorialAssessment,
   type EventEditorial,
@@ -9,6 +10,8 @@ import {
 import { assessEvent, type EditorialDecisionModel } from '@editorial-ir/decision';
 import { type CostBudget, selectForEscalation, type EscalationPolicy } from './budget.js';
 import type { ModelRunRecorder } from './model-runs.js';
+import type { PerceptionCache } from './cache.js';
+import { hashObject } from './fingerprint.js';
 
 /**
  * Running the decision layer over every event.
@@ -31,6 +34,15 @@ export interface AssessOptions {
   budget?: CostBudget;
   /** Highest similarity each event has to any other, for redundancy. */
   similarities?: Map<string, number>;
+  /**
+   * Caches assessments on the event state and the backend.
+   *
+   * A judgement depends on what the event is and who was asked, and on nothing
+   * else — not on the target duration, not on the skill. Re-analysing after
+   * changing either should cost nothing, and with a hosted model it otherwise
+   * costs a full pass.
+   */
+  cache?: PerceptionCache;
   onProgress?: (stage: string, done: number, total: number) => void;
 }
 
@@ -73,7 +85,10 @@ export async function assessEvents(
   const drafts = new Map<string, Awaited<ReturnType<typeof assessEvent>>>();
   for (const [index, event] of ordered.entries()) {
     options.onProgress?.('assess', index, ordered.length);
-    drafts.set(event.id, await assessEvent(options.baseModel, states.get(event.id)!));
+    drafts.set(
+      event.id,
+      await assessCached(options.baseModel, states.get(event.id)!, options.cache),
+    );
   }
 
   const escalated: string[] = [];
@@ -159,6 +174,36 @@ export async function assessEvents(
   });
 
   return { editorial, escalated };
+}
+
+/** The key an assessment is cached under: the event state, and who was asked. */
+function assessKey(
+  model: EditorialDecisionModel,
+  state: EventState,
+): Parameters<PerceptionCache['get']>[0] {
+  return {
+    operation: 'assess',
+    mediaSha256: hashObject({ ...state, event_id: undefined }),
+    backend: model.identity.backend,
+    ...(model.identity.model === undefined ? {} : { model: model.identity.model }),
+    ...(model.identity.modelVersion === undefined
+      ? {}
+      : { modelVersion: model.identity.modelVersion }),
+    pipelineVersion: PIPELINE_VERSION,
+  };
+}
+
+async function assessCached(
+  model: EditorialDecisionModel,
+  state: EventState,
+  cache: PerceptionCache | undefined,
+): Promise<Awaited<ReturnType<typeof assessEvent>>> {
+  const key = assessKey(model, state);
+  const hit = cache?.get<Awaited<ReturnType<typeof assessEvent>>>(key);
+  if (hit) return hit;
+  const draft = await assessEvent(model, state);
+  cache?.set(key, draft);
+  return draft;
 }
 
 /** Builds the structured state a decision backend sees. */

@@ -1,4 +1,5 @@
 import {
+  PIPELINE_VERSION,
   overlapMs,
   rangesOverlap,
   seqId,
@@ -18,6 +19,8 @@ import { annotationsFor, applyAnnotations, withOverrides } from './annotations.j
 import { selectForEscalation, type EscalationPolicy, type CostBudget } from './budget.js';
 import type { ModelRunRecorder } from './model-runs.js';
 import { framePathFor } from './observe.js';
+import type { PerceptionCache } from './cache.js';
+import { hashObject } from './fingerprint.js';
 
 /**
  * Turning segments into events that mean something.
@@ -48,6 +51,15 @@ export interface BuildEventsOptions {
   /** Derivative paths, so frames can be handed to a multimodal model. */
   derived?: Map<string, PrepareResult>;
   frameFps?: number;
+  /**
+   * Caches descriptions on what they actually depend on.
+   *
+   * Without this, editing one annotation re-runs the vision-language model over
+   * every event in the project. The key is the describe call itself, so a change
+   * to the occasion correctly re-describes everything — it changes what the
+   * events mean — while a change to the target duration correctly costs nothing.
+   */
+  cache?: PerceptionCache;
 
   onProgress?: (stage: string, done: number, total: number) => void;
 }
@@ -90,12 +102,8 @@ export async function buildSemanticEvents(
     options.runs.fromIdentity('context', model.identity);
     for (const [index, skeleton] of skeletons.entries()) {
       options.onProgress?.('describe', index, skeletons.length);
-      descriptions.set(
-        skeleton.id,
-        await model.describe(
-          describeParams(skeleton, skeletons, index, options, { includeFrames: false }),
-        ),
-      );
+      const params = describeParams(skeleton, skeletons, index, options, { includeFrames: false });
+      descriptions.set(skeleton.id, await describeCached(model, params, options.cache));
     }
   }
 
@@ -128,13 +136,18 @@ export async function buildSemanticEvents(
       if (!selected.has(skeleton.id)) continue;
       options.onProgress?.('inspect', done++, decision.selected.length);
 
-      options.budget?.spend(costPerEvent, `a closer look at ${skeleton.id}`);
-      const result = await model.describe(
-        describeParams(skeleton, skeletons, index, options, { includeFrames: true }),
+      const params = describeParams(skeleton, skeletons, index, options, { includeFrames: true });
+      const cached = options.cache?.get<Awaited<ReturnType<ContextModel['describe']>>>(
+        describeKey(model, params),
       );
+      // Only spend from the budget when the call is actually going to happen.
+      if (!cached) options.budget?.spend(costPerEvent, `a closer look at ${skeleton.id}`);
+
+      const result = cached ?? (await describeCached(model, params, options.cache));
       descriptions.set(skeleton.id, result);
       escalated.push(skeleton.id);
-      options.runs.addCost(runId, costPerEvent, result.input_tokens, result.output_tokens);
+      if (!cached)
+        options.runs.addCost(runId, costPerEvent, result.input_tokens, result.output_tokens);
     }
   }
 
@@ -212,6 +225,47 @@ export async function buildSemanticEvents(
   }
 
   return { events, conflicts, escalated, escalationLimitedBy: limitedBy };
+}
+
+/**
+ * The key a description is cached under.
+ *
+ * Everything the model will be shown, plus which model it is. Frame *paths* are
+ * excluded because the same event analysed from a different working directory is
+ * the same call; whether frames were sent at all is not, because a description
+ * from four frames is a different thing from one from a transcript alone. The
+ * event id is excluded for the same reason: segmentation renumbers events, and
+ * a description of unchanged material should survive that.
+ */
+function describeKey(
+  model: ContextModel,
+  params: Parameters<ContextModel['describe']>[0],
+): Parameters<PerceptionCache['get']>[0] {
+  const { frame_paths, event_id: _event_id, ...stable } = params;
+  return {
+    operation: 'describe',
+    mediaSha256: hashObject(stable),
+    backend: model.identity.backend,
+    ...(model.identity.model === undefined ? {} : { model: model.identity.model }),
+    ...(model.identity.modelVersion === undefined
+      ? {}
+      : { modelVersion: model.identity.modelVersion }),
+    parameters: { with_frames: frame_paths.length > 0 },
+    pipelineVersion: PIPELINE_VERSION,
+  };
+}
+
+async function describeCached(
+  model: ContextModel,
+  params: Parameters<ContextModel['describe']>[0],
+  cache: PerceptionCache | undefined,
+): Promise<Awaited<ReturnType<ContextModel['describe']>>> {
+  const key = describeKey(model, params);
+  const hit = cache?.get<Awaited<ReturnType<ContextModel['describe']>>>(key);
+  if (hit) return hit;
+  const result = await model.describe(params);
+  cache?.set(key, result);
+  return result;
 }
 
 /**

@@ -12,6 +12,8 @@ coverage/
 # --- runtime artefacts -----------------------------------------------------
 .oea/
 *.log
+# Where the docs tell you to put a throwaway project: `oea demo ./tmp/demo`.
+/tmp/
 
 # --- python ----------------------------------------------------------------
 __pycache__/

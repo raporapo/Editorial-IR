@@ -194,11 +194,19 @@ export class LlmEditingAgent {
   }
 
   private build(request: AgentRequest, proposal: EditProposal): EditPlan {
+    // Models invent event ids. The planner refuses one it does not recognise,
+    // and rightly so for a person typing a command — but here that would throw
+    // away a whole run of tool calls over one bad character in one id. Drop the
+    // ids that do not exist and plan with the rest.
+    const real = new Set(this.toolkit.listEvents().map((event) => event.id));
+    const exists = (id: string): boolean => real.has(id);
+    const emphasise = proposal.emphasise.filter((item) => exists(item.event_id));
+
     const overrides: PlanOverrides = {
-      require: proposal.keep,
-      drop: proposal.drop,
-      boost: Object.fromEntries(proposal.emphasise.map((item) => [item.event_id, 0.25])),
-      reasons: Object.fromEntries(proposal.emphasise.map((item) => [item.event_id, item.reason])),
+      require: proposal.keep.filter(exists),
+      drop: proposal.drop.filter(exists),
+      boost: Object.fromEntries(emphasise.map((item) => [item.event_id, 0.25])),
+      reasons: Object.fromEntries(emphasise.map((item) => [item.event_id, item.reason])),
     };
 
     const plan = this.toolkit.createEditPlan({
