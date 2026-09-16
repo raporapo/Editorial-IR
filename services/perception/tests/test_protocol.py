@@ -15,10 +15,17 @@ from editorial_perception.protocol import Session, serve
 
 
 def run(lines: list[dict], handlers: dict) -> list[dict]:
+    return _run(lines, handlers)[0]
+
+
+def _run(lines: list[dict], handlers: dict) -> tuple[list[dict], str]:
+    """Replies, and whatever went to the log."""
     out = io.StringIO()
-    session = Session(out=out, err=io.StringIO())
+    err = io.StringIO()
+    session = Session(out=out, err=err)
     serve(handlers, io.StringIO("\n".join(json.dumps(line) for line in lines)), session)
-    return [json.loads(line) for line in out.getvalue().strip().splitlines() if line.strip()]
+    replies = [json.loads(line) for line in out.getvalue().strip().splitlines() if line.strip()]
+    return replies, err.getvalue()
 
 
 def echo(params, session):
@@ -52,6 +59,25 @@ def test_a_handler_that_raises_does_not_stop_the_loop():
     assert replies[0]["error"]["code"] == "internal"
     # The second request is still answered.
     assert replies[1]["ok"] is True
+
+
+def test_a_traceback_goes_in_the_reply_and_one_line_goes_in_the_log():
+    """A traceback is what you want when debugging and not what you want printed
+    at somebody who just ran `oea analyze` on a file we could not read. Twenty
+    lines of Python internals read as a crash rather than as one file skipped."""
+
+    def explode(params, session):
+        raise RuntimeError("the model fell over")
+
+    replies, log = _run([{"id": "1", "op": "explode", "params": {}}], {"explode": explode})
+
+    assert replies[0]["error"]["message"] == "RuntimeError: the model fell over"
+    # Kept, so that whoever wants it can have it.
+    assert "Traceback" in replies[0]["error"]["details"]["traceback"]
+    # But not shouted.
+    assert "Traceback" not in log
+    assert "explode failed" in log
+    assert len([line for line in log.strip().splitlines() if line.strip()]) == 1
 
 
 def test_a_coded_error_keeps_its_code():

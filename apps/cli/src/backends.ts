@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { EditorialError } from '@editorial-ir/contracts';
 import {
+  HashingTextEmbedding,
   OpenAiCompatibleContextModel,
   OpenAiCompatibleTextEmbedding,
   PythonWorkerClient,
@@ -12,9 +13,11 @@ import {
   WorkerShotDetector,
   WorkerSpeechModel,
   WorkerTextEmbeddingModel,
+  WorkerVisualEmbeddingModel,
   createFixtureSuite,
   createLocalSuite,
   loadPerceptionFixture,
+  workerHealth,
   type ContextModel,
   type PerceptionSuite,
 } from '@editorial-ir/perception';
@@ -58,7 +61,7 @@ export interface ResolvedBackends {
   close(): Promise<void>;
 }
 
-export function resolveBackends(options: BackendOptions = {}): ResolvedBackends {
+export async function resolveBackends(options: BackendOptions = {}): Promise<ResolvedBackends> {
   const description: string[] = [];
   const closers: (() => Promise<void>)[] = [];
 
@@ -87,17 +90,37 @@ export function resolveBackends(options: BackendOptions = {}): ResolvedBackends 
       ...(options.onLog ? { onLog: options.onLog } : {}),
     });
     closers.push(() => client.close());
+
+    // Ask the worker what it can actually do, and wire only that.
+    //
+    // The worker reports its capabilities honestly — a machine with no
+    // faster-whisper says `transcribe: false` — and wiring a model it has just
+    // said it cannot run turns "this stage is unavailable" into "the whole
+    // analysis failed". The compiler is built to degrade around a missing
+    // model; it cannot degrade around one that is present and throws.
+    const capabilities = await workerCapabilities(client, options.onLog);
+    const has = (name: keyof typeof capabilities): boolean => capabilities[name] === true;
+
     suite = {
       probe: new WorkerMediaProbe(client),
-      preparer: new WorkerMediaPreparer(client),
-      speech: new WorkerSpeechModel(client),
-      shots: new WorkerShotDetector(client),
-      audio: new WorkerAudioModel(client),
-      ocr: new WorkerOcrModel(client),
-      context: new WorkerContextModel(client),
-      text: new WorkerTextEmbeddingModel(client),
+      ...(has('prepare') ? { preparer: new WorkerMediaPreparer(client) } : {}),
+      ...(has('transcribe') ? { speech: new WorkerSpeechModel(client) } : {}),
+      ...(has('detect_shots') ? { shots: new WorkerShotDetector(client) } : {}),
+      ...(has('analyze_audio') ? { audio: new WorkerAudioModel(client) } : {}),
+      ...(has('ocr') ? { ocr: new WorkerOcrModel(client) } : {}),
+      ...(has('describe') ? { context: new WorkerContextModel(client) } : {}),
+      ...(has('embed_frames') ? { visual: new WorkerVisualEmbeddingModel(client) } : {}),
+      text: has('embed_text') ? new WorkerTextEmbeddingModel(client) : new HashingTextEmbedding(),
     };
+
+    const missing = Object.entries(capabilities)
+      .filter(([, able]) => able !== true)
+      .map(([name]) => name);
     description.push(`perception: the Python runtime (${command})`);
+    if (missing.length > 0) {
+      description.push(`  the worker cannot: ${missing.join(', ')}`);
+      description.push(`  add them with: pip install 'editorial-perception[all]'`);
+    }
   } else {
     suite = createLocalSuite();
     description.push('perception: ffmpeg only (no transcription, no vision)');
@@ -209,4 +232,26 @@ export function resolveBackends(options: BackendOptions = {}): ResolvedBackends 
       await decision.close?.();
     },
   };
+}
+
+/**
+ * What the Python worker says it can run.
+ *
+ * A worker that will not answer is not a reason to fail: it may still be able to
+ * probe media, and the caller finds out soon enough. Assume nothing in that case
+ * rather than assuming everything, which is what wiring every model did.
+ */
+async function workerCapabilities(
+  client: PythonWorkerClient,
+  onLog?: (message: string) => void,
+): Promise<Record<string, boolean>> {
+  try {
+    const health = await workerHealth(client);
+    return health.capabilities;
+  } catch (error) {
+    onLog?.(
+      `the Python worker did not answer health (${error instanceof Error ? error.message : String(error)})`,
+    );
+    return {};
+  }
 }

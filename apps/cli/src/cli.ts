@@ -332,7 +332,7 @@ function printHelp(command: string | undefined): void {
 
   heading('options');
   line('  --project <dir>              which project (default: found by walking up)');
-  line('  --perception local|python|fixture:<path>');
+  line('  --perception local|python[:<interpreter>]|fixture:<path>');
   line('  --decision heuristic|local-system-one|jev');
   line('  --budget <usd>               refuse to spend more than this');
   line('  --force                      re-run perception even if nothing changed');

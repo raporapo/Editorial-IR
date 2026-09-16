@@ -23,7 +23,7 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
   const previous = store.readProject().perception;
   const perception = args.perception ?? previous;
 
-  const backends = resolveBackends({
+  const backends = await resolveBackends({
     ...(perception ? { perception } : {}),
     ...(args.decision ? { decision: args.decision } : {}),
     onLog: (message) => warn(message),

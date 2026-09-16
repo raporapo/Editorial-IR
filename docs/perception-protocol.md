@@ -77,6 +77,17 @@ Out of band; the reply still follows. A transcription pass over an hour of audio
 is minutes long, and a tool that shows nothing for minutes is indistinguishable
 from one that has hung.
 
+## An error is a reply, not a crash
+
+A handler that raises is answered with an error reply and the loop continues. One
+unreadable file out of thirty must not abandon an analysis.
+
+The traceback goes in the reply's `details`, and one line goes in the log. Both
+halves of that matter: a traceback is exactly what you want when you are
+debugging the worker, and exactly what you do not want printed at somebody who
+just ran `oea analyze` on a file it could not read — twenty lines of Python
+internals read as a crash rather than as one file being skipped.
+
 ## Error codes
 
 | Code                 | What it means                                    | What the caller does                                   |
@@ -116,6 +127,24 @@ Answered by importing rather than by claiming. A capability that says yes and
 then fails on first use is worse than one that admits it is missing, because the
 compiler is built to degrade around a missing stage and can only do that if it is
 told the truth.
+
+## The caller wires only what the worker has
+
+`health` is not diagnostics. It is the contract that lets the compiler degrade
+rather than fail: the worker reports which operations it can actually run, and
+the caller builds a suite from that answer.
+
+```json
+{ "capabilities": { "transcribe": false, "analyze_audio": true, "describe": false } }
+```
+
+Wiring a model the worker has just said it cannot run turns "this stage is
+unavailable" into "the whole analysis failed" — and that is exactly what used to
+happen: `oea analyze --perception python` on a machine with no vision model died
+at the first event instead of producing an Editorial IR.
+
+A worker that will not answer `health` is not a reason to fail either. Assume
+nothing rather than assume everything.
 
 ## The worker survives everything
 

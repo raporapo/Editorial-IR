@@ -102,6 +102,20 @@ is compatible with.
   it. Retrieval now drops zero-overlap hits when the encoder declares itself
   lexical; a real embedding model is unaffected, since finding "night view" for
   夜景 with nothing in common is exactly what one is for.
+- **`--perception python` died instead of degrading.** Every layer of this
+  project promises that a missing model costs you that stage and not the run,
+  and the Python path broke it: the CLI wired every worker model regardless of
+  what the worker could actually do, so a machine without a vision model failed
+  at the first event and produced no Editorial IR at all. The worker has always
+  reported its capabilities and `workerHealth` has always existed; nothing
+  called it. The suite is now built from the worker's own answer, and a run on a
+  bare install completes and says which models would improve it.
+- **A Python traceback was printed at the user.** A handler that raises is
+  answered with an error reply and the loop continues, which was right — but it
+  also logged the whole traceback, and the CLI printed it. Twenty lines of
+  Python internals read as a crash rather than as one file being skipped. One
+  line goes in the log now; the traceback goes in the reply's details, where
+  whoever wants it can have it.
 - **The first five minutes.** On a machine without ffmpeg — which is every
   machine before someone installs it — `oea ingest` printed `ok 0 added` above a
   list of errors, and each error read `ffprobe failed: spawn ffprobe ENOENT`.

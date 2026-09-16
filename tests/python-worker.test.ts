@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PythonWorkerClient } from '@editorial-ir/perception';
+import { PythonWorkerClient, workerHealth } from '@editorial-ir/perception';
 import { HashingTextEmbedding } from '@editorial-ir/perception';
 
 /**
@@ -94,6 +94,28 @@ describeIfPython('the Python worker, over the real protocol', () => {
     try {
       // @ts-expect-error deliberately not a real op, to check the reply shape
       await expect(client.request('teleport', {})).rejects.toThrow(/unsupported_op/);
+    } finally {
+      await client.close(2000);
+    }
+  }, 30_000);
+
+  it('reports honestly what it cannot do, rather than failing when asked', async () => {
+    // The worker declares its capabilities, and the CLI wires only the models it
+    // says it has. Wiring one it has just said it cannot run turns "this stage
+    // is unavailable" into "the whole analysis failed" — which is what happened:
+    // `--perception python` on a machine with no vision model died at the first
+    // event instead of producing an IR, contradicting the one promise every
+    // layer of this project makes about degrading.
+    const client = makeClient();
+    try {
+      const health = await workerHealth(client);
+      expect(health.capabilities).toBeTruthy();
+
+      // A bare install has no models, so most of these are false — and false is
+      // an answer, not a failure.
+      const values = Object.values(health.capabilities as Record<string, unknown>);
+      expect(values.length).toBeGreaterThan(0);
+      for (const value of values) expect(typeof value).toBe('boolean');
     } finally {
       await client.close(2000);
     }

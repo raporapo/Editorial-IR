@@ -169,7 +169,19 @@ def serve(handlers: dict[str, Handler], stream=None, session: Session | None = N
                 item.id, item.op, "out_of_memory", "the worker ran out of memory on this request"
             )
         except Exception as error:  # noqa: BLE001 - the loop must survive anything
-            session.log(traceback.format_exc(), "error")
-            session.reply_error(item.id, item.op, "internal", f"{type(error).__name__}: {error}")
+            # One line in the log, the whole traceback in the reply. A traceback
+            # is exactly what you want when you are debugging this and exactly
+            # what you do not want printed at somebody who just ran `oea
+            # analyze` on a file we could not read: twenty lines of Python
+            # internals read as a crash rather than as one file being skipped.
+            summary = f"{type(error).__name__}: {error}"
+            session.log(f"{item.op} failed — {summary}", "error")
+            session.reply_error(
+                item.id,
+                item.op,
+                "internal",
+                summary,
+                {"traceback": traceback.format_exc()},
+            )
 
     return 0

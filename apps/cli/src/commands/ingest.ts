@@ -12,7 +12,9 @@ export interface IngestArgs {
 
 export async function runIngest(args: IngestArgs): Promise<number> {
   const store = openProject(args.project);
-  const backends = resolveBackends({ ...(args.perception ? { perception: args.perception } : {}) });
+  const backends = await resolveBackends({
+    ...(args.perception ? { perception: args.perception } : {}),
+  });
   const progress = new Progress();
 
   try {
