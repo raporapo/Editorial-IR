@@ -11,6 +11,7 @@
 export * from './version.js';
 export * from './primitives.js';
 export * from './ids.js';
+export * from './text.js';
 export * from './provenance.js';
 export * from './model-run.js';
 export * from './media.js';

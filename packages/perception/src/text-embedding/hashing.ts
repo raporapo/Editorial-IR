@@ -1,3 +1,4 @@
+import { normalizeText } from '@editorial-ir/contracts';
 import type { ModelIdentity, TextEmbeddingModel } from '../types.js';
 
 /**
@@ -91,16 +92,6 @@ export class HashingTextEmbedding implements TextEmbeddingModel {
   }
 }
 
-/** Unicode-normalises, lowercases and reduces punctuation to single spaces. */
-export function normalizeText(text: string): string {
-  return text
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/[\p{P}\p{S}]+/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 /**
  * FNV-1a, 32 bit, over UTF-16 code units low byte first.
  *
@@ -122,6 +113,8 @@ export function fnv1a(input: string): number {
   }
   return hash >>> 0;
 }
+
+export { normalizeText };
 
 export function l2normalize(vector: number[]): number[] {
   let sum = 0;
