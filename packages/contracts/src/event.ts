@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Confidence, Milliseconds, UnitScore, obj } from './primitives.js';
 import { AnnotationId, AssetId, ChapterId, EventId } from './ids.js';
 import { ProvenancedString, Provenance, provenanced } from './provenance.js';
+import { NarrativeRole } from './editorial.js';
 
 /**
  * Where an event's material actually lives.
@@ -98,6 +99,8 @@ export const EventKnowledge = obj({
   excluded: z.boolean().default(false),
   /** Importance the user set explicitly, overriding the decision layer. */
   importance_override: UnitScore.optional(),
+  /** Narrative role the user set explicitly, e.g. "this is the ending". */
+  narrative_role_override: NarrativeRole.optional(),
   /** Ids of the annotations that produced the fields above. */
   annotation_refs: z.array(AnnotationId).default([]),
 }).meta({ id: 'EventKnowledge' });

@@ -183,6 +183,28 @@ describe('applyAnnotations', () => {
   });
 });
 
+describe('the narrative role the user set', () => {
+  it('lands where the assessment can read it', () => {
+    // It used to be written into the overrides bag, which is only ever applied
+    // to the event — and the role lives on the assessment. So "this is the
+    // ending" was recorded, stored, and silently did nothing.
+    const applied = applyAnnotations(
+      event,
+      [
+        annotation({
+          type: 'narrative_role',
+          role: 'ending',
+          target: { kind: 'event', event_id: 'evt_0002' },
+        }),
+      ],
+      undefined,
+      now,
+    );
+
+    expect(applied.knowledge.narrative_role_override).toBe('ending');
+  });
+});
+
 describe('withOverrides', () => {
   it('marks an overridden field as the user’s, not the model’s', () => {
     const applied = applyAnnotations(

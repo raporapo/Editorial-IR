@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Iso8601, Milliseconds, UnitScore, obj } from './primitives.js';
 import { AnnotationId, AssetId, EventId, ProjectId } from './ids.js';
+import { NarrativeRole } from './editorial.js';
 
 export const ProjectStatus = z
   .enum(['created', 'ingested', 'analyzed', 'planned', 'applied'])
@@ -14,6 +15,15 @@ export const Project = obj({
   type: z.string().optional(),
   status: ProjectStatus.default('created'),
   ir_version: z.string(),
+  /**
+   * How this project was last analysed, e.g. `python` or `fixture:./recorded.json`.
+   *
+   * Recorded so that re-analysing uses the same perception it used before.
+   * Silently falling back to a different backend produces a completely different
+   * representation of the same footage, and the user's only clue is that their
+   * project suddenly has three events instead of seventy-three.
+   */
+  perception: z.string().optional(),
   created_at: Iso8601,
   updated_at: Iso8601,
 }).meta({ id: 'Project' });
@@ -158,7 +168,7 @@ export const UserAnnotation = z
     /** Corrects the affect vector, e.g. "this is not a sad scene". */
     obj({ ...annotationBase, type: z.literal('mood'), mood: z.record(z.string(), UnitScore) }),
     /** Forces the narrative role. */
-    obj({ ...annotationBase, type: z.literal('narrative_role'), role: z.string().min(1) }),
+    obj({ ...annotationBase, type: z.literal('narrative_role'), role: NarrativeRole }),
     /** Splits or merges the segmentation the compiler produced. */
     obj({
       ...annotationBase,

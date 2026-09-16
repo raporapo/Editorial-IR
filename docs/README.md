@@ -7,6 +7,7 @@
 - [Writing an adapter](adapters.md) — supporting another editing application
 - [Decision backends](decision-backends.md) — swapping how events are judged
 - [The perception protocol](perception-protocol.md) — the TypeScript/Python boundary
+- [Correcting it](corrections.md) — how to tell it what it got wrong, and why that wins
 - [Looking closer](inspection.md) — the hierarchy, and what each step down costs
 - [What it costs](cost.md) — caching, incremental recompute, escalation, budgets
 - [Privacy](privacy.md) — what leaves the machine, and when

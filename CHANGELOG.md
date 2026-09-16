@@ -11,6 +11,15 @@ is compatible with.
 
 ### Added
 
+- **Every correction the compiler understands is now reachable.** `oea annotate`
+  exposed five kinds; the contract and the compiler supported eleven. "This is
+  not a sad scene", "this person is my partner", "these two run together" and
+  "this is the ending" were all implemented end to end and impossible to say.
+  Adds `mood`, `person`, `label`, `role`, `continuity`, `split` and `merge`, and
+  a pair target (`evt_0031..evt_0032`) for the one that is about two events.
+- `oea explain` now shows which parts of an event were the user's rather than the
+  model's. A correction that applied silently looked exactly like one that did
+  not.
 - **Progressive inspection below the event.** The representation is a hierarchy
   — project, asset, chapter, event, shot, frame — and until now everything
   stopped at the event. `oea inspect <event>` is the staircase down: the shots an
@@ -49,6 +58,19 @@ is compatible with.
 
 ### Fixed
 
+- **Re-analysing a project no longer destroys it.** The perception backend was a
+  command-line flag that was never stored, so `oea analyze` on a project built
+  from a recorded fixture silently fell back to local perception — turning the
+  worked example's seventy-three events into three, with nothing said about why.
+  `oea annotate` ends by telling you to run `oea analyze`, so following the
+  tool's own advice was the way to hit it. A project now records what it was
+  analysed with and re-uses it unless `--perception` says otherwise.
+- **"This is the ending" did nothing.** The `narrative_role` annotation was
+  parsed, stored and applied to a bag of overrides that only the event builder
+  reads — and the narrative role lives on the assessment. It now overrides the
+  assessment the way `importance` does, keeping the model's answer in the
+  history, and a role outside the vocabulary is refused rather than stored and
+  ignored.
 - `oea demo` works on an installed package. The worked example it needs lives
   outside the CLI package and was not being shipped with it.
 - Piping any command into something that stops reading — `| head`, or quitting

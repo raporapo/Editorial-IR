@@ -40,10 +40,10 @@
       "$ref": "#/$defs/EventKnowledge"
     },
     "segmentation": {
-      "$ref": "#/$defs/__schema35"
+      "$ref": "#/$defs/__schema36"
     },
     "embedding_refs": {
-      "$ref": "#/$defs/__schema36"
+      "$ref": "#/$defs/__schema37"
     },
     "confidence": {
       "$ref": "#/$defs/Confidence"
@@ -490,8 +490,11 @@
         "importance_override": {
           "$ref": "#/$defs/__schema33"
         },
-        "annotation_refs": {
+        "narrative_role_override": {
           "$ref": "#/$defs/__schema34"
+        },
+        "annotation_refs": {
+          "$ref": "#/$defs/__schema35"
         }
       },
       "required": [
@@ -524,6 +527,25 @@
       "$ref": "#/$defs/UnitScore"
     },
     "__schema34": {
+      "$ref": "#/$defs/NarrativeRole"
+    },
+    "NarrativeRole": {
+      "type": "string",
+      "enum": [
+        "setup",
+        "context",
+        "build_up",
+        "transition",
+        "payoff",
+        "climax",
+        "reaction",
+        "resolution",
+        "ending",
+        "filler"
+      ],
+      "description": "The structural job an event does in the finished piece."
+    },
+    "__schema35": {
       "default": [],
       "type": "array",
       "items": {
@@ -534,7 +556,7 @@
       "type": "string",
       "description": "A user override."
     },
-    "__schema35": {
+    "__schema36": {
       "type": "object",
       "properties": {
         "method": {
@@ -559,7 +581,7 @@
       ],
       "additionalProperties": false
     },
-    "__schema36": {
+    "__schema37": {
       "default": [],
       "type": "array",
       "items": {

@@ -154,18 +154,27 @@ export async function assessEvents(
 
     // The user outranks the model, and the model's answer is kept beside the
     // override rather than replaced by it.
-    const override = event.knowledge.importance_override;
-    if (override !== undefined) {
+    const importance = event.knowledge.importance_override;
+    const role = event.knowledge.narrative_role_override;
+    if (importance !== undefined || role !== undefined) {
       const original: EditorialAssessment = {
         ...assessment,
         id: `${assessment.id}_model`,
         rationale: 'the model’s own assessment, kept because the user overrode it',
       };
-      assessment.metrics = { ...assessment.metrics, story_importance: override };
-      assessment.flags = {
-        ...assessment.flags,
-        preserve: Math.max(assessment.flags.preserve, override),
-      };
+      if (importance !== undefined) {
+        assessment.metrics = { ...assessment.metrics, story_importance: importance };
+        assessment.flags = {
+          ...assessment.flags,
+          preserve: Math.max(assessment.flags.preserve, importance),
+        };
+      }
+      if (role !== undefined) {
+        // The distribution is replaced rather than edited: the model's spread of
+        // belief is about a question the user has now answered, and leaving it
+        // beside a certain answer invites something downstream to average them.
+        assessment.narrative_role = { selected: role, probabilities: { [role]: 1 } };
+      }
       return { event_id: event.id, current: assessment, history: [original] };
     }
 

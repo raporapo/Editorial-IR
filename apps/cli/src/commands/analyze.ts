@@ -15,8 +15,16 @@ export interface AnalyzeArgs {
 
 export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
   const store = openProject(args.project);
+
+  // A project remembers how it was analysed. Re-analysing after adding a note
+  // should use the perception it used the first time, not silently fall back to
+  // whatever this machine happens to have: the user's only clue would be that
+  // their project now has three events where it had seventy-three.
+  const previous = store.readProject().perception;
+  const perception = args.perception ?? previous;
+
   const backends = resolveBackends({
-    ...(args.perception ? { perception: args.perception } : {}),
+    ...(perception ? { perception } : {}),
     ...(args.decision ? { decision: args.decision } : {}),
     onLog: (message) => warn(message),
   });
@@ -46,7 +54,10 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
     store.writeObservations(result.observations);
     store.writeIr(result.ir);
     store.writeEmbeddings(result.embeddings);
-    store.writeProject(result.ir.project);
+    store.writeProject({
+      ...result.ir.project,
+      ...(perception ? { perception } : {}),
+    });
 
     const { ir, report } = result;
     success(`${ir.stats.event_count} events in ${ir.stats.chapter_count} chapters`);

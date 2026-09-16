@@ -1,4 +1,4 @@
-import { assessmentFor, formatTimecode } from '@editorial-ir/contracts';
+import { assessmentFor, formatTimecode, type EditorialIR } from '@editorial-ir/contracts';
 import { AgentToolkit } from '@editorial-ir/agent';
 import { openProject } from '../project.js';
 import { requireIr } from '../ir.js';
@@ -75,11 +75,40 @@ export function runExplain(args: ExplainArgs): number {
     }
   }
 
-  if (event.knowledge.essential || event.knowledge.excluded || event.knowledge.notes.length > 0) {
+  // "Because you told me" is the most important answer this command can give,
+  // and the easiest one to leave out: a correction that applied silently looks
+  // exactly like a correction that did not.
+  const corrections: [string, string][] = [];
+  if (event.knowledge.essential) corrections.push(['essential', 'keep it, whatever it scores']);
+  if (event.knowledge.excluded) corrections.push(['excluded', 'never use it']);
+  if (event.knowledge.importance_override !== undefined) {
+    corrections.push(['importance', event.knowledge.importance_override.toFixed(2)]);
+  }
+  if (event.knowledge.narrative_role_override) {
+    corrections.push(['role', event.knowledge.narrative_role_override]);
+  }
+  if (event.title?.provenance === 'user_provided') {
+    corrections.push(['called', event.title.value]);
+  }
+  if (event.affect.provenance === 'user_provided') {
+    corrections.push([
+      'mood',
+      Object.entries(event.affect.value)
+        .map(([name, amount]) => `${name} ${amount}`)
+        .join(', '),
+    ]);
+  }
+  if (event.entities.provenance === 'user_provided') {
+    corrections.push(['people', event.entities.value.people.join(', ') || '(none)']);
+  }
+  for (const noteText of event.knowledge.notes) corrections.push(['note', noteText]);
+
+  if (corrections.length > 0) {
     heading('what you said');
-    if (event.knowledge.essential) detail('essential', 'keep it, whatever it scores');
-    if (event.knowledge.excluded) detail('excluded', 'never use it');
-    for (const noteText of event.knowledge.notes) detail('note', noteText);
+    for (const [label, value] of corrections) detail(label, value);
+    if (assessment && history(ir, event.id) > 0) {
+      note('  The model’s own answer is kept; remove the annotation and it comes back.');
+    }
   }
 
   const plan = store.latestPlan();
@@ -105,4 +134,9 @@ export function runExplain(args: ExplainArgs): number {
   }
 
   return 0;
+}
+
+/** How many earlier assessments are kept beside the current one. */
+function history(ir: EditorialIR, eventId: string): number {
+  return ir.editorial.find((entry) => entry.event_id === eventId)?.history.length ?? 0;
 }

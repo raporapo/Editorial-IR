@@ -233,6 +233,92 @@ describe('the agent command', () => {
   }, 60_000);
 });
 
+describe('re-analysing a project', () => {
+  it('uses the perception it was analysed with the first time', async () => {
+    // `oea annotate` ends by telling you to run `oea analyze`, and following
+    // that advice used to destroy the project: the demo is compiled from a
+    // recorded fixture passed as a flag, the flag was never stored, and a plain
+    // re-analysis silently fell back to local perception. Seventy-three events
+    // became three, and nothing said why.
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+
+    const before = JSON.parse(readFileSync(join(root, '.oea', 'ir.json'), 'utf8'));
+    expect(before.events.length).toBeGreaterThan(50);
+
+    output = [];
+    expect(await main(['analyze', '--project', root])).toBe(0);
+
+    const after = JSON.parse(readFileSync(join(root, '.oea', 'ir.json'), 'utf8'));
+    expect(after.events).toHaveLength(before.events.length);
+  }, 60_000);
+
+  it('records what it used, so the choice survives the command line', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+
+    const project = JSON.parse(readFileSync(join(root, '.oea', 'project.json'), 'utf8'));
+    expect(project.perception).toMatch(/^fixture:/);
+  }, 60_000);
+
+  it('folds a correction in without losing the analysis', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+
+    output = [];
+    expect(await main(['annotate', 'evt_0055', 'role', 'ending', '--project', root])).toBe(0);
+    expect(await main(['analyze', '--project', root])).toBe(0);
+
+    const ir = JSON.parse(readFileSync(join(root, '.oea', 'ir.json'), 'utf8'));
+    const entry = ir.editorial.find((e: { event_id: string }) => e.event_id === 'evt_0055');
+    expect(entry.current.narrative_role.selected).toBe('ending');
+  }, 60_000);
+
+  it('refuses a narrative role that does not exist', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+
+    // Stored-and-ignored is the failure this replaced.
+    await expect(
+      main(['annotate', 'evt_0055', 'role', 'endin', '--project', root]),
+    ).rejects.toThrow(/not a narrative role/);
+  }, 60_000);
+
+  it('wants a pair of events for continuity, which is about two of them', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+
+    await expect(
+      main(['annotate', 'evt_0031', 'continuity', '0.9', '--project', root]),
+    ).rejects.toThrow(/pair/);
+    expect(
+      await main(['annotate', 'evt_0031..evt_0032', 'continuity', '0.9', '--project', root]),
+    ).toBe(0);
+  }, 60_000);
+});
+
+describe('oea explain', () => {
+  it('says when a decision was the user’s rather than the model’s', async () => {
+    // A correction that applied silently looks exactly like one that did not,
+    // and "because you told me" is the most important answer this command has.
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+    await main(['annotate', 'evt_0031', 'mood', 'excitement=0.9, sadness=0', '--project', root]);
+    await main(['annotate', 'evt_0055', 'role', 'ending', '--project', root]);
+    await main(['analyze', '--project', root]);
+
+    output = [];
+    expect(await main(['explain', 'evt_0031', '--project', root])).toBe(0);
+    expect(stdout()).toContain('what you said');
+    expect(stdout()).toContain('excitement 0.9');
+
+    output = [];
+    expect(await main(['explain', 'evt_0055', '--project', root])).toBe(0);
+    expect(stdout()).toContain('role');
+    expect(stdout()).toContain('comes back');
+  }, 60_000);
+});
+
 describe('oea inspect', () => {
   it('shows what an event is actually made of', async () => {
     const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');

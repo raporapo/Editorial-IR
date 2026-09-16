@@ -96,7 +96,19 @@ overrule you: an event you marked `essential` cannot be dropped, and one you
 excluded does not come back. A misspelt id is an error, not a silent no-op.
 
 Use `oea annotate` instead when the correction is about the footage rather than
-about this cut — an annotation survives re-analysis, and a flag does not.
+about this cut — an annotation survives re-analysis, and a flag does not:
+
+```bash
+oea annotate evt_0031 mood "excitement=0.9, sadness=0"   # this is not a sad scene
+oea annotate evt_0031 person "me, partner"               # this is my partner
+oea annotate evt_0055 role ending                        # this is where it ends
+oea analyze                                              # fold it in
+```
+
+Nothing you write there is ever overwritten, in any backend, and the model's own
+answer is kept beside yours rather than replaced — remove the correction and its
+opinion comes back. The full list is in
+[docs/corrections.md](docs/corrections.md).
 
 And when you want to know what is actually inside a moment rather than why it was
 chosen:
@@ -186,6 +198,7 @@ understood.
 - [Writing an adapter](docs/adapters.md) — supporting another editing application
 - [Decision backends](docs/decision-backends.md) — swapping how events are judged
 - [The perception protocol](docs/perception-protocol.md) — the TypeScript/Python boundary
+- [Correcting it](docs/corrections.md) — telling it what it got wrong, and why that wins
 - [Looking closer](docs/inspection.md) — the hierarchy, and what each step down costs
 - [What it costs](docs/cost.md) — caching, incremental recompute, escalation, budgets
 - [Privacy](docs/privacy.md) — what leaves the machine, and when

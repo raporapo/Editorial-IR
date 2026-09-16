@@ -214,6 +214,84 @@ describe('compiling the worked example', () => {
   });
 });
 
+describe('the corrections a user can make', () => {
+  async function compiledWith(annotations: unknown[]) {
+    const store = await makeExampleProject();
+    store.writeAnnotations(annotations as never);
+    return compileProject({
+      store,
+      suite: exampleSuite(),
+      decision: new HeuristicDecisionBackend(),
+    });
+  }
+
+  const on = (eventId: string) => ({ kind: 'event' as const, event_id: eventId });
+  const base = { priority: 0, created_at: '2026-05-17T09:00:00.000Z' };
+
+  it('takes the user’s word on what a moment is for', async () => {
+    // "This is the ending" is one of the four corrections the design exists to
+    // accept, and it used to be stored and then dropped on the floor: the role
+    // lives on the assessment, and the override was being written somewhere only
+    // the event builder reads.
+    const { ir } = await compiledWith([
+      { id: 'ann_1', ...base, type: 'narrative_role', role: 'ending', target: on('evt_0055') },
+    ]);
+
+    const entry = ir.editorial.find((e) => e.event_id === 'evt_0055')!;
+    expect(entry.current.narrative_role.selected).toBe('ending');
+    // The model's answer is kept beside it rather than deleted.
+    expect(entry.history).toHaveLength(1);
+    expect(entry.history[0]!.narrative_role.selected).not.toBe('ending');
+  });
+
+  it('takes the user’s word on how a moment felt', async () => {
+    const { ir } = await compiledWith([
+      {
+        id: 'ann_1',
+        ...base,
+        type: 'mood',
+        mood: { excitement: 0.9, sadness: 0 },
+        target: on('evt_0031'),
+      },
+    ]);
+
+    const event = ir.events.find((e) => e.id === 'evt_0031')!;
+    expect(event.affect.value).toEqual({ excitement: 0.9, sadness: 0 });
+    expect(event.affect.provenance).toBe('user_provided');
+  });
+
+  it('takes the user’s word on who is in it', async () => {
+    const { ir } = await compiledWith([
+      { id: 'ann_1', ...base, type: 'person', people: ['me', 'partner'], target: on('evt_0031') },
+    ]);
+
+    const event = ir.events.find((e) => e.id === 'evt_0031')!;
+    expect(event.entities.value.people).toEqual(['me', 'partner']);
+    expect(event.entities.provenance).toBe('user_provided');
+  });
+
+  it('takes the user’s word on whether two moments run together', async () => {
+    const { ir } = await compiledWith([
+      {
+        id: 'ann_1',
+        ...base,
+        type: 'continuity',
+        strength: 0.95,
+        target: { kind: 'event_pair', event_a: 'evt_0031', event_b: 'evt_0032' },
+      },
+    ]);
+
+    const edge = ir.relations.find(
+      (r) =>
+        r.relation_type === 'continuation' &&
+        r.source_event_id === 'evt_0031' &&
+        r.target_event_id === 'evt_0032',
+    )!;
+    expect(edge.strength).toBe(0.95);
+    expect(edge.provenance).toBe('user_provided');
+  });
+});
+
 describe('observationsFingerprint', () => {
   it('ignores anything that does not change what perception sees', async () => {
     const store = await makeExampleProject();

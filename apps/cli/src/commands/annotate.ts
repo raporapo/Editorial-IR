@@ -1,4 +1,10 @@
-import { newId, parseTimecode, type UserAnnotation } from '@editorial-ir/contracts';
+import {
+  NARRATIVE_ROLES,
+  newId,
+  parseTimecode,
+  type NarrativeRole,
+  type UserAnnotation,
+} from '@editorial-ir/contracts';
 import { EditorialError } from '@editorial-ir/contracts';
 import { openProject } from '../project.js';
 import { heading, note, success, table } from '../ui.js';
@@ -40,9 +46,7 @@ export function runAnnotate(args: AnnotateArgs): number {
   }
 
   if (!args.target || !args.kind) {
-    note(
-      'usage: oea annotate <event-id|timecode-range> <essential|exclude|importance|note|rename> [value]',
-    );
+    printUsage();
     return 1;
   }
 
@@ -66,27 +70,179 @@ function buildAnnotation(target: string, kind: string, value: string | undefined
     case 'essential':
     case 'exclude':
       return { ...base, type: kind };
-    case 'importance': {
-      const number = Number(value);
-      if (!Number.isFinite(number) || number < 0 || number > 1) {
-        throw new EditorialError('invalid_input', 'importance takes a number between 0 and 1');
+
+    case 'importance':
+      return { ...base, type: 'importance', value: unitScore(value, 'importance') };
+
+    case 'continuity':
+      // The only annotation about a pair rather than a moment: "these two
+      // belong together" and "these two are not the same thing".
+      if (base.target.kind !== 'event_pair') {
+        throw new EditorialError(
+          'invalid_input',
+          'continuity is about two events, so it takes a pair: evt_0031..evt_0032',
+        );
       }
-      return { ...base, type: 'importance', value: number };
-    }
+      return { ...base, type: 'continuity', strength: unitScore(value, 'continuity') };
+
     case 'note':
-      if (!value) throw new EditorialError('invalid_input', 'note takes some text');
-      return { ...base, type: 'note', text: value };
+      return { ...base, type: 'note', text: requireText(value, 'note', 'some text') };
+
     case 'rename':
-      if (!value) throw new EditorialError('invalid_input', 'rename takes a title');
-      return { ...base, type: 'rename', title: value };
+      return { ...base, type: 'rename', title: requireText(value, 'rename', 'a title') };
+
+    case 'label':
+      return { ...base, type: 'label', labels: requireList(value, 'label', 'street, night') };
+
+    case 'person':
+      // Ids from background.people in context.yaml, so that "who is in this"
+      // and "who are these people" are the same vocabulary.
+      return { ...base, type: 'person', people: requireList(value, 'person', 'me, partner') };
+
+    case 'mood':
+      return { ...base, type: 'mood', mood: parseMood(value) };
+
+    case 'role':
+    case 'narrative_role': {
+      // A closed vocabulary, so a typo is told to you now rather than stored and
+      // quietly ignored.
+      const role = requireText(value, 'role', `one of: ${NARRATIVE_ROLES.join(', ')}`);
+      if (!(NARRATIVE_ROLES as readonly string[]).includes(role)) {
+        throw new EditorialError('invalid_input', `"${role}" is not a narrative role`, {
+          roles: NARRATIVE_ROLES,
+        });
+      }
+      return { ...base, type: 'narrative_role', role: role as NarrativeRole };
+    }
+
+    case 'split':
+      return {
+        ...base,
+        type: 'boundary',
+        action: 'split',
+        ...(value ? { at_ms: parseTimecode(value) } : {}),
+      };
+
+    case 'merge':
+      return { ...base, type: 'boundary', action: 'merge_with_next' };
+
     default:
       throw new EditorialError('invalid_input', `"${kind}" is not a kind of annotation`, {
-        kinds: ['essential', 'exclude', 'importance', 'note', 'rename'],
+        kinds: KINDS.map((k) => k.name),
       });
   }
 }
 
+/**
+ * Every correction a user can make, and what each one is for.
+ *
+ * Kept as data rather than as a sentence in the usage line, because the list is
+ * long enough that a wall of pipe-separated words stops being readable, and
+ * because "what can I actually tell it" is the first question anyone asks.
+ */
+const KINDS = [
+  { name: 'essential', takes: '', about: 'keep this, whatever anything scores it' },
+  { name: 'exclude', takes: '', about: 'never use this' },
+  { name: 'importance', takes: '<0..1>', about: 'how much this matters to the story' },
+  { name: 'rename', takes: '<title>', about: 'what this moment is called' },
+  { name: 'note', takes: '<text>', about: 'what you know that the footage cannot show' },
+  { name: 'label', takes: '<a, b>', about: 'what is in shot, when it was missed' },
+  { name: 'person', takes: '<ids>', about: 'who appears, by id from context.yaml' },
+  { name: 'mood', takes: '<name=0.8>', about: 'how it actually felt' },
+  { name: 'role', takes: '<role>', about: `one of: ${NARRATIVE_ROLES.join(', ')}` },
+  { name: 'continuity', takes: '<0..1>', about: 'how well two events run together' },
+  { name: 'split', takes: '[timecode]', about: 'this is really two moments' },
+  { name: 'merge', takes: '', about: 'this and the next one are one moment' },
+];
+
+function printUsage(): void {
+  note('usage: oea annotate <target> <kind> [value]');
+  note('');
+  note('targets: evt_0031   a moment');
+  note('         evt_0031..evt_0032   a pair, for continuity');
+  note('         00:18:20-00:18:42    a stretch of the capture timeline');
+  note('         asset_001            a whole recording');
+  note('');
+  heading('kinds');
+  table(KINDS.map((k) => [k.name, k.takes, k.about]));
+  note('');
+  note('Nothing here is ever overwritten by analysis. You outrank every model.');
+}
+
+function unitScore(value: string | undefined, kind: string): number {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0 || number > 1) {
+    throw new EditorialError('invalid_input', `${kind} takes a number between 0 and 1`, {
+      given: value ?? '(nothing)',
+    });
+  }
+  return number;
+}
+
+function requireText(value: string | undefined, kind: string, example: string): string {
+  if (!value?.trim()) {
+    throw new EditorialError('invalid_input', `${kind} takes ${example}`);
+  }
+  return value.trim();
+}
+
+function requireList(value: string | undefined, kind: string, example: string): string[] {
+  const items = (value ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  if (items.length === 0) {
+    throw new EditorialError(
+      'invalid_input',
+      `${kind} takes a comma-separated list, e.g. ${example}`,
+    );
+  }
+  return items;
+}
+
+/**
+ * "excitement=0.9, sadness=0" — named intensities, not one chosen emotion.
+ *
+ * Affect is a vector here on purpose: editing cares about how excited, not
+ * about picking a label. Setting one to zero is how you say "this is not a sad
+ * scene", which is the correction this exists for.
+ */
+function parseMood(value: string | undefined): Record<string, number> {
+  const mood: Record<string, number> = {};
+  for (const pair of (value ?? '').split(',')) {
+    if (!pair.trim()) continue;
+    const [name, amount] = pair.split('=');
+    if (!name?.trim() || amount === undefined) {
+      throw new EditorialError(
+        'invalid_input',
+        'mood takes names and intensities, e.g. "excitement=0.9, sadness=0"',
+        { given: pair.trim() },
+      );
+    }
+    mood[name.trim()] = unitScore(amount.trim(), `mood "${name.trim()}"`);
+  }
+  if (Object.keys(mood).length === 0) {
+    throw new EditorialError(
+      'invalid_input',
+      'mood takes names and intensities, e.g. "excitement=0.9, sadness=0"',
+    );
+  }
+  return mood;
+}
+
 function parseTarget(target: string): UserAnnotation['target'] {
+  // A pair is written evt_0031..evt_0032. Two dots rather than one hyphen
+  // because event ids contain no dots and timecodes contain no letters, which
+  // keeps this unambiguous without a flag.
+  if (target.includes('..')) {
+    const [a, b] = target.split('..');
+    if (!a?.startsWith('evt_') || !b?.startsWith('evt_')) {
+      throw new EditorialError('invalid_input', `"${target}" is not a pair of event ids`, {
+        example: 'evt_0031..evt_0032',
+      });
+    }
+    return { kind: 'event_pair', event_a: a, event_b: b };
+  }
   if (target.startsWith('evt_')) return { kind: 'event', event_id: target };
   if (target.startsWith('asset_')) return { kind: 'asset', asset_id: target };
   if (target.includes('-')) {

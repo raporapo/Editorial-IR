@@ -510,8 +510,7 @@
           "const": "narrative_role"
         },
         "role": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/NarrativeRole"
         }
       },
       "required": [
@@ -523,6 +522,22 @@
         "role"
       ],
       "additionalProperties": false
+    },
+    "NarrativeRole": {
+      "type": "string",
+      "enum": [
+        "setup",
+        "context",
+        "build_up",
+        "transition",
+        "payoff",
+        "climax",
+        "reaction",
+        "resolution",
+        "ending",
+        "filler"
+      ],
+      "description": "The structural job an event does in the finished piece."
     },
     "__schema18": {
       "type": "object",

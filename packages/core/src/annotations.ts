@@ -69,7 +69,6 @@ export interface AppliedKnowledge {
     labels?: string[];
     people?: string[];
     mood?: Record<string, number>;
-    narrativeRole?: string;
   };
   conflicts: Conflict[];
 }
@@ -136,7 +135,10 @@ export function applyAnnotations(
         }
         break;
       case 'narrative_role':
-        overrides.narrativeRole = annotation.role;
+        // On knowledge rather than in `overrides`, because the role lives on the
+        // assessment and `overrides` is only ever applied to the event. It was
+        // in the bag nobody opens, so saying "this is the ending" did nothing.
+        knowledge.narrative_role_override = annotation.role;
         break;
       default:
         break;
