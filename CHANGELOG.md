@@ -102,6 +102,13 @@ is compatible with.
   it. Retrieval now drops zero-overlap hits when the encoder declares itself
   lexical; a real embedding model is unaffected, since finding "night view" for
   夜景 with nothing in common is exactly what one is for.
+- **The AviUtl2 `.exo` rounded an NTSC frame rate away.** ExEdit's `rate` and
+  `scale` are the rational pair — fps is rate/scale, which is why `scale` exists
+  — and the adapter wrote `rate=30, scale=1` for 30000/1001, hardcoding the
+  denominator. Frame numbers computed at 29.97 in a project declaring 30 fps
+  play a tenth of a percent fast, drifting audio against picture by about a
+  fifth of a second every three minutes. The JSON job built from the same
+  numbers in the same file already carried the pair exactly.
 - **`min_speech_share` was declared and unenforced.** `talking-head` states that
   seven tenths of its runtime must carry speech, because a talking-head cut
   where nobody is talking is not that thing at all. The validator now checks it

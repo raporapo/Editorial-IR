@@ -24,6 +24,7 @@ import {
 } from '@editorial-ir/adapters';
 import { operationTimelineDuration, type EditPlan } from '@editorial-ir/contracts';
 import { exampleSuite, makeExampleProject } from './support/project.js';
+import { childText, findAll, parseXml } from './support/xml.js';
 
 const registry = SkillRegistry.withBuiltIns();
 
@@ -275,6 +276,39 @@ describe('the AviUtl2 adapter', () => {
     expect(job.job_version).toBe('0.1.0');
   });
 
+  it('keeps an NTSC rate exact in the exo, as the JSON job beside it does', async () => {
+    // ExEdit's rate and scale are the rational pair — fps is rate/scale — which
+    // is why scale exists. Rounding 30000/1001 to rate=30, scale=1 declares a
+    // 30 fps project for frame numbers computed at 29.97: everything plays a
+    // tenth of a percent fast, and audio drifts against picture by about a fifth
+    // of a second every three minutes.
+    const { plan, request } = await prepared();
+    const ntsc: EditPlan = {
+      ...plan,
+      sequence: { ...plan.sequence, frame_rate_num: 30_000, frame_rate_den: 1001 },
+    };
+
+    const exo = buildExo(ntsc, request);
+    expect(exo).toContain('rate=30000');
+    expect(exo).toContain('scale=1001');
+
+    // The two outputs of this one adapter must agree about what a frame is.
+    const job = buildAviUtlJob(ntsc, request) as Record<string, any>;
+    expect(job.sequence.frame_rate_num).toBe(30_000);
+    expect(job.sequence.frame_rate_den).toBe(1001);
+  }, 60_000);
+
+  it('writes a whole frame rate without a denominator that changes it', async () => {
+    const { plan, request } = await prepared();
+    const whole: EditPlan = {
+      ...plan,
+      sequence: { ...plan.sequence, frame_rate_num: 30, frame_rate_den: 1 },
+    };
+    const exo = buildExo(whole, request);
+    expect(exo).toContain('rate=30');
+    expect(exo).toContain('scale=1');
+  }, 60_000);
+
   it('writes layers one-based and the source offset in frames', async () => {
     const { plan, request } = await prepared();
     const job = buildAviUtlJob(plan, request) as Record<string, any>;
@@ -295,6 +329,125 @@ describe('the AviUtl2 adapter', () => {
     expect(exo).toContain('\r\n');
     expect(exo.match(/^\[\d+\]$/gm) ?? []).toHaveLength(plan.tracks.video.length);
   });
+});
+
+describe('would it actually import', () => {
+  // Everything above asserts on substrings, which an unbalanced tag, a stray
+  // "<" or a wrongly placed `continue` all survive. These are the properties a
+  // real import depends on, and the interchange file is the last artefact in the
+  // pipeline: every stage above it is worthless if this will not open.
+  it('writes XML that parses as a document', async () => {
+    const { plan, request } = await prepared();
+    const root = parseXml(buildFcpXml(plan, request));
+    expect(root.tag).toBe('xmeml');
+    expect(root.attributes.version).toBe('4');
+  }, 60_000);
+
+  it('points every file reference at a file definition', async () => {
+    // A reference with no definition imports as an offline clip, which is the
+    // classic way an FCP7 XML looks fine and arrives empty.
+    const { plan, request } = await prepared();
+    const root = parseXml(buildFcpXml(plan, request));
+
+    const files = findAll(root, 'file');
+    const definitions = new Set(
+      files.filter((file) => file.children.length > 0).map((file) => file.attributes.id),
+    );
+    const references = files.filter((file) => file.children.length === 0);
+
+    expect(definitions.size).toBe(request.ir.assets.length);
+    expect(references.length).toBeGreaterThan(0);
+    for (const reference of references) expect(definitions.has(reference.attributes.id)).toBe(true);
+  }, 60_000);
+
+  it('gives every clip a distinct id', async () => {
+    const { plan, request } = await prepared();
+    const ids = findAll(parseXml(buildFcpXml(plan, request)), 'clipitem').map(
+      (c) => c.attributes.id,
+    );
+    expect(new Set(ids).size).toBe(ids.length);
+  }, 60_000);
+
+  it('never overlaps two clips on one track', async () => {
+    // Two clips claiming the same frames is the one structural error a sequence
+    // cannot represent, so the importer resolves it by guessing.
+    const { plan, request } = await prepared();
+    const root = parseXml(buildFcpXml(plan, request));
+
+    for (const track of findAll(root, 'track')) {
+      const spans = track.children
+        .filter((child) => child.tag === 'clipitem')
+        .map((clip) => [Number(childText(clip, 'start')), Number(childText(clip, 'end'))] as const)
+        .sort((a, b) => a[0] - b[0]);
+
+      expect(spans.length).toBeGreaterThan(0);
+      for (const [index, span] of spans.entries()) {
+        expect(Number.isFinite(span[0])).toBe(true);
+        expect(span[1]).toBeGreaterThan(span[0]);
+        if (index > 0) expect(span[0]).toBeGreaterThanOrEqual(spans[index - 1]![1]);
+      }
+    }
+  }, 60_000);
+
+  it('gives every OTIO time the sequence rate, or the durations mean nothing', async () => {
+    // A RationalTime is a value and a rate, and mixing rates inside one timeline
+    // is how a cut silently drifts: everything still parses, the numbers are
+    // just measured against different clocks.
+    const { plan, request } = await prepared();
+    const timeline = buildOtioTimeline(plan, request);
+
+    const rates = new Set<number>();
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!node || typeof node !== 'object') return;
+      const record = node as Record<string, unknown>;
+      const schema = record.OTIO_SCHEMA;
+      if (typeof schema === 'string' && schema.startsWith('RationalTime') && 'rate' in record) {
+        rates.add(Number(record.rate));
+      }
+      Object.values(record).forEach(walk);
+    };
+    walk(timeline);
+
+    expect(rates.size).toBe(1);
+  }, 60_000);
+
+  it('gives every OTIO clip media to point at and a positive duration', async () => {
+    const { plan, request } = await prepared();
+    type OtioClip = {
+      OTIO_SCHEMA: string;
+      media_reference?: { target_url?: string };
+      source_range?: { duration?: { value?: number } };
+    };
+    const timeline = buildOtioTimeline(plan, request) as unknown as {
+      tracks: { children: { children: OtioClip[] }[] };
+    };
+    const clips = timeline.tracks.children[0]!.children.filter((child) =>
+      child.OTIO_SCHEMA.startsWith('Clip'),
+    );
+
+    expect(clips.length).toBeGreaterThan(0);
+    for (const clip of clips) {
+      expect(clip.media_reference?.target_url).toMatch(/^file:\/\//);
+      expect(clip.source_range?.duration?.value).toBeGreaterThan(0);
+    }
+  }, 60_000);
+
+  it('survives user content that would otherwise break the document', async () => {
+    const { plan, request } = await prepared();
+    // File names and descriptions are user content and routinely contain these.
+    const hostile = {
+      ...request,
+      ir: {
+        ...request.ir,
+        assets: request.ir.assets.map((asset) => ({
+          ...asset,
+          file_name: `R&D <takes> "one" & 'two'.MOV`,
+        })),
+      },
+    };
+    expect(() => parseXml(buildFcpXml(plan, hostile))).not.toThrow();
+  }, 60_000);
 });
 
 describe('one plan, three editors', () => {

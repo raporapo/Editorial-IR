@@ -208,8 +208,15 @@ export function buildExo(plan: EditPlan, request: ApplyRequest): string {
     '[exedit]',
     `width=${plan.sequence.width}`,
     `height=${plan.sequence.height}`,
-    `rate=${Math.round(rateNum / rateDen)}`,
-    'scale=1',
+    // ExEdit's rate and scale are the rational pair — fps is rate/scale — which
+    // is why `scale` exists at all. Rounding 30000/1001 to 30 and writing
+    // scale=1 declares a 30 fps project for frame numbers computed at 29.97:
+    // everything plays a tenth of a percent fast, and audio drifts against
+    // picture by about a fifth of a second every three minutes. The JSON job
+    // beside this, built from the same numbers a few lines up, carries the pair
+    // exactly.
+    `rate=${rateNum}`,
+    `scale=${rateDen}`,
     `length=${lengthFrames}`,
     `audio_rate=${plan.sequence.sample_rate}`,
     'audio_ch=2',
