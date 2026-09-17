@@ -189,7 +189,7 @@ export function planEdit(options: PlanOptions): EditPlan {
   });
 
   enforceContextDependencies(selected, candidates, ir, rationale);
-  capConsecutiveRoles(selected, skill, rationale);
+  capConsecutiveRoles(selected, skill, targetDurationMs, rationale);
   allocateDurations(selected, targetDurationMs);
 
   // ---- ordering ------------------------------------------------------------
@@ -686,10 +686,31 @@ function enforceContextDependencies(
 function capConsecutiveRoles(
   selected: Selected[],
   skill: SkillManifest,
+  targetDurationMs: number,
   rationale: PlanRationale[],
 ): void {
   const cap = skill.constraints.max_consecutive_same_role;
   if (!Number.isFinite(cap) || cap < 1) return;
+
+  // The cap is a heuristic about monotony, and it is never allowed to fight the
+  // target duration, which is the planner's actual contract.
+  //
+  // Material where one role dominates is the case that makes this matter, and it
+  // is ordinary material: forty shots from one afternoon are frequently all
+  // `context`. Enforced blindly, the cap sees a single run of forty, keeps three
+  // and drops thirty-seven — a three-clip film whatever length was asked for.
+  // Every one of those drops is pure loss, because there is nothing else to
+  // interleave and so no arrangement satisfies the cap anyway.
+  //
+  // So dropping stops at the point where the cut can no longer reach its target.
+  //
+  // The measure is each clip's *ceiling*, not the duration selection budgeted for
+  // it. Dropping a clip does not shorten the cut: allocation hands the freed time
+  // to the clips that remain, and they grow toward their maxima. What actually
+  // limits it is whether the survivors have enough headroom left to cover the
+  // target between them — which in the worked example they comfortably do, and
+  // in a cut of forty near-identical shots they do not.
+  let ceiling = selected.reduce((sum, candidate) => sum + candidate.maxMs, 0);
 
   const ordered = [...selected].sort((a, b) => a.index - b.index);
   const doomed = new Set<Selected>();
@@ -704,6 +725,8 @@ function capConsecutiveRoles(
       );
       for (const candidate of ranked.slice(cap)) {
         if (candidate.required || candidate.directive.locked) continue;
+        if (ceiling - candidate.maxMs < targetDurationMs) break;
+        ceiling -= candidate.maxMs;
         doomed.add(candidate);
       }
     }

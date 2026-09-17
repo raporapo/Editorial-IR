@@ -102,6 +102,13 @@ is compatible with.
   it. Retrieval now drops zero-overlap hits when the encoder declares itself
   lexical; a real embedding model is unaffected, since finding "night view" for
   夜景 with nothing in common is exactly what one is for.
+- **The consecutive-shot cap could eat the cut.** Material where one role
+  dominates is ordinary — forty shots from one afternoon are frequently all
+  `context` — and the cap, enforced blindly, saw a single run of forty, kept
+  three and dropped thirty-seven: a three-clip film whatever length was asked
+  for. Dropping now stops once the remaining clips could no longer cover the
+  target between them. Monotony is reduced as far as the target allows and never
+  past it. The worked example is unaffected, byte for byte.
 - **The AviUtl2 `.exo` rounded an NTSC frame rate away.** ExEdit's `rate` and
   `scale` are the rational pair — fps is rate/scale, which is why `scale` exists
   — and the adapter wrote `rate=30, scale=1` for 30000/1001, hardcoding the

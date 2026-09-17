@@ -16,6 +16,7 @@ import {
   planDurationMs,
 } from '@editorial-ir/contracts';
 import { exampleSuite, makeExampleProject } from './support/project.js';
+import { makeIR } from './support/ir.js';
 
 const registry = SkillRegistry.withBuiltIns();
 
@@ -291,6 +292,51 @@ describe('what the cut does with the time it has', () => {
     }
 
     expect(longest).toBeLessThanOrEqual(cap);
+  }, 60_000);
+
+  it('never lets that cap cost the cut its target length', async () => {
+    // Material where one role dominates is ordinary — forty shots from one
+    // afternoon are frequently all `context` — and it is the case that turns
+    // this rule into a wrecking ball. Enforced blindly the cap sees a single run
+    // of forty, keeps three and drops thirty-seven: a three-clip film whatever
+    // length was asked for, and every drop pure loss, because with nothing to
+    // interleave no arrangement satisfies the cap anyway.
+    const uniform = makeIR({
+      events: Array.from({ length: 40 }, (_, i) => ({
+        description: `別々の出来事 ${i}`,
+        event_type: 'moment',
+        speech: [`セリフ${i}`],
+        visual_labels: [`label_${i}`],
+      })),
+    });
+    const skill = registry.resolve('travel-vlog');
+
+    for (const targetMs of [60_000, 180_000]) {
+      const plan = planEdit({ ir: uniform, skill, targetDurationMs: targetMs });
+      const length = plan.tracks.video.reduce(
+        (sum, operation) => sum + (operation.source_out_ms - operation.source_in_ms),
+        0,
+      );
+      expect(plan.tracks.video.length).toBeGreaterThan(5);
+      expect(length).toBeGreaterThan(targetMs * 0.9);
+    }
+  }, 60_000);
+
+  it('takes everything there is when the target is longer than the material', async () => {
+    const uniform = makeIR({
+      events: Array.from({ length: 40 }, (_, i) => ({
+        description: `別々の出来事 ${i}`,
+        event_type: 'moment',
+        speech: [`セリフ${i}`],
+        visual_labels: [`label_${i}`],
+      })),
+    });
+    const plan = planEdit({
+      ir: uniform,
+      skill: registry.resolve('travel-vlog'),
+      targetDurationMs: 3_600_000,
+    });
+    expect(plan.tracks.video).toHaveLength(40);
   }, 60_000);
 
   it('keeps the best of a run it had to shorten, not the first', async () => {
