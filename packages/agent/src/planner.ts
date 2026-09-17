@@ -323,6 +323,9 @@ export function planEdit(options: PlanOptions): EditPlan {
         ir.context.editing_goal.tone.length > 0 ? ir.context.editing_goal.tone : skill.intent.tone,
     },
     rationale,
+    // Empty, and correctly so: the deterministic planner asks nobody anything.
+    // `oea agent` fills this in with the model it consulted.
+    model_runs: [],
     stats: {
       operation_count: operations.length,
       total_duration_ms: totalDuration,

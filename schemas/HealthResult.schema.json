@@ -15,14 +15,17 @@
     "capabilities": {
       "$ref": "#/$defs/__schema3"
     },
-    "device": {
+    "stage_locality": {
       "$ref": "#/$defs/__schema4"
     },
-    "vram_total_mb": {
+    "device": {
       "$ref": "#/$defs/__schema5"
     },
-    "ffmpeg_available": {
+    "vram_total_mb": {
       "$ref": "#/$defs/__schema6"
+    },
+    "ffmpeg_available": {
+      "$ref": "#/$defs/__schema7"
     }
   },
   "required": [
@@ -54,10 +57,25 @@
       }
     },
     "__schema4": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "enum": [
+          "local",
+          "remote_api",
+          "unknown"
+        ]
+      }
+    },
+    "__schema5": {
       "default": "cpu",
       "type": "string"
     },
-    "__schema5": {
+    "__schema6": {
       "anyOf": [
         {
           "type": "integer",
@@ -69,7 +87,7 @@
         }
       ]
     },
-    "__schema6": {
+    "__schema7": {
       "default": false,
       "type": "boolean"
     }

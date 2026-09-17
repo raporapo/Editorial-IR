@@ -141,3 +141,25 @@ export function availableCapabilities(suite: PerceptionSuite): PerceptionCapabil
   if (suite.context) caps.push('context');
   return caps;
 }
+
+/**
+ * Whether a base URL names this machine.
+ *
+ * Three copies of this regex had grown, one per backend, and the one place that
+ * needed it most had none: the Python worker's context model hardcoded
+ * `locality: 'local'` whatever endpoint its `describe` was pointed at.
+ */
+const LOOPBACK = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/;
+
+export function isLocalEndpoint(baseUrl: string | undefined): boolean {
+  return baseUrl === undefined || LOOPBACK.test(baseUrl);
+}
+
+/** What a backend should record about where it ran, given the endpoint it uses. */
+export function localityOf(baseUrl: string | undefined): {
+  locality: ExecutionLocality;
+  remote: boolean;
+} {
+  const remote = !isLocalEndpoint(baseUrl);
+  return { locality: remote ? 'remote_api' : 'local', remote };
+}

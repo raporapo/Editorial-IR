@@ -75,6 +75,33 @@ is compatible with.
 
 ### Fixed
 
+- **A worker pointed at a hosted model was recorded as having run here.** The
+  Python worker's closer look is an HTTP call to whatever `OEA_VLM_BASE_URL`
+  names, and that variable is set inside the worker, where this process cannot
+  see it — so the shim hardcoded `locality: 'local', mediaLeavesDevice: false`
+  whatever endpoint it reached. A run that posted the user's occasion, the
+  people and places they had named and every transcribed utterance to a hosted
+  service went into the IR as local, and `oea analyze` printed "media left this
+  machine: no". The worker is now asked where its describe would run and answers
+  in `health.stage_locality`; a worker that does not answer gets `unknown`,
+  which is honest where `local` was not.
+- **A hosted closer look had become the per-event default.** Because the worker
+  reports `describe` as a capability, it was wired as the _base_ context model —
+  the pass that runs over every event — so a paid endpoint behind the worker was
+  called once per event, outside `--budget`, and recorded at a cost of zero. A
+  worker whose closer look runs elsewhere is now the escalation model, which is
+  where spending is decided and counted; one that runs here is still the base.
+- **`oea agent` left no trace of what it sent.** It posts the whole of
+  `context.yaml` — the occasion, the people, the places, the vocabulary, the
+  instruction in the user's own words — plus the transcript of every event it
+  inspects, and it recorded nothing: no model run, no cost, no mention in
+  `docs/privacy.md`. Afterwards `oea analyze` went on saying "media left this
+  machine: no" and "cost: nothing". It now says where it is about to send before
+  the first call, records the model on the plan it writes — `planning` has been
+  a pipeline stage since the contract was written and nothing had ever recorded
+  one — and `oea review` prints it under "who was asked". `docs/privacy.md` has
+  a row for it, including that `--budget` does not cover it.
+
 - **The same footage compiled differently on a different machine.** Thirty
   comparisons decided an order with `localeCompare`, which reads a collation
   from the environment — and collations genuinely disagree: `ä` sorts before `z`

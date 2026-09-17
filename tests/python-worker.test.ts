@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PythonWorkerClient, workerHealth } from '@editorial-ir/perception';
+import { PythonWorkerClient, WorkerContextModel, workerHealth } from '@editorial-ir/perception';
 import { HashingTextEmbedding } from '@editorial-ir/perception';
 
 /**
@@ -171,6 +171,69 @@ describeIfPython('a request that times out', () => {
       // Queued behind the first and therefore already lost. Saying so beats
       // letting it discover that twenty seconds later.
       await expect(second).rejects.toThrow(/restarted/);
+    } finally {
+      await client.close(2000);
+    }
+  }, 30_000);
+});
+
+/**
+ * Where the worker's closer look actually runs.
+ *
+ * The worker is not always the machine the work happens on: `describe` is an
+ * HTTP call to whatever `OEA_VLM_BASE_URL` names, and this process cannot see
+ * that variable. The client recorded every worker-backed stage as local, so a
+ * run that posted the user's transcripts and background to a hosted endpoint
+ * was written into the IR as having stayed here — and the privacy report said
+ * so. Provenance is never falsified.
+ */
+describeIfPython('a closer look the worker runs somewhere else', () => {
+  function clientWith(env: Record<string, string>): PythonWorkerClient {
+    return new PythonWorkerClient({
+      command: 'python3',
+      args: ['-m', 'editorial_perception'],
+      env: { PYTHONPATH: WORKER_SRC, ...env },
+      timeoutMs: 30_000,
+    });
+  }
+
+  async function localityWith(env: Record<string, string>): Promise<string> {
+    const client = clientWith(env);
+    try {
+      return (await workerHealth(client)).stage_locality.describe ?? 'unknown';
+    } finally {
+      await client.close(2000);
+    }
+  }
+
+  it('says remote when its endpoint is somewhere else', async () => {
+    expect(
+      await localityWith({ OEA_VLM_BASE_URL: 'https://api.example.com/v1', OEA_VLM_MODEL: 'm' }),
+    ).toBe('remote_api');
+  }, 30_000);
+
+  it('says local when its endpoint is on this machine', async () => {
+    expect(
+      await localityWith({ OEA_VLM_BASE_URL: 'http://localhost:11434/v1', OEA_VLM_MODEL: 'm' }),
+    ).toBe('local');
+  }, 30_000);
+
+  it('records what the worker said, not what is convenient', async () => {
+    const client = clientWith({});
+    try {
+      const remote = new WorkerContextModel(client, 'vlm', 'remote_api');
+      expect(remote.identity.locality).toBe('remote_api');
+      // A remote endpoint can be sent frames, so media may leave with it — the
+      // same rule the TypeScript VLM backend follows.
+      expect(remote.identity.mediaLeavesDevice).toBe(true);
+
+      const local = new WorkerContextModel(client, 'vlm', 'local');
+      expect(local.identity.locality).toBe('local');
+      expect(local.identity.mediaLeavesDevice).toBe(false);
+
+      // A worker that did not answer the question leaves this unknown, which is
+      // the honest answer rather than the reassuring one.
+      expect(new WorkerContextModel(client).identity.locality).toBe('unknown');
     } finally {
       await client.close(2000);
     }

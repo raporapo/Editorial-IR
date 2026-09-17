@@ -105,6 +105,7 @@ describe('capability negotiation', () => {
     },
     intent: { tone: [] },
     rationale: [],
+    model_runs: [],
     stats: {
       operation_count: 1,
       total_duration_ms: 2000,

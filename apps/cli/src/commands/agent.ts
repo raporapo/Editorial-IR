@@ -5,6 +5,8 @@ import {
   summariseReport,
 } from '@editorial-ir/contracts';
 import { AgentToolkit, LlmEditingAgent, validatePlan } from '@editorial-ir/agent';
+import { ModelRunRecorder } from '@editorial-ir/core';
+import { localityOf } from '@editorial-ir/perception';
 import { SkillRegistry } from '@editorial-ir/skills';
 import { openProject } from '../project.js';
 import { openIndex, requireIr } from '../ir.js';
@@ -53,6 +55,22 @@ export async function runAgent(args: AgentArgs): Promise<number> {
     ? Math.round(args.duration * 1000)
     : (ir.context.editing_goal.target_duration_ms ?? 180_000);
 
+  // Say where this is about to go, before it goes.
+  //
+  // The agent sends the whole of `context.yaml` — the occasion, the people, the
+  // places, the instruction in the user's own words — and the transcript of
+  // every event it chooses to inspect. None of that was recorded anywhere: the
+  // run wrote a plan and nothing else, `oea analyze` went on printing "media
+  // left this machine: no" and "cost: nothing", and `docs/privacy.md` had no row
+  // for it. A stage that sends a user's notes to a hosted model and leaves no
+  // trace is the thing this project says it does not do.
+  const { locality, remote } = localityOf(baseUrl);
+  heading('sending');
+  note(
+    `  ${remote ? colour.yellow('to a remote model') : 'to a model on this machine'}: ${model} at ${baseUrl}`,
+  );
+  note('  your project background and the transcript of every moment it looks at');
+
   const toolkit = new AgentToolkit(ir, openIndex(store, ir));
   const agent = new LlmEditingAgent(toolkit, {
     baseUrl,
@@ -81,7 +99,26 @@ export async function runAgent(args: AgentArgs): Promise<number> {
     return 1;
   }
 
-  store.writePlan(result.plan);
+  // The run goes into the plan, so the artifact says who made it. `planning`
+  // has been a PipelineStage since the contract was written and nothing had
+  // ever recorded one — this command wrote a plan and left no trace anywhere
+  // that a model had seen the user's notes. It belongs on the plan rather than
+  // in the IR because the next `oea analyze` rebuilds the IR and not this.
+  const runs = new ModelRunRecorder();
+  const runId = runs.record({
+    stage: 'planning',
+    backend: 'openai-compatible',
+    model,
+    locality,
+    // The toolkit here is built without an inspection source, so `look_at_event`
+    // has no frames to send. If that ever changes, this must change with it.
+    mediaLeavesDevice: false,
+    parameters: { instruction: args.instruction, skill: skill.name },
+  });
+  runs.addCost(runId, 0, result.inputTokens, result.outputTokens);
+  const planned = { ...result.plan, model_runs: runs.all() };
+  store.writePlan(planned);
+  result.plan.model_runs = planned.model_runs;
 
   if (args.json) {
     line(JSON.stringify({ plan: result.plan, proposal: result.proposal }, null, 2));

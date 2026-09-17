@@ -28,23 +28,34 @@ privacy
 
 ## What could send what
 
-| Stage                         | Sends                                                           | Only when                       |
-| ----------------------------- | --------------------------------------------------------------- | ------------------------------- |
-| ingest, prepare, shots, audio | nothing                                                         | always local                    |
-| transcription                 | nothing                                                         | local model                     |
-| frame embeddings              | nothing                                                         | local model                     |
-| on-screen text                | nothing                                                         | local model                     |
-| **closer look**               | **video frames, as images**                                     | you set `OEA_VLM_BASE_URL`      |
-| judgement                     | the structured event: transcript, labels, tags, your background | you set `OEA_DECISION_BASE_URL` |
-| embeddings                    | event text                                                      | you set `OEA_EMBED_BASE_URL`    |
+| Stage                         | Sends                                                                       | Only when                                                                         |
+| ----------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| ingest, prepare, shots, audio | nothing                                                                     | always local                                                                      |
+| transcription                 | nothing                                                                     | local model                                                                       |
+| frame embeddings              | nothing                                                                     | local model                                                                       |
+| on-screen text                | nothing                                                                     | local model                                                                       |
+| **closer look**               | **video frames, as images**                                                 | you set `OEA_VLM_BASE_URL`                                                        |
+| judgement                     | the structured event: transcript, labels, tags, your background             | you set `OEA_DECISION_BASE_URL`                                                   |
+| embeddings                    | event text                                                                  | you set `OEA_EMBED_BASE_URL`                                                      |
+| **`oea agent`**               | **your whole `context.yaml`, and the transcript of any moment it inspects** | you set `OEA_AGENT_BASE_URL` (or `OEA_DECISION_BASE_URL`, which it falls back to) |
 
 Only one stage can send frames, and it is the only one that reports
 `media_left_device: true`. The judgement and embedding stages send text derived
 from your media — which may still be sensitive, and is recorded in the IR so you
 can see exactly what was sent.
 
+`oea agent` is the one that sends the most, because it is the one that reads
+your own words: the occasion, the people and places you named, the vocabulary,
+and your instruction verbatim. It says so before the first call, and the model it
+asked is recorded on the plan it wrote, where `oea review` prints it under "who
+was asked". It is not part of `oea analyze`, so it does not appear in that
+command's privacy block; it is also not covered by `--budget`.
+
 A `localhost` endpoint is recognised as local, so a model on your own machine
-does not report as remote.
+does not report as remote. The Python worker is asked where its own closer look
+would run, because that endpoint is configured inside the worker and this process
+cannot see it — a worker pointed at a hosted model used to be recorded as having
+run here.
 
 ## Your media is never modified or moved
 

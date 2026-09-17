@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { EditorialError } from '@editorial-ir/contracts';
+import { EditorialError, type ExecutionLocality } from '@editorial-ir/contracts';
 import {
   HashingTextEmbedding,
   OpenAiCompatibleContextModel,
@@ -64,6 +64,9 @@ export interface ResolvedBackends {
 export async function resolveBackends(options: BackendOptions = {}): Promise<ResolvedBackends> {
   const description: string[] = [];
   const closers: (() => Promise<void>)[] = [];
+  // A worker whose closer look reaches off this machine. Held aside so it can
+  // become the escalation model rather than the per-event default.
+  let remoteWorkerContext: ContextModel | undefined;
 
   const perception = options.perception ?? process.env.OEA_PERCEPTION ?? 'local';
   let suite: PerceptionSuite;
@@ -98,8 +101,15 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
     // said it cannot run turns "this stage is unavailable" into "the whole
     // analysis failed". The compiler is built to degrade around a missing
     // model; it cannot degrade around one that is present and throws.
-    const capabilities = await workerCapabilities(client, options.onLog);
+    const { capabilities, stageLocality } = await workerHealthOrNothing(client, options.onLog);
     const has = (name: keyof typeof capabilities): boolean => capabilities[name] === true;
+    // Where the worker says its describe would run. A worker that does not
+    // answer, or an older one that does not know the question, leaves this
+    // `unknown` — which is what goes into the record, rather than `local`.
+    const describeLocality: ExecutionLocality =
+      stageLocality.describe === 'local' || stageLocality.describe === 'remote_api'
+        ? stageLocality.describe
+        : 'unknown';
 
     suite = {
       probe: new WorkerMediaProbe(client),
@@ -108,10 +118,22 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
       ...(has('detect_shots') ? { shots: new WorkerShotDetector(client) } : {}),
       ...(has('analyze_audio') ? { audio: new WorkerAudioModel(client) } : {}),
       ...(has('ocr') ? { ocr: new WorkerOcrModel(client) } : {}),
-      ...(has('describe') ? { context: new WorkerContextModel(client) } : {}),
+      // A worker-backed closer look is the base model only when it runs here.
+      // The base pass goes over *every* event, and the worker's `describe` is an
+      // HTTP call to whatever OEA_VLM_BASE_URL names — so pointing the worker at
+      // a hosted service made a paid endpoint the per-event default, outside
+      // `--budget` and recorded at a cost of zero. A remote one becomes the
+      // escalation model below, which is where spending is decided and counted.
+      ...(has('describe') && describeLocality !== 'remote_api'
+        ? { context: new WorkerContextModel(client, 'vlm', describeLocality) }
+        : {}),
       ...(has('embed_frames') ? { visual: new WorkerVisualEmbeddingModel(client) } : {}),
       text: has('embed_text') ? new WorkerTextEmbeddingModel(client) : new HashingTextEmbedding(),
     };
+
+    if (has('describe') && describeLocality === 'remote_api') {
+      remoteWorkerContext = new WorkerContextModel(client, 'vlm', describeLocality);
+    }
 
     const missing = Object.entries(capabilities)
       .filter(([, able]) => able !== true)
@@ -154,6 +176,13 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
       ...(process.env.OEA_VLM_API_KEY ? { apiKey: process.env.OEA_VLM_API_KEY } : {}),
     });
     description.push(`closer look: ${vlmModel} at ${vlmBase}`);
+  } else if (remoteWorkerContext) {
+    // The worker has a hosted model configured and this process cannot see
+    // which: reaching it through the worker for the events that earn it is
+    // better than not reaching it at all, and better than reaching it for all
+    // of them.
+    escalationContext = remoteWorkerContext;
+    description.push('closer look: through the Python worker, to a remote endpoint');
   }
 
   // ---- decision ------------------------------------------------------------
@@ -241,17 +270,17 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
  * probe media, and the caller finds out soon enough. Assume nothing in that case
  * rather than assuming everything, which is what wiring every model did.
  */
-async function workerCapabilities(
+async function workerHealthOrNothing(
   client: PythonWorkerClient,
   onLog?: (message: string) => void,
-): Promise<Record<string, boolean>> {
+): Promise<{ capabilities: Record<string, boolean>; stageLocality: Record<string, string> }> {
   try {
     const health = await workerHealth(client);
-    return health.capabilities;
+    return { capabilities: health.capabilities, stageLocality: health.stage_locality };
   } catch (error) {
     onLog?.(
       `the Python worker did not answer health (${error instanceof Error ? error.message : String(error)})`,
     );
-    return {};
+    return { capabilities: {}, stageLocality: {} };
   }
 }

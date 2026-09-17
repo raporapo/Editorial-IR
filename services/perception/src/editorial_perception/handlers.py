@@ -9,6 +9,7 @@ asked to probe never imports torch.
 from __future__ import annotations
 
 import os
+import re
 import sys
 from typing import Any
 
@@ -49,10 +50,26 @@ def handle_health(params: dict[str, Any], session: Session) -> dict[str, Any]:
             ),
             "embed_text": True,
         },
+        # Where the work would happen, which is not always here. `describe` is
+        # an HTTP call to whatever OEA_VLM_BASE_URL names, and the client cannot
+        # see that variable: it recorded every worker-backed stage as local, so
+        # a run that posted the user's transcripts to a hosted endpoint was
+        # written into the record as having stayed on the machine.
+        "stage_locality": {"describe": _describe_locality()},
         "device": _device(),
         "vram_total_mb": _vram_mb(),
         "ffmpeg_available": has_ffmpeg(),
     }
+
+
+_LOOPBACK = re.compile(r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:|/|$)")
+
+
+def _describe_locality() -> str:
+    base_url = os.environ.get("OEA_VLM_BASE_URL")
+    if not base_url:
+        return "unknown"
+    return "local" if _LOOPBACK.match(base_url) else "remote_api"
 
 
 def handle_probe(params: dict[str, Any], session: Session) -> dict[str, Any]:

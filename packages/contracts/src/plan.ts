@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Iso8601, Milliseconds, UnitScore, obj } from './primitives.js';
 import { AssetId, EventId, OperationId, PlanId, ProjectId, ReviewId, RevisionId } from './ids.js';
+import { ModelRun } from './model-run.js';
 import { NarrativeRole } from './editorial.js';
 import { Provenance } from './provenance.js';
 import { EDIT_PLAN_VERSION } from './version.js';
@@ -184,6 +185,18 @@ export const EditPlan = obj({
   }),
   intent: PlanIntent.prefault({}),
   rationale: z.array(PlanRationale).default([]),
+  /**
+   * Models that were asked anything while making this plan.
+   *
+   * Empty for the deterministic planner, which asks nobody. `oea agent` sends
+   * the project's background — the occasion, the people, the places, the
+   * instruction in the user's own words — and the transcript of every event it
+   * inspects, and it recorded none of that anywhere: the run wrote a plan and
+   * nothing else, so no artifact in the project said a hosted model had seen
+   * any of it. The runs belong here rather than in the IR because the IR is
+   * rebuilt by the next `oea analyze` and this plan is not.
+   */
+  model_runs: z.array(ModelRun).default([]),
   stats: PlanStats,
 }).meta({ id: 'EditPlan', title: 'EditPlan' });
 export type EditPlan = z.infer<typeof EditPlan>;

@@ -5,6 +5,7 @@ import type {
   DescribeResult,
   DetectShotsParams,
   DetectShotsResult,
+  ExecutionLocality,
   EmbedFramesParams,
   EmbedFramesResult,
   HealthResult,
@@ -124,13 +125,34 @@ export class WorkerOcrModel implements OcrModel {
   }
 }
 
+/**
+ * A closer look, run by the worker.
+ *
+ * The worker is not necessarily where the work happens: its `describe` is an
+ * HTTP call to whatever `OEA_VLM_BASE_URL` names, which may be a hosted service.
+ * This shim used to record `locality: 'local', mediaLeavesDevice: false`
+ * whatever that endpoint was, so a run that posted the user's transcripts and
+ * the whole of their `context.yaml` background to a remote model went into the
+ * IR as having stayed on the machine — and `oea analyze` printed "media left
+ * this machine: no". Provenance is never falsified, and this was falsifying it.
+ *
+ * The worker now says where its describe would run, in `health.stage_locality`;
+ * a caller that has not asked passes nothing and gets `unknown`, which is the
+ * honest answer rather than the reassuring one.
+ */
 export class WorkerContextModel implements ContextModel {
   readonly identity: ModelIdentity;
   constructor(
     private readonly client: PythonWorkerClient,
     model = 'vlm',
+    locality: ExecutionLocality = 'unknown',
   ) {
-    this.identity = identity(model);
+    this.identity = identity(model, {
+      locality,
+      // The same rule the TypeScript VLM backend follows: a remote endpoint can
+      // be sent frames, so media may leave with it.
+      mediaLeavesDevice: locality === 'remote_api',
+    });
   }
   async describe(params: DescribeParams): Promise<DescribeResult> {
     return this.client.request('describe', params, { timeoutMs: LONG_TIMEOUT_MS });

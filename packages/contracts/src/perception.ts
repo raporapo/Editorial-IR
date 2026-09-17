@@ -159,6 +159,17 @@ export const HealthResult = obj({
   python_version: jsonOptional(z.string()),
   /** Which capabilities have their dependencies installed. */
   capabilities: z.record(z.string(), z.boolean()).default({}),
+  /**
+   * Where each stage would actually run, for the stages where that is a choice.
+   *
+   * The worker is not always the machine the work happens on: `describe` is an
+   * HTTP call to whatever `OEA_VLM_BASE_URL` names, which may be a server in
+   * another country. Only the worker knows that, and it was never asked — the
+   * client recorded every worker-backed stage as `local`, so a run that posted
+   * the user's transcripts and background to a hosted endpoint was written into
+   * the IR as having stayed on the machine, and the privacy report said so.
+   */
+  stage_locality: z.record(z.string(), z.enum(['local', 'remote_api', 'unknown'])).default({}),
   /** `cuda`, `mps`, `cpu`. */
   device: z.string().default('cpu'),
   vram_total_mb: jsonOptional(z.int().min(0)),

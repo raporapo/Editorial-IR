@@ -112,6 +112,7 @@ describe('FileProjectStore', () => {
       tracks: { video: [], audio: [], text: [] },
       intent: { tone: [] },
       rationale: [],
+      model_runs: [],
       stats: {
         operation_count: 0,
         total_duration_ms: 0,

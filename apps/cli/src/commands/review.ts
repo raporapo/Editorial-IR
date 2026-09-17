@@ -72,6 +72,22 @@ export function runReview(args: ReviewArgs): number {
     }s`,
   );
 
+  // Who was asked. Empty for the deterministic planner, which asks nobody; an
+  // agent-made plan names the model that saw the project's background and
+  // transcripts, and that has to be findable after the fact rather than only in
+  // the output of the command that did it.
+  if (plan.model_runs.length > 0) {
+    heading('who was asked');
+    for (const run of plan.model_runs) {
+      const where = run.locality === 'remote_api' ? colour.yellow('off this machine') : 'here';
+      const tokens =
+        run.input_tokens === undefined && run.output_tokens === undefined
+          ? ''
+          : ` (${run.input_tokens ?? 0} in, ${run.output_tokens ?? 0} out)`;
+      note(`  ${run.stage}: ${run.model ?? run.backend}, ${where}${tokens}`);
+    }
+  }
+
   heading('validity');
   if (validation.ok && validation.issues.length === 0) {
     success('nothing to report');
