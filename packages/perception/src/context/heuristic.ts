@@ -1,3 +1,4 @@
+import { compareText } from '@editorial-ir/contracts';
 import type { DescribeParams, DescribeResult } from '@editorial-ir/contracts';
 import type { ContextModel, ModelIdentity } from '../types.js';
 import { normalizeText } from '../text-embedding/hashing.js';
@@ -152,7 +153,7 @@ export function keywordsOf(speech: string[], ocr: string[], limit = 5): string[]
     }
   }
   return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]))
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || compareText(a[0], b[0]))
     .slice(0, limit)
     .map(([token]) => token);
 }

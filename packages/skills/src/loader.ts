@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import {
+  compareText,
   EditorialError,
   SkillDefaults,
   SkillManifest,
@@ -145,7 +146,7 @@ export class SkillRegistry {
   }
 
   list(): SkillSource[] {
-    return [...this.sources.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return [...this.sources.values()].sort((a, b) => compareText(a.name, b.name));
   }
 
   source(name: string): SkillSource | undefined {

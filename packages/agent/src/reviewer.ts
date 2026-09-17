@@ -1,4 +1,5 @@
 import {
+  compareText,
   formatTimecode,
   operationTimelineDuration,
   operationsInOrder,
@@ -168,7 +169,7 @@ export function reviewPlan(
   }
 
   void eventOf;
-  return observations.sort((a, b) => a.timeline_ms - b.timeline_ms || a.id.localeCompare(b.id));
+  return observations.sort((a, b) => a.timeline_ms - b.timeline_ms || compareText(a.id, b.id));
 }
 
 /** Records a round of review against a plan. */

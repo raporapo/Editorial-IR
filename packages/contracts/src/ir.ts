@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Iso8601, Milliseconds, obj } from './primitives.js';
+import { Iso8601, Milliseconds, obj, compareText } from './primitives.js';
 import { AssetPlacement, MediaAsset } from './media.js';
 import { Project, ProjectContext, UserAnnotation } from './project.js';
 import { Chapter, SemanticEvent } from './event.js';
@@ -112,7 +112,7 @@ export function assetById(ir: EditorialIR, id: string): MediaAsset | undefined {
 
 /** Events in capture order. The IR stores them sorted; this makes that explicit. */
 export function eventsInOrder(ir: EditorialIR): SemanticEvent[] {
-  return [...ir.events].sort((a, b) => a.start_ms - b.start_ms || a.id.localeCompare(b.id));
+  return [...ir.events].sort((a, b) => a.start_ms - b.start_ms || compareText(a.id, b.id));
 }
 
 export function neighboursOf(

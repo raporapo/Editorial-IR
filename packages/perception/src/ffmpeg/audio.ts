@@ -1,3 +1,4 @@
+import { compareText } from '@editorial-ir/contracts';
 import type { AnalyzeAudioParams, AnalyzeAudioResult } from '@editorial-ir/contracts';
 import type { AudioModel, ModelIdentity } from '../types.js';
 import { computeHopStatistics, type HopStatistics } from '../wav.js';
@@ -138,7 +139,7 @@ export function analyseHops(stats: HopStatistics, options: AnalyseHopsOptions): 
       });
     }
   }
-  events.sort((a, b) => a.start_ms - b.start_ms || a.event_type.localeCompare(b.event_type));
+  events.sort((a, b) => a.start_ms - b.start_ms || compareText(a.event_type, b.event_type));
 
   return {
     model: 'rms-zcr',

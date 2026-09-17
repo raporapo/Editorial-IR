@@ -83,6 +83,26 @@ export function toIso8601(value: string | undefined): string | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
 }
 
+/**
+ * Ordering that does not depend on where the machine is.
+ *
+ * `localeCompare` reads a collation from the environment, and collations
+ * genuinely disagree: `ä` sorts before `z` under `en-US` and after it under
+ * `sv-SE`. Everything in this pipeline that decides an order — which asset goes
+ * first on the capture timeline, which of two equally good moments wins a tie —
+ * is part of the output, and the first thing the compiler promises is that the
+ * same input produces byte-identical output. A Swedish user compiling the same
+ * footage was getting a different capture timeline, and therefore different
+ * events, different neighbours and a different cut.
+ *
+ * Code-point order is arbitrary and it is the same arbitrary order everywhere,
+ * which is the property that matters here. It is not for anything a person
+ * reads as a sorted list.
+ */
+export function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 export const Sha256 = z
   .string()
   .regex(/^[a-f0-9]{64}$/, 'sha256 must be 64 lowercase hex characters')

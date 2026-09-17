@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
+  compareText,
   CAPTURE_TIMELINE_GAP_MS,
   EditorialError,
   PIPELINE_VERSION,
@@ -57,7 +58,7 @@ export function findMedia(target: string): string[] {
   const found: string[] = [];
   const walk = (directory: string): void => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
-      a.name.localeCompare(b.name),
+      compareText(a.name, b.name),
     )) {
       // Skip our own directory, or ingesting a project would ingest its proxies.
       if (entry.name.startsWith('.')) continue;
@@ -218,7 +219,7 @@ export function placeAssets(assets: readonly MediaAsset[]): AssetPlacement[] {
       const byTime = Date.parse(a.creation_time!) - Date.parse(b.creation_time!);
       if (byTime !== 0 && Number.isFinite(byTime)) return byTime;
     }
-    return a.file_name.localeCompare(b.file_name) || a.id.localeCompare(b.id);
+    return compareText(a.file_name, b.file_name) || compareText(a.id, b.id);
   });
 
   let offset = 0;

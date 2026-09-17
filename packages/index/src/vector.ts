@@ -1,3 +1,4 @@
+import { compareText } from '@editorial-ir/contracts';
 import type { EmbeddingKind, EmbeddingRecord } from '@editorial-ir/contracts';
 
 /**
@@ -92,7 +93,7 @@ export class FlatVectorIndex implements VectorIndex {
     }
 
     // Ties break by id so that two runs over the same data agree exactly.
-    hits.sort((a, b) => b.score - a.score || a.ownerId.localeCompare(b.ownerId));
+    hits.sort((a, b) => b.score - a.score || compareText(a.ownerId, b.ownerId));
     return query.limit === undefined ? hits : hits.slice(0, query.limit);
   }
 
@@ -100,7 +101,7 @@ export class FlatVectorIndex implements VectorIndex {
   pairsAbove(kind: EmbeddingKind, threshold: number): { a: string; b: string; score: number }[] {
     const map = this.byKind.get(kind);
     if (!map) return [];
-    const entries = [...map.entries()].sort((x, y) => x[0].localeCompare(y[0]));
+    const entries = [...map.entries()].sort((x, y) => compareText(x[0], y[0]));
     const pairs: { a: string; b: string; score: number }[] = [];
     for (let i = 0; i < entries.length; i++) {
       for (let j = i + 1; j < entries.length; j++) {
@@ -111,7 +112,7 @@ export class FlatVectorIndex implements VectorIndex {
         if (score >= threshold) pairs.push({ a: first[0], b: second[0], score });
       }
     }
-    pairs.sort((x, y) => y.score - x.score || x.a.localeCompare(y.a) || x.b.localeCompare(y.b));
+    pairs.sort((x, y) => y.score - x.score || compareText(x.a, y.a) || compareText(x.b, y.b));
     return pairs;
   }
 

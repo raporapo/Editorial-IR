@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { isAbsolute, resolve } from 'node:path';
 import {
+  compareText,
   EMPTY_OBSERVATIONS,
   PIPELINE_VERSION,
   seqId,
@@ -90,7 +91,7 @@ export async function observeAssets(
   options: ObserveOptions,
 ): Promise<ObserveResult> {
   const scheduler = options.scheduler ?? new ModelScheduler();
-  const ordered = [...assets].sort((a, b) => a.id.localeCompare(b.id));
+  const ordered = [...assets].sort((a, b) => compareText(a.id, b.id));
   const derived = new Map<string, PrepareResult>();
   const unavailable: UnavailableStage[] = [];
   const failures: ObserveResult['failures'] = [];

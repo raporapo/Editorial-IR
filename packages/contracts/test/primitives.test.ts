@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   Iso8601,
   PROVENANCE_AUTHORITY,
+  compareText,
   durationOf,
   formatTimecode,
   idSchema,
@@ -153,5 +154,44 @@ describe('toIso8601', () => {
     expect(toIso8601('yesterday')).toBeUndefined();
     expect(toIso8601('')).toBeUndefined();
     expect(toIso8601(undefined)).toBeUndefined();
+  });
+});
+
+/**
+ * Ordering that is the same everywhere.
+ *
+ * The compiler's first promise is that the same input produces byte-identical
+ * output, and everything that decides an order is part of that output: which
+ * asset goes first on the capture timeline, which of two equally good moments
+ * wins a tie. `localeCompare` reads a collation from the environment.
+ */
+describe('compareText', () => {
+  it('does not change with the machine’s locale', () => {
+    // `ä` sorts before `z` under en-US and after it under sv-SE, and the default
+    // collation comes from the environment — so the same footage laid out on a
+    // Swedish machine produced a different capture timeline, and therefore
+    // different events, different neighbours and a different cut.
+    const names = ['ä.mp4', 'z.mp4', 'a.mp4', 'ö.mp4'];
+    const ours = [...names].sort(compareText);
+
+    expect([...names].sort((a, b) => a.localeCompare(b, 'en-US'))).not.toEqual(
+      [...names].sort((a, b) => a.localeCompare(b, 'sv-SE')),
+    );
+    for (const locale of ['en-US', 'sv-SE', 'de-DE', 'ja-JP']) {
+      const before = Intl.DateTimeFormat().resolvedOptions().locale;
+      expect(ours, `stable under ${locale} (session locale ${before})`).toEqual([
+        'a.mp4',
+        'z.mp4',
+        'ä.mp4',
+        'ö.mp4',
+      ]);
+    }
+  });
+
+  it('orders and compares equal the way a sort needs', () => {
+    expect(compareText('a', 'b')).toBe(-1);
+    expect(compareText('b', 'a')).toBe(1);
+    expect(compareText('a', 'a')).toBe(0);
+    expect(compareText('evt_0009', 'evt_0010')).toBe(-1);
   });
 });

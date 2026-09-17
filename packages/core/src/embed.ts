@@ -1,4 +1,5 @@
 import {
+  compareText,
   embeddingRefFor,
   type EmbeddingKind,
   type EmbeddingRecord,
@@ -80,7 +81,7 @@ export async function buildEmbeddings(
     });
   }
 
-  records.sort((a, b) => a.owner_id.localeCompare(b.owner_id) || a.kind.localeCompare(b.kind));
+  records.sort((a, b) => compareText(a.owner_id, b.owner_id) || compareText(a.kind, b.kind));
   return { records, kinds: [...new Set(records.map((r) => r.kind))].sort() };
 }
 

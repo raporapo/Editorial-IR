@@ -1,4 +1,5 @@
 import {
+  compareText,
   newId,
   type ExecutionLocality,
   type ModelRun,
@@ -95,7 +96,7 @@ export class ModelRunRecorder {
 
   all(): ModelRun[] {
     return [...this.runs.values()].sort(
-      (a, b) => a.stage.localeCompare(b.stage) || a.id.localeCompare(b.id),
+      (a, b) => compareText(a.stage, b.stage) || compareText(a.id, b.id),
     );
   }
 

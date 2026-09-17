@@ -1,4 +1,5 @@
 import {
+  compareText,
   coverage,
   overlapMs,
   rangesOverlap,
@@ -411,7 +412,7 @@ export function segmentAssets(
   const drafts: SegmentDraft[] = [];
   const offsets = new Map(placements.map((placement) => [placement.asset_id, placement.offset_ms]));
 
-  for (const asset of [...assets].sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const asset of [...assets].sort((a, b) => compareText(a.id, b.id))) {
     const where = {
       assetId: asset.id,
       offsetMs: offsets.get(asset.id) ?? 0,

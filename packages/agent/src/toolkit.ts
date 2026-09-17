@@ -1,4 +1,5 @@
 import {
+  compareText,
   EditorialError,
   assessmentFor,
   chapterById,
@@ -271,7 +272,7 @@ export class AgentToolkit {
         other: r.source_event_id === eventId ? r.target_event_id : r.source_event_id,
         strength: r.strength,
       }))
-      .sort((a, b) => b.strength - a.strength || a.other.localeCompare(b.other));
+      .sort((a, b) => b.strength - a.strength || compareText(a.other, b.other));
   }
 
   /* --- search ------------------------------------------------------------- */

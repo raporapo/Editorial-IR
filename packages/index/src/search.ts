@@ -1,4 +1,5 @@
 import {
+  compareText,
   EMBEDDING_KINDS,
   coverage,
   embeddingRefFor,
@@ -157,7 +158,7 @@ export class SemanticIndex {
     const minScore = options.minScore ?? 0;
     return [...best.values()]
       .filter((hit) => hit.score >= minScore)
-      .sort((a, b) => b.score - a.score || a.event_id.localeCompare(b.event_id))
+      .sort((a, b) => b.score - a.score || compareText(a.event_id, b.event_id))
       .slice(0, limit);
   }
 

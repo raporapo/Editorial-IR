@@ -1,4 +1,4 @@
-import { EditorialError } from '@editorial-ir/contracts';
+import { compareText, EditorialError } from '@editorial-ir/contracts';
 
 /**
  * Deciding what is worth spending a model on.
@@ -47,7 +47,7 @@ export function selectForEscalation(
   candidates: readonly EscalationCandidate[],
   policy: EscalationPolicy = {},
 ): EscalationDecision {
-  const ordered = [...candidates].sort((a, b) => b.value - a.value || a.id.localeCompare(b.id));
+  const ordered = [...candidates].sort((a, b) => b.value - a.value || compareText(a.id, b.id));
 
   const maxItems = policy.maxItems ?? Infinity;
   const maxCost = policy.maxCostUsd ?? Infinity;

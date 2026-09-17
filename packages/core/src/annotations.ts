@@ -1,4 +1,5 @@
 import {
+  compareText,
   newId,
   overlapMs,
   rangesOverlap,
@@ -56,7 +57,7 @@ export function annotationsFor(
         }
       })
       // Highest priority last, so it is applied last and therefore wins.
-      .sort((a, b) => a.priority - b.priority || a.created_at.localeCompare(b.created_at))
+      .sort((a, b) => a.priority - b.priority || compareText(a.created_at, b.created_at))
   );
 }
 

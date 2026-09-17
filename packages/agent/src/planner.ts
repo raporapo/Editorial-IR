@@ -1,4 +1,5 @@
 import {
+  compareText,
   EDIT_PLAN_VERSION,
   EditorialError,
   assessmentFor,
@@ -401,7 +402,7 @@ function select(
         value > bestWorth ||
         (value === bestWorth &&
           (perSecond > bestDensity ||
-            (perSecond === bestDensity && candidate.event.id.localeCompare(best.event.id) < 0)));
+            (perSecond === bestDensity && compareText(candidate.event.id, best.event.id) < 0)));
       if (better) {
         best = candidate;
         bestWorth = value;
@@ -686,7 +687,7 @@ export function assignPreferredDurations(candidates: Candidate[]): void {
   }
 
   const ranked = [...candidates].sort(
-    (a, b) => a.value - b.value || a.event.id.localeCompare(b.event.id),
+    (a, b) => a.value - b.value || compareText(a.event.id, b.event.id),
   );
   for (const [position, candidate] of ranked.entries()) {
     const rank = position / (ranked.length - 1);
@@ -756,7 +757,7 @@ function suppressDuplicates(
       (a, b) =>
         b.value - a.value ||
         (b.assessment.metrics.visual_quality ?? 0) - (a.assessment.metrics.visual_quality ?? 0) ||
-        a.event.id.localeCompare(b.event.id),
+        compareText(a.event.id, b.event.id),
     )[0];
 
     for (const candidate of group) {
@@ -887,7 +888,7 @@ function capConsecutiveRoles(
       // Keep the best of the run, not the earliest: if the viewer is going to
       // see three shots of a train, they should be the three worth seeing.
       const ranked = [...run].sort(
-        (a, b) => b.value - a.value || a.event.id.localeCompare(b.event.id),
+        (a, b) => b.value - a.value || compareText(a.event.id, b.event.id),
       );
       for (const candidate of ranked.slice(cap)) {
         if (candidate.required || candidate.directive.locked) continue;
@@ -980,7 +981,7 @@ export function allocateDurations(selected: Selected[], targetDurationMs: number
   // clips too short to read. Give back the least valuable.
   if (remaining < 0) {
     const byValue = [...selected].sort(
-      (a, b) => a.value - b.value || a.event.id.localeCompare(b.event.id),
+      (a, b) => a.value - b.value || compareText(a.event.id, b.event.id),
     );
     for (const candidate of byValue) {
       if (remaining >= 0) break;
@@ -1031,7 +1032,7 @@ function orderForSequence(selected: Selected[], skill: SkillManifest): Selected[
       (b.assessment.flags.opening_candidate ?? 0) +
         b.assessment.metrics.emotional_intensity -
         ((a.assessment.flags.opening_candidate ?? 0) + a.assessment.metrics.emotional_intensity) ||
-      a.event.id.localeCompare(b.event.id),
+      compareText(a.event.id, b.event.id),
   )[0];
 
   if (!hook || chronological[0] === hook) return chronological;

@@ -43,6 +43,19 @@ export default tseslint.config(
       ],
       'no-console': 'off',
       eqeqeq: ['error', 'always', { null: 'ignore' }],
+      // Everything here that decides an order is part of the output, and the
+      // first thing the compiler promises is that the same input produces
+      // byte-identical output. `localeCompare` reads a collation from the
+      // environment, and collations disagree: `ä` sorts before `z` under en-US
+      // and after it under sv-SE. `compareText` is the same order everywhere.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[property.name='localeCompare']",
+          message:
+            'localeCompare depends on the machine’s locale; use compareText from @editorial-ir/contracts.',
+        },
+      ],
     },
   },
   {
@@ -58,6 +71,9 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-return': 'off',
+      // A test is allowed to call localeCompare, because showing that two
+      // collations disagree is how the rule above is justified.
+      'no-restricted-syntax': 'off',
     },
   },
   {

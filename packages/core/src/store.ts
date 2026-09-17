@@ -9,6 +9,7 @@ import {
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
+  compareText,
   EditPlan,
   EditorialError,
   MediaAsset,
@@ -215,7 +216,7 @@ export class FileProjectStore implements ProjectStore {
       .map((id) => this.readPlan(id))
       .filter((p): p is EditPlan => p !== undefined);
     if (plans.length === 0) return undefined;
-    return plans.sort((a, b) => a.created_at.localeCompare(b.created_at)).at(-1);
+    return plans.sort((a, b) => compareText(a.created_at, b.created_at)).at(-1);
   }
 }
 

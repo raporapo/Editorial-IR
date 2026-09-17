@@ -75,6 +75,17 @@ is compatible with.
 
 ### Fixed
 
+- **The same footage compiled differently on a different machine.** Thirty
+  comparisons decided an order with `localeCompare`, which reads a collation
+  from the environment — and collations genuinely disagree: `ä` sorts before `z`
+  under `en-US` and after it under `sv-SE`. The one that mattered most was the
+  capture timeline, which falls back to file name when a camera recorded no
+  timestamp: a Swedish user laying out the same footage got a different order,
+  and therefore different events, different neighbours and a different cut,
+  against a promise of byte-identical output. Ordering now goes through
+  `compareText`, which is the same arbitrary order everywhere, and lint refuses
+  `localeCompare` in source so it cannot come back.
+
 - **The sound drifted a frame from the picture in an OTIO export.** A track
   there is a run of durations, so an item's position comes from accumulating
   them — and each track rounded its own. The audio track merges a run of silent

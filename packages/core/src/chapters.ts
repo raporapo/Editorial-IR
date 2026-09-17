@@ -1,4 +1,10 @@
-import { coverage, seqId, type Chapter, type SemanticEvent } from '@editorial-ir/contracts';
+import {
+  compareText,
+  coverage,
+  seqId,
+  type Chapter,
+  type SemanticEvent,
+} from '@editorial-ir/contracts';
 
 /**
  * Grouping events into chapters.
@@ -147,7 +153,7 @@ function dominantPlace(group: readonly SemanticEvent[]): string | undefined {
       counts.set(place, (counts.get(place) ?? 0) + 1);
     }
   }
-  const best = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+  const best = [...counts.entries()].sort((a, b) => b[1] - a[1] || compareText(a[0], b[0]))[0];
   return best?.[0];
 }
 
@@ -184,6 +190,6 @@ function mostCommon(values: readonly string[]): string | undefined {
   for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
   const best = [...counts.entries()]
     .filter(([, count]) => count > 1)
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+    .sort((a, b) => b[1] - a[1] || compareText(a[0], b[0]))[0];
   return best?.[0];
 }

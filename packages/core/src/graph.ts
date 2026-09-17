@@ -1,4 +1,5 @@
 import {
+  compareText,
   coverage,
   matchFeatures,
   seqId,
@@ -217,8 +218,8 @@ function keepStrongest(
         const second = draft[b]!;
         return (
           second.strength - first.strength ||
-          first.source_event_id.localeCompare(second.source_event_id) ||
-          first.target_event_id.localeCompare(second.target_event_id)
+          compareText(first.source_event_id, second.source_event_id) ||
+          compareText(first.target_event_id, second.target_event_id)
         );
       })
       .slice(0, limit)
@@ -320,7 +321,7 @@ export function duplicateGroups(relations: readonly EventRelation[]): string[][]
   return [...groups.values()]
     .filter((group) => group.length > 1)
     .map((group) => group.sort())
-    .sort((a, b) => (a[0] ?? '').localeCompare(b[0] ?? ''));
+    .sort((a, b) => compareText(a[0] ?? '', b[0] ?? ''));
 }
 
 /**
