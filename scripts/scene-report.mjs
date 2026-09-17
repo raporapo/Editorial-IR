@@ -19,6 +19,7 @@
  *   node scripts/scene-report.mjs ./my-footage --continuous
  *   node scripts/scene-report.mjs a.mp4 --cuts-at 12.0,45.5,98.2
  *   node scripts/scene-report.mjs ./my-footage --names
+ *   node scripts/scene-report.mjs a.mp4 --candidates 25
  *
  * `--continuous` says these clips are unedited camera takes, so every boundary
  * found inside one is a false positive. That needs no annotation from you and
@@ -26,6 +27,11 @@
  *
  * `--cuts-at` gives the true cut times of one edited clip in seconds, so recall
  * can be measured too.
+ *
+ * `--candidates N` lists the N highest-scoring moments as timestamps, so the
+ * question "which of these are real cuts?" can be answered by reading a short
+ * list rather than by typing every cut time from scratch. Timestamps and scores
+ * only — still nothing from the picture or the sound.
  *
  * Needs only ffmpeg. Paste the output back; it is a few hundred bytes.
  */
@@ -168,8 +174,16 @@ async function main() {
     : undefined;
   const continuous = flags.has('--continuous');
   const showNames = flags.has('--names');
+  const candidatesArg = args.find((a) => a.startsWith('--candidates='));
+  const candidatesIndex = args.indexOf('--candidates');
+  const rawCandidates = candidatesArg
+    ? candidatesArg.slice('--candidates='.length)
+    : candidatesIndex >= 0
+      ? args[candidatesIndex + 1]
+      : undefined;
+  const candidates = rawCandidates ? Number.parseInt(rawCandidates, 10) || 0 : 0;
 
-  const targets = args.filter((a) => !a.startsWith('--') && a !== rawCuts);
+  const targets = args.filter((a) => !a.startsWith('--') && a !== rawCuts && a !== rawCandidates);
   if (targets.length === 0) {
     console.error(
       'usage: node scripts/scene-report.mjs <file-or-directory> [--continuous] [--names] [--cuts-at 12.0,45.5]',
@@ -206,7 +220,7 @@ async function main() {
     });
   }
   process.stderr.write('        \r');
-  report(rows, { continuous, truth });
+  report(rows, { continuous, truth, candidates });
 }
 
 /**
@@ -215,7 +229,7 @@ async function main() {
  * Durations, counts and score percentiles. Nothing derived from the picture or
  * the sound beyond how much consecutive frames differ.
  */
-function report(rows, { continuous, truth }) {
+function report(rows, { continuous, truth, candidates }) {
   const line = (s = '') => console.log(s);
 
   line('--- scene detector report -------------------------------------------');
@@ -269,6 +283,22 @@ function report(rows, { continuous, truth }) {
     const s = rows[0].scored;
     line(`against ${s.truth} cut(s) you gave, at the current sensitivity ${CURRENT}`);
     line(`  matched ${s.hit}/${s.truth} within 1.0s, with ${s.extra} extra`);
+    line();
+  }
+
+  if (candidates > 0) {
+    line(`the ${candidates} highest-scoring moments, so you can say which are real cuts`);
+    line(`  (mark each R for a real cut or F for not one, and send the line back)`);
+    for (const row of rows) {
+      const top = [...row.hits].sort((a, b) => b.score - a.score).slice(0, candidates);
+      top.sort((a, b) => a.seconds - b.seconds);
+      line(`  ${row.label}:`);
+      for (const hit of top) {
+        const m = Math.floor(hit.seconds / 60);
+        const sec = (hit.seconds % 60).toFixed(1).padStart(4, '0');
+        line(`    ${String(m).padStart(3)}:${sec}   ${hit.score.toFixed(3)}   [ ]`);
+      }
+    }
     line();
   }
 
