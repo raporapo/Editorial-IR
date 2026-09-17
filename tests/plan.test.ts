@@ -1018,10 +1018,9 @@ describe('when the cut cannot reach its target', () => {
    * eighty-one seconds short — which reads like a failure to try.
    */
   it('says the skill’s own limit is what stopped it', async () => {
-    const { ir, plan, observations, store } = await planned('travel-vlog', 3_600_000);
+    const { ir, plan, store } = await planned('travel-vlog', 3_600_000);
     const report = validatePlan(plan, {
       ir,
-      observations,
       projectRoot: store.paths.root,
       skill: registry.resolve('travel-vlog'),
     });
@@ -1038,10 +1037,9 @@ describe('when the cut cannot reach its target', () => {
   it('does not blame the limit when the cut is too long', async () => {
     // Over target is never the clip cap's doing, and saying so would send the
     // user off to raise a limit that is not in their way.
-    const { ir, plan, observations, store } = await planned('travel-vlog', 1000);
+    const { ir, plan, store } = await planned('travel-vlog', 1000);
     const report = validatePlan(plan, {
       ir,
-      observations,
       projectRoot: store.paths.root,
       skill: registry.resolve('travel-vlog'),
     });
