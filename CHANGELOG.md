@@ -75,6 +75,15 @@ is compatible with.
 
 ### Fixed
 
+- **The sound drifted a frame from the picture in an OTIO export.** A track
+  there is a run of durations, so an item's position comes from accumulating
+  them — and each track rounded its own. The audio track merges a run of silent
+  clips into one gap and the video track does not, so the two accumulated
+  different error: six of the fifteen audio clips in the worked example landed a
+  frame after the picture they belong to. Both tracks are now laid on one frame
+  grid, taken from each clip's absolute position, so every length either of them
+  writes is the distance between the same two frames.
+
 - **A skill's `tag` went nowhere.** The format has described it since it was
   written as "free tags, carried into the plan's rationale", the rule runtime
   collected them onto the directive, and nothing read that field — nor did the

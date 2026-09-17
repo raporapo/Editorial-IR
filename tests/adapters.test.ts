@@ -194,6 +194,10 @@ describe('the OpenTimelineIO adapter', () => {
   });
 
   it('measures clip durations in frames at the sequence rate', async () => {
+    // A clip's length is the distance to where the next one starts on the frame
+    // grid, not its own millisecond duration rounded in isolation: the two
+    // differ by a frame whenever rounding goes the other way, and a track is a
+    // run of durations, so that frame would move everything after it.
     const { plan, request } = await prepared();
     const document = buildOtioTimeline(plan, request) as Record<string, any>;
     const clips = document.tracks.children[0].children.filter(
@@ -201,8 +205,14 @@ describe('the OpenTimelineIO adapter', () => {
     );
     for (const [index, clip] of clips.entries()) {
       const operation = plan.tracks.video[index]!;
-      const expected = msToFrames(operationTimelineDuration(operation), 30000, 1001);
+      const next = plan.tracks.video[index + 1];
+      const start = msToFrames(operation.timeline_start_ms, 30000, 1001);
+      const wanted = msToFrames(operationTimelineDuration(operation), 30000, 1001);
+      const expected = next
+        ? Math.min(wanted, msToFrames(next.timeline_start_ms, 30000, 1001) - start)
+        : wanted;
       expect(clip.source_range.duration.value).toBe(expected);
+      expect(Math.abs(clip.source_range.duration.value - wanted)).toBeLessThanOrEqual(1);
     }
   });
 });
@@ -688,5 +698,69 @@ describe('the dissolves', () => {
     const withIt = { ...plan, tracks: { ...plan.tracks, video } };
     const root = parseXml(buildFcpXml(withIt, { ...request, plan: withIt }));
     expect(findAll(root, 'transitionitem').length).toBe(1);
+  }, 60_000);
+});
+
+describe('the sound and the picture, frame for frame', () => {
+  /** Every item on a track, with the frame it starts on. */
+  function laid(track: { children: Record<string, unknown>[] }) {
+    let at = 0;
+    const items: { start: number; length: number; kind: string; operation?: string }[] = [];
+    for (const child of track.children) {
+      if (child.OTIO_SCHEMA === 'Transition.1') continue;
+      const sourceRange = child.source_range as { duration: { value: number } };
+      const meta = (child.metadata as Record<string, Record<string, unknown>> | undefined)?.[
+        'editorial-ir'
+      ];
+      const operation = meta?.operation_id;
+      items.push({
+        start: at,
+        length: sourceRange.duration.value,
+        kind: String(child.OTIO_SCHEMA),
+        ...(typeof operation === 'string' ? { operation } : {}),
+      });
+      at += sourceRange.duration.value;
+    }
+    return items;
+  }
+
+  it('puts every audio clip on the same frame as its picture', async () => {
+    // A track in OTIO is a run of durations, so an item's position comes from
+    // accumulating them — and each track rounded its own. The audio track merges
+    // a run of silent clips into one gap and the video track does not, so the
+    // two accumulated different error: six of fifteen audio clips came out a
+    // frame after their picture, which is a sync fault a person notices in the
+    // edit rather than in a diff.
+    const { plan, request } = await prepared();
+    const timeline = buildOtioTimeline(plan, request) as {
+      tracks: { children: { kind: string; children: Record<string, unknown>[] }[] };
+    };
+
+    const video = timeline.tracks.children.find((track) => track.kind === 'Video')!;
+    const audio = timeline.tracks.children.find((track) => track.kind === 'Audio')!;
+    const picture = new Map(
+      laid(video)
+        .filter((item) => item.operation)
+        .map((item) => [item.operation!, item]),
+    );
+
+    const sound = laid(audio).filter((item) => item.kind === 'Clip.1');
+    expect(sound.length).toBeGreaterThan(0);
+    for (const item of sound) {
+      const its = picture.get(item.operation!);
+      expect(its, `${item.operation} has sound and no picture`).toBeDefined();
+      expect([item.start, item.length]).toEqual([its!.start, its!.length]);
+    }
+  }, 60_000);
+
+  it('leaves a gap rather than closing up behind a silent clip', async () => {
+    const { plan, request } = await prepared();
+    const timeline = buildOtioTimeline(plan, request) as {
+      tracks: { children: { kind: string; children: Record<string, unknown>[] }[] };
+    };
+    const audio = timeline.tracks.children.find((track) => track.kind === 'Audio')!;
+    const silent = plan.tracks.video.filter((operation) => !operation.use_source_audio);
+    expect(silent.length).toBeGreaterThan(0);
+    expect(laid(audio).some((item) => item.kind === 'Gap.1')).toBe(true);
   }, 60_000);
 });

@@ -83,16 +83,63 @@ export function buildOtioTimeline(
   warnings: string[] = [],
 ): Record<string, unknown> {
   const rate = plan.sequence.frame_rate_num / plan.sequence.frame_rate_den;
-  const time = (ms: number): Record<string, unknown> => ({
+  const frames = (ms: number): number => Math.round((ms / 1000) * rate);
+  const time = (ms: number): Record<string, unknown> => at(frames(ms));
+  const at = (value: number): Record<string, unknown> => ({
     OTIO_SCHEMA: 'RationalTime.1',
     rate,
-    value: Math.round((ms / 1000) * rate),
+    value,
   });
   const range = (startMs: number, durationMs: number): Record<string, unknown> => ({
     OTIO_SCHEMA: 'TimeRange.1',
     start_time: time(startMs),
     duration: time(durationMs),
   });
+  /** A range already measured on the frame grid, in frames. */
+  const frameRange = (startFrames: number, lengthFrames: number): Record<string, unknown> => ({
+    OTIO_SCHEMA: 'TimeRange.1',
+    start_time: at(startFrames),
+    duration: at(lengthFrames),
+  });
+
+  /**
+   * Where each clip sits on the frame grid, decided once for both tracks.
+   *
+   * A track in OTIO is a run of durations, so its items' positions come from
+   * accumulating them. Rounding each duration on its own therefore accumulates
+   * error, and the picture and its sound accumulate *different* error, because
+   * the audio track merges a run of silent clips into one gap and the video
+   * track does not. On the worked example six of the fifteen audio clips came
+   * out one frame after their picture. A frame of drift is a sync fault, and it
+   * is the kind a person notices in the edit rather than in a diff.
+   *
+   * So each operation's start and end are placed on the grid from its absolute
+   * timeline position, and every length either track writes is the difference
+   * between two of those. Both tracks then land on exactly the same frames.
+   */
+  const span = new Map<string, { start: number; length: number }>();
+  {
+    const inOrder = operationsInOrder(plan);
+    const byTrackForSpans = new Map<number, typeof inOrder>();
+    for (const operation of inOrder) {
+      const list = byTrackForSpans.get(operation.track) ?? [];
+      list.push(operation);
+      byTrackForSpans.set(operation.track, list);
+    }
+    for (const operations of byTrackForSpans.values()) {
+      for (const [index, operation] of operations.entries()) {
+        const start = frames(operation.timeline_start_ms);
+        const next = operations[index + 1];
+        const wanted = Math.max(1, frames(operationTimelineDuration(operation)));
+        const nextStart = next ? frames(next.timeline_start_ms) : undefined;
+        const length =
+          nextStart !== undefined && nextStart > start
+            ? Math.min(wanted, nextStart - start)
+            : wanted;
+        span.set(operation.operation_id, { start, length });
+      }
+    }
+  }
 
   const byTrack = new Map<number, typeof plan.tracks.video>();
   for (const operation of operationsInOrder(plan)) {
@@ -108,16 +155,18 @@ export function buildOtioTimeline(
       let cursor = 0;
 
       for (const [position, operation] of operations.entries()) {
+        const placed = span.get(operation.operation_id)!;
+
         // A gap keeps the timeline honest: a clip that starts late starts late,
         // rather than being silently slid earlier.
-        if (operation.timeline_start_ms > cursor) {
+        if (placed.start > cursor) {
           children.push({
             OTIO_SCHEMA: 'Gap.1',
             name: 'gap',
-            source_range: range(0, operation.timeline_start_ms - cursor),
+            source_range: frameRange(0, placed.start - cursor),
             metadata: {},
           });
-          cursor = operation.timeline_start_ms;
+          cursor = placed.start;
         }
 
         // A Transition sits between two clips, so the outgoing clip's
@@ -147,7 +196,7 @@ export function buildOtioTimeline(
         children.push({
           OTIO_SCHEMA: 'Clip.1',
           name: clipName(operation, request),
-          source_range: range(operation.source_in_ms, operationTimelineDuration(operation)),
+          source_range: frameRange(frames(operation.source_in_ms), placed.length),
           media_reference: {
             OTIO_SCHEMA: 'ExternalReference.1',
             target_url: path ? toFileUrl(path) : '',
@@ -168,7 +217,7 @@ export function buildOtioTimeline(
           enabled: true,
         });
 
-        cursor = operation.timeline_start_ms + operationTimelineDuration(operation);
+        cursor = placed.start + placed.length;
       }
 
       return {
@@ -199,13 +248,14 @@ export function buildOtioTimeline(
       let cursor = 0;
 
       for (const operation of operationsInOrder(plan)) {
-        const length = operationTimelineDuration(operation);
         if (!operation.use_source_audio) continue;
-        if (operation.timeline_start_ms > cursor) {
+        // The same frames the picture got, so the sound cannot drift from it.
+        const placed = span.get(operation.operation_id)!;
+        if (placed.start > cursor) {
           children.push({
             OTIO_SCHEMA: 'Gap.1',
             name: 'gap',
-            source_range: range(0, operation.timeline_start_ms - cursor),
+            source_range: frameRange(0, placed.start - cursor),
             metadata: {},
           });
         }
@@ -214,7 +264,7 @@ export function buildOtioTimeline(
         children.push({
           OTIO_SCHEMA: 'Clip.1',
           name: clipName(operation, request),
-          source_range: range(operation.source_in_ms, length),
+          source_range: frameRange(frames(operation.source_in_ms), placed.length),
           media_reference: {
             OTIO_SCHEMA: 'ExternalReference.1',
             target_url: path ? toFileUrl(path) : '',
@@ -230,7 +280,7 @@ export function buildOtioTimeline(
           },
           enabled: true,
         });
-        cursor = operation.timeline_start_ms + length;
+        cursor = placed.start + placed.length;
       }
 
       return {
