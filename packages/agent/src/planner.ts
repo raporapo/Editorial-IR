@@ -194,9 +194,29 @@ export function planEdit(options: PlanOptions): EditPlan {
   });
 
   if (candidates.length === 0) {
+    // Say what did it, because the answer decides what the user should do next
+    // and the rationale already knows. A skill dropping everything is the
+    // ordinary outcome on footage with no speech and no vision model — every
+    // event is `filler` at importance 0.175 — and "there is nothing to cut" on
+    // its own sends someone to look at their footage when the answer is a
+    // different skill, a correction, or a model.
+    const why = new Map<string, number>();
+    for (const entry of rationale) {
+      if (entry.decision !== 'dropped' && entry.decision !== 'excluded') continue;
+      why.set(entry.reason, (why.get(entry.reason) ?? 0) + 1);
+    }
+    const reasons = [...why.entries()]
+      .sort((a, b) => b[1] - a[1] || compareText(a[0], b[0]))
+      .slice(0, 3)
+      .map(([reason, count]) => `${count} × ${reason}`);
+
     throw new EditorialError(
       'plan_invalid',
-      'every event was dropped or excluded; there is nothing to cut',
+      `all ${ordered.length} event(s) were dropped or excluded; there is nothing to cut`,
+      {
+        ...(reasons.length > 0 ? { why: reasons.join('; ') } : {}),
+        hint: 'try another skill ("oea skills"), keep one with "oea annotate <event> essential", or configure a model so the events are understood rather than guessed at',
+      },
     );
   }
   assignPreferredDurations(candidates);

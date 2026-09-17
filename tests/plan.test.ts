@@ -965,3 +965,29 @@ describe('the tags a skill attaches', () => {
     expect(other?.tags).toEqual([]);
   });
 });
+
+describe('a skill that leaves nothing', () => {
+  it('says what dropped it all, not just that nothing is left', () => {
+    // Found on real footage: with no ASR and no vision model every event is
+    // `filler` at importance 0.175, so the skill's own rules drop the lot and
+    // the command exited with "there is nothing to cut" — which sends someone
+    // to look at their footage when the answer is a different skill, a
+    // correction, or a model.
+    const base = registry.resolve('base-editor');
+    const skill: SkillManifest = {
+      ...base,
+      rules: [{ id: 'drop-everything', when: {}, action: { drop: true }, priority: 100 }],
+    };
+    const ir = makeIR({ events: [{ description: '一' }, { description: '二' }] });
+
+    try {
+      planEdit({ ir, skill, targetDurationMs: 30_000 });
+      throw new Error('it should not have produced a plan');
+    } catch (error) {
+      const details = (error as { details?: Record<string, unknown> }).details ?? {};
+      expect((error as Error).message).toMatch(/all 2 event\(s\)/);
+      expect(String(details.why)).toContain('drop-everything');
+      expect(String(details.hint)).toContain('another skill');
+    }
+  });
+});

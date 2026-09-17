@@ -183,6 +183,30 @@ describe('contactSheet', () => {
     expect(seen).toContain('-frames:v');
   });
 
+  it('maps the filter graph to the file, or ffmpeg refuses the whole command', async () => {
+    // `-filter_complex` that names its output needs an explicit `-map`, or
+    // automatic stream selection ignores it: "Filter xstack:default has an
+    // unconnected output", and nothing is written. Every other test here stubs
+    // the runner, so only a real ffmpeg over real frames found it — which is
+    // what `oea inspect --sheet` is.
+    for (const count of [1, 2, 5, 9]) {
+      let seen: readonly string[] = [];
+      const many = Array.from({ length: count }, (_, i) => ({
+        path: `/w/${i}.jpg`,
+        asset_id: 'asset_001',
+        source_ms: i * 1000,
+      }));
+      await contactSheet(many, join(tmpdir(), 'sheet.jpg'), {
+        run: async (_binary, args) => {
+          seen = args;
+        },
+      });
+      const graph = seen[seen.indexOf('-filter_complex') + 1]!;
+      expect(graph, `${count} frames`).toContain('[out]');
+      expect(seen[seen.indexOf('-map') + 1], `${count} frames`).toBe('[out]');
+    }
+  });
+
   it('explains itself when there is nothing to look at', async () => {
     // "0 frames" with no explanation reads as a broken tool. The reason is
     // almost always that the media was never ingested with frame sampling.

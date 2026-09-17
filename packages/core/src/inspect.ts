@@ -197,6 +197,13 @@ export async function contactSheet(
     ...frames.flatMap((frame) => ['-i', frame.path]),
     '-filter_complex',
     tileFilter(frames.length, columns, rows, cellHeight),
+    // A filter graph that names its output has to be mapped to the file, or
+    // ffmpeg's automatic stream selection ignores it and refuses the whole
+    // command: "Filter xstack:default has an unconnected output". Nothing here
+    // could catch it, because every test of this stubs the runner out — it
+    // needs a real ffmpeg and real frames, which is what `--sheet` has.
+    '-map',
+    '[out]',
     '-frames:v',
     '1',
     outputPath,

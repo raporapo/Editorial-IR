@@ -75,6 +75,19 @@ is compatible with.
 
 ### Fixed
 
+- **`oea inspect --sheet` never produced a contact sheet.** The filter graph
+  names its output and nothing mapped it to the file, so ffmpeg refused the
+  whole command — "Filter xstack:default has an unconnected output" — and no
+  image was written. Every test of this stubs the runner out, so only a real
+  ffmpeg over real frames could find it; that is exactly what the command is.
+- **"There is nothing to cut" did not say what did it.** On footage with no
+  speech and no vision model every event is `filler` at importance 0.175, so a
+  skill's own rules can drop all of it — the ordinary outcome, not a
+  malfunction. The message named neither the rules responsible nor anything to
+  do about it, which sends someone to look at their footage when the answer is a
+  different skill, a correction, or a model. It now counts the reasons and says
+  all three.
+
 - **An IR from an incompatible version was read hopefully.** "A document from an
   incompatible version is rejected rather than read hopefully" is what the
   documentation promises, and nothing checked: `isCompatibleVersion` existed and
