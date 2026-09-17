@@ -64,7 +64,13 @@ class Session:
         print(f"[{level}] {message}", file=self._err, flush=True)
 
     def _emit(self, payload: dict[str, Any]) -> None:
-        self._out.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        # `allow_nan=False` because Python writes bare `NaN` and `Infinity`,
+        # which are not JSON and which the client cannot parse. It would read
+        # the line as a stray log, leave the request pending, and hang until the
+        # timeout — a much worse failure than one model returning a number that
+        # is not a number. A ValueError here is caught by the loop and reported
+        # against the request that produced it.
+        self._out.write(json.dumps(payload, ensure_ascii=False, allow_nan=False) + "\n")
         self._out.flush()
 
     @staticmethod
@@ -94,12 +100,22 @@ class Session:
         )
 
     def reply_error(
-        self, request_id: str, op: str | None, code: str, message: str, details: dict[str, Any] | None = None
+        self,
+        request_id: str,
+        op: str | None,
+        code: str,
+        message: str,
+        details: dict[str, Any] | None = None,
     ) -> None:
         error: dict[str, Any] = {"code": code, "message": message}
         if details:
             error["details"] = details
-        payload: dict[str, Any] = {"v": PROTOCOL_VERSION, "id": request_id, "ok": False, "error": error}
+        payload: dict[str, Any] = {
+            "v": PROTOCOL_VERSION,
+            "id": request_id,
+            "ok": False,
+            "error": error,
+        }
         if op:
             payload["op"] = op
         self._emit(payload)

@@ -76,6 +76,7 @@ export class PythonWorkerClient {
     this.exitReason = undefined;
 
     child.on('error', (error) => {
+      if (this.child !== child) return;
       this.failAll(
         new EditorialError(
           'perception_failed',
@@ -89,8 +90,14 @@ export class PythonWorkerClient {
     });
 
     child.on('exit', (code, signal) => {
+      // Only if this is still the worker in use. A replacement may already have
+      // been started — after a timeout, or after a caller restarted one
+      // deliberately — and clearing the start promise of a worker that is
+      // coming up would let a second process be spawned beside it.
+      if (this.child !== child) return;
       this.exitReason = `worker exited with code ${code ?? 'null'}${signal ? ` (${signal})` : ''}`;
       this.startPromise = undefined;
+      this.child = undefined;
       this.failAll(new EditorialError('perception_failed', this.exitReason));
     });
 
@@ -184,6 +191,24 @@ export class PythonWorkerClient {
     }
   }
 
+  /**
+   * Kills a worker that can no longer be trusted, and fails what it was holding.
+   *
+   * Everything still pending is queued behind work nobody is waiting for any
+   * more, so it is already lost; saying so is better than letting each request
+   * discover it by timing out.
+   */
+  private abandon(reason: string): void {
+    const child = this.child;
+    this.child = undefined;
+    this.reader?.close();
+    this.reader = undefined;
+    this.startPromise = undefined;
+    this.exitReason = reason;
+    this.failAll(new EditorialError('perception_failed', reason));
+    if (child && child.exitCode === null) child.kill('SIGKILL');
+  }
+
   private failAll(error: unknown): void {
     for (const [, pending] of this.pending) {
       if (pending.timer) clearTimeout(pending.timer);
@@ -225,6 +250,13 @@ export class PythonWorkerClient {
               },
             ),
           );
+          // The worker handles one request at a time and has no way to be told
+          // to stop, so abandoning a request does not free it: it goes on
+          // working, and everything sent afterwards waits behind the thing that
+          // already timed out and times out in turn. One slow file took the
+          // rest of the run with it. Giving up on a request means giving up on
+          // the process; the next request starts a fresh one.
+          this.abandon(`the worker was restarted after "${op}" timed out`);
         }, timeoutMs);
       }
       this.pending.set(id, pending);

@@ -87,7 +87,9 @@ def embed_frames(
             features = features / features.norm(dim=-1, keepdim=True)
 
         labels_per_frame = (
-            _zero_shot(loaded, features, label_vocabulary) if label_vocabulary else [[] for _ in kept]
+            _zero_shot(loaded, features, label_vocabulary)
+            if label_vocabulary
+            else [[] for _ in kept]
         )
 
         for index, timestamp in enumerate(kept):

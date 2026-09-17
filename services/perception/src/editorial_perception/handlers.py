@@ -12,9 +12,11 @@ import os
 import sys
 from typing import Any
 
-from .backends import asr, audio as audio_backend, hashing, ocr as ocr_backend, text_embedding, visual, vlm
+from .backends import asr, hashing, text_embedding, visual, vlm
+from .backends import audio as audio_backend
+from .backends import ocr as ocr_backend
 from .errors import BadRequest, MissingDependency
-from .media import has_ffmpeg, has_ffprobe, detect_shots, prepare, probe
+from .media import detect_shots, has_ffmpeg, has_ffprobe, prepare, probe
 from .protocol import PROTOCOL_VERSION, WORKER_VERSION, Session
 from .scheduler import ModelScheduler
 
@@ -42,7 +44,9 @@ def handle_health(params: dict[str, Any], session: Session) -> dict[str, Any]:
             "transcribe": _importable("faster_whisper"),
             "embed_frames": _importable("transformers") and _importable("torch"),
             "ocr": _importable("rapidocr_onnxruntime"),
-            "describe": bool(os.environ.get("OEA_VLM_BASE_URL") and os.environ.get("OEA_VLM_MODEL")),
+            "describe": bool(
+                os.environ.get("OEA_VLM_BASE_URL") and os.environ.get("OEA_VLM_MODEL")
+            ),
             "embed_text": True,
         },
         "device": _device(),
@@ -130,7 +134,9 @@ def handle_embed_text(params: dict[str, Any], session: Session) -> dict[str, Any
         _text_model = text_embedding.load()
         _text_model_loaded = True
 
-    return text_embedding.embed(_text_model, [str(text) for text in texts], str(params.get("role", "passage")))
+    return text_embedding.embed(
+        _text_model, [str(text) for text in texts], str(params.get("role", "passage"))
+    )
 
 
 HANDLERS = {

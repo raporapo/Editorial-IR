@@ -46,14 +46,24 @@ def analyze(
     for start, end in _runs([db < threshold for db in rms_db]):
         if (end - start) * hop_ms >= min_silence_ms:
             events.append(
-                {"start_ms": start * hop_ms, "end_ms": end * hop_ms, "event_type": "silence", "confidence": 0.8}
+                {
+                    "start_ms": start * hop_ms,
+                    "end_ms": end * hop_ms,
+                    "event_type": "silence",
+                    "confidence": 0.8,
+                }
             )
     for start, end in _runs([p >= 0.5 for p in speech_prob]):
         if (end - start) * hop_ms >= min_speech_ms:
             events.append(
                 # Energy and zero crossings are a weak speech detector, and the
                 # confidence says so: a transcriber will overwrite this.
-                {"start_ms": start * hop_ms, "end_ms": end * hop_ms, "event_type": "speech", "confidence": 0.5}
+                {
+                    "start_ms": start * hop_ms,
+                    "end_ms": end * hop_ms,
+                    "event_type": "speech",
+                    "confidence": 0.5,
+                }
             )
     events.sort(key=lambda event: (event["start_ms"], event["event_type"]))
 

@@ -6,7 +6,8 @@ that Claude Code finds it.
 Two things worth repeating because they are the ones most easily lost:
 
 - **`pnpm verify` before claiming anything works.** It is what CI runs: format,
-  typecheck, lint, build, tests, and a check that `schemas/` is not stale.
+  typecheck, lint, build, tests, a check that `schemas/` is not stale, and the
+  Python worker's own lint and tests where Python is installed.
 - **The worked example is how you see whether a change is an improvement.**
   `pnpm oea demo ./tmp/demo` then `pnpm oea plan --project ./tmp/demo --skill
 travel-vlog --duration 180`. Several real quality bugs in this repository were

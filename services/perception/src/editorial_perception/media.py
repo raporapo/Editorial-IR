@@ -27,7 +27,9 @@ def has_ffprobe() -> bool:
     return shutil.which("ffprobe") is not None
 
 
-def _run(command: list[str], *, timeout: int = 3600, allow_failure: bool = False) -> subprocess.CompletedProcess[str]:
+def _run(
+    command: list[str], *, timeout: int = 3600, allow_failure: bool = False
+) -> subprocess.CompletedProcess[str]:
     try:
         result = subprocess.run(  # noqa: S603 - the command is built here, not by a caller
             command,
@@ -69,7 +71,12 @@ def probe(path: str) -> dict[str, Any]:
     audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
     fmt = parsed.get("format") or {}
 
-    duration = _float(fmt.get("duration")) or _float((video or {}).get("duration")) or _float((audio or {}).get("duration")) or 0.0
+    duration = (
+        _float(fmt.get("duration"))
+        or _float((video or {}).get("duration"))
+        or _float((audio or {}).get("duration"))
+        or 0.0
+    )
 
     out: dict[str, Any] = {
         "duration_ms": max(0, round(duration * 1000)),
@@ -194,7 +201,11 @@ def detect_shots(path: str, threshold: float = 0.3, min_shot_ms: int = 800) -> d
         pass
 
     result = _run(
-        ["ffmpeg", "-hide_banner", "-i", path, "-filter:v", f"select='gt(scene,{threshold})',showinfo", "-an", "-f", "null", "-"],
+        [
+            "ffmpeg", "-hide_banner", "-i", path,
+            "-filter:v", f"select='gt(scene,{threshold})',showinfo",
+            "-an", "-f", "null", "-",
+        ],
         allow_failure=True,
     )
     boundaries = _parse_showinfo(result.stderr)
@@ -317,3 +328,48 @@ def _rotation(video: dict[str, Any]) -> int | None:
         except ValueError:
             return None
     return None
+
+
+def image_size(path: str) -> tuple[int, int] | None:
+    """Width and height of a JPEG or PNG, from its header.
+
+    Frames are written at the source resolution, and a box a model reports in
+    the pixels of one is meaningless to anyone who does not know which. Reading
+    the two numbers out of the file is a dozen lines; taking a dependency on an
+    imaging library so that on-screen text can be located is not a trade worth
+    making in a worker whose whole point is that every model is optional.
+    """
+    try:
+        with open(path, "rb") as handle:
+            header = handle.read(2)
+            if header == b"\x89P":
+                handle.seek(0)
+                data = handle.read(24)
+                if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+                    return None
+                return (
+                    int.from_bytes(data[16:20], "big"),
+                    int.from_bytes(data[20:24], "big"),
+                )
+            if header != b"\xff\xd8":
+                return None
+            while True:
+                marker = handle.read(2)
+                if len(marker) < 2 or marker[0] != 0xFF:
+                    return None
+                length = int.from_bytes(handle.read(2), "big")
+                if length < 2:
+                    return None
+                # The frame-header markers, which are the ones carrying the size.
+                # C4, C8 and CC share the range and do not.
+                if 0xC0 <= marker[1] <= 0xCF and marker[1] not in (0xC4, 0xC8, 0xCC):
+                    body = handle.read(5)
+                    if len(body) < 5:
+                        return None
+                    return (
+                        int.from_bytes(body[3:5], "big"),
+                        int.from_bytes(body[1:3], "big"),
+                    )
+                handle.seek(length - 2, 1)
+    except OSError:
+        return None

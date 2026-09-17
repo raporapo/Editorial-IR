@@ -24,8 +24,10 @@ from ..errors import MissingDependency, ModelError
 SYSTEM_PROMPT = (
     "You describe one moment from a video so that an editor can reason about it later. "
     "Say what is happening, not what it means for the edit; another layer judges that. "
-    "The user background you are given is knowledge you do not have. Use it, and never contradict it. "
-    "If the frames and the background disagree, describe the frames and leave the background alone. "
+    "The user background you are given is knowledge you do not have. "
+    "Use it, and never contradict it. "
+    "If the frames and the background disagree, describe the frames "
+    "and leave the background alone. "
     "Answer in the language of the transcript."
 )
 
@@ -79,7 +81,9 @@ def describe(params: dict[str, Any]) -> dict[str, Any]:
         },
     }
 
-    body = _post(f"{base_url.rstrip('/')}/chat/completions", payload, os.environ.get("OEA_VLM_API_KEY"))
+    body = _post(
+        f"{base_url.rstrip('/')}/chat/completions", payload, os.environ.get("OEA_VLM_API_KEY")
+    )
     text = (((body.get("choices") or [{}])[0].get("message") or {}).get("content")) or ""
     try:
         answer = json.loads(text)
@@ -92,19 +96,75 @@ def describe(params: dict[str, Any]) -> dict[str, Any]:
         "description": str(answer.get("description", "")),
         "event_type": str(answer.get("event_type", "")),
         "title": answer.get("title"),
-        "entities": answer.get("entities") or {},
-        "affect": {k: max(0.0, min(1.0, float(v))) for k, v in (answer.get("affect") or {}).items()},
-        "confidence": max(0.0, min(1.0, float(answer.get("confidence", 0.5)))),
+        "entities": _entities(answer.get("entities")),
+        "affect": _affect(answer.get("affect")),
+        "confidence": _unit(answer.get("confidence"), 0.5),
         "input_tokens": usage.get("prompt_tokens"),
         "output_tokens": usage.get("completion_tokens"),
     }
+
+
+def _unit(value: Any, default: float) -> float:
+    """A number in [0,1], or the default.
+
+    `float(value)` was called straight on whatever came back. A string raised,
+    and the traceback went out as an `internal` error that cost the whole
+    event; `NaN` did not raise at all — Python's `min` and `max` hand it back
+    as 1.0, so a model that answered with a number that is not a number was
+    recorded as certain. Confidence decides what gets asked again and what the
+    IR says about its own reliability, and the wrong end of the scale is the
+    worst place for it to land.
+    """
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number != number or number in (float("inf"), float("-inf")):
+        return default
+    return max(0.0, min(1.0, number))
+
+
+def _affect(value: Any) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, float] = {}
+    for key, raw in value.items():
+        try:
+            number = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if number != number or number in (float("inf"), float("-inf")):
+            continue
+        out[str(key)] = max(0.0, min(1.0, number))
+    return out
+
+
+def _entities(value: Any) -> dict[str, list[str]]:
+    """The four lists, with anything that is not a name left out.
+
+    The request asks for this shape under a strict JSON schema, and the answer
+    was passed through as it arrived. Not every endpoint that speaks the OpenAI
+    API enforces the schema, and a single `"people": "Alice"` failed validation
+    on the far side of the protocol — costing the whole description rather than
+    the one field the model got wrong.
+    """
+    source = value if isinstance(value, dict) else {}
+    out: dict[str, list[str]] = {}
+    for key in ("people", "places", "objects", "topics"):
+        raw = source.get(key)
+        items = raw if isinstance(raw, list) else [raw] if isinstance(raw, str) else []
+        names = [item.strip() for item in items if isinstance(item, str) and item.strip()]
+        # Order kept, because it is the model's own ordering by prominence.
+        out[key] = list(dict.fromkeys(names))
+    return out
 
 
 def build_prompt(params: dict[str, Any]) -> str:
     sections: list[str] = []
     user_context = params.get("user_context") or {}
     if user_context:
-        sections.append(f"Background the user provided:\n{json.dumps(user_context, ensure_ascii=False, indent=2)}")
+        written = json.dumps(user_context, ensure_ascii=False, indent=2)
+        sections.append(f"Background the user provided:\n{written}")
     if params.get("previous_summary"):
         sections.append(f"Previous event: {params['previous_summary']}")
     if params.get("transcript"):
@@ -132,7 +192,9 @@ def _data_url(path: str) -> str | None:
     return f"data:{mime};base64,{base64.b64encode(file.read_bytes()).decode('ascii')}"
 
 
-def _post(url: str, payload: dict[str, Any], api_key: str | None, timeout: int = 120) -> dict[str, Any]:
+def _post(
+    url: str, payload: dict[str, Any], api_key: str | None, timeout: int = 120
+) -> dict[str, Any]:
     request = urllib.request.Request(  # noqa: S310 - the URL is operator-configured
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -145,6 +207,9 @@ def _post(url: str, payload: dict[str, Any], api_key: str | None, timeout: int =
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
-        raise ModelError(f"the model returned {error.code}", body=error.read()[:500].decode("utf-8", "replace")) from error
+        raise ModelError(
+            f"the model returned {error.code}",
+            body=error.read()[:500].decode("utf-8", "replace"),
+        ) from error
     except urllib.error.URLError as error:
         raise ModelError(f"could not reach the model: {error.reason}") from error

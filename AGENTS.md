@@ -63,7 +63,7 @@ An import that goes the other way is a design error, not a convenience.
 
 ```bash
 pnpm install
-pnpm verify          # format, typecheck, lint, build, test, schema freshness
+pnpm verify          # format, typecheck, lint, build, test, schemas, docs, Python
 pnpm test            # vitest
 pnpm oea demo ./tmp/demo   # the whole pipeline, on the worked example
 

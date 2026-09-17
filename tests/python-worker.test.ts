@@ -129,3 +129,50 @@ describeIfPython('the Python worker, over the real protocol', () => {
     expect(client.running).toBe(false);
   }, 30_000);
 });
+
+/**
+ * What a timeout leaves behind.
+ *
+ * The worker is strictly serial and has no cancellation, so giving up on a
+ * request does not give the worker back. It stands in for a slow file with a
+ * stub that never answers one particular op.
+ */
+describeIfPython('a request that times out', () => {
+  const STALLING = fileURLToPath(new URL('./support/stalling-worker.py', import.meta.url));
+
+  function stallingClient(): PythonWorkerClient {
+    return new PythonWorkerClient({ command: 'python3', args: [STALLING] });
+  }
+
+  it('does not leave the next request queued behind it', async () => {
+    const client = stallingClient();
+    try {
+      await expect(client.request('probe', { path: '/nope' }, { timeoutMs: 300 })).rejects.toThrow(
+        /timed out/,
+      );
+
+      // Without a restart this waits behind the abandoned probe and times out
+      // too — and so does everything after it, for the rest of the run.
+      const started = Date.now();
+      const health = await client.request('health', {}, { timeoutMs: 5000 });
+      expect(health.worker_version).toBe('stalling');
+      expect(Date.now() - started).toBeLessThan(5000);
+    } finally {
+      await client.close(2000);
+    }
+  }, 30_000);
+
+  it('fails everything the abandoned worker was still holding', async () => {
+    const client = stallingClient();
+    try {
+      const first = client.request('probe', { path: '/nope' }, { timeoutMs: 300 });
+      const second = client.request('probe', { path: '/nope-either' }, { timeoutMs: 20_000 });
+      await expect(first).rejects.toThrow(/timed out/);
+      // Queued behind the first and therefore already lost. Saying so beats
+      // letting it discover that twenty seconds later.
+      await expect(second).rejects.toThrow(/restarted/);
+    } finally {
+      await client.close(2000);
+    }
+  }, 30_000);
+});

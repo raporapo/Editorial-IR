@@ -16,7 +16,11 @@ DEFAULT_MODEL = os.environ.get("OEA_ASR_MODEL", "small")
 DEFAULT_COMPUTE = os.environ.get("OEA_ASR_COMPUTE", "int8")
 
 
-def load(model_name: str = DEFAULT_MODEL, device: str = "auto", compute_type: str = DEFAULT_COMPUTE):
+def load(
+    model_name: str = DEFAULT_MODEL,
+    device: str = "auto",
+    compute_type: str = DEFAULT_COMPUTE,
+):
     try:
         from faster_whisper import WhisperModel  # noqa: PLC0415
     except ImportError as error:

@@ -158,7 +158,8 @@ def test_logs_go_to_stderr_where_they_cannot_corrupt_the_stream():
         session.log("downloading a model")
         return {}
 
-    serve({"chatty": chatty}, io.StringIO(json.dumps({"id": "1", "op": "chatty", "params": {}})), session)
+    request = io.StringIO(json.dumps({"id": "1", "op": "chatty", "params": {}}))
+    serve({"chatty": chatty}, request, session)
     assert "downloading a model" in err.getvalue()
     assert "downloading" not in out.getvalue()
 

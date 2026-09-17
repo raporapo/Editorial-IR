@@ -75,6 +75,36 @@ is compatible with.
 
 ### Fixed
 
+- **A slow file took the rest of the run with it.** The Python worker handles
+  one request at a time and cannot be told to stop, so abandoning a request on
+  timeout did not free it: everything sent afterwards waited behind work nobody
+  was waiting for, and timed out in turn. A timeout now ends that worker and
+  fails what it was holding, with a reason, and the next request starts a fresh
+  one.
+- **Every on-screen text box was a number in the wrong units.** The contract
+  says a normalised box in [0,1]; the test that was meant to enforce it was
+  inverted, so a box already normalised was thrown away and one in pixels was
+  passed through and stored as though it were a fraction of the frame. Boxes are
+  now divided by the frame's own dimensions, read from the file's header, and a
+  box that cannot be placed is left out rather than guessed at.
+- **A model that answered with nonsense was recorded as certain.** The
+  vision-language backend clamped `confidence` with `max(0, min(1, x))`, and
+  Python's `min` hands `NaN` straight back — so a non-numeric answer became 1.0,
+  the end of the scale that makes the pipeline stop asking. A value that is not
+  a finite number now falls back to the default, `affect` drops what it cannot
+  read rather than failing the call, and `entities` is coerced to the four lists
+  the contract expects instead of being passed through as the model wrote it.
+- **The worker could write a line the client cannot parse.** `NaN` and
+  `Infinity` are Python JSON, not JSON; a reply carrying one was read as a stray
+  log and the request hung until its timeout. Replies are now serialised with
+  `allow_nan=False`, which turns that into an error against the request that
+  caused it.
+- **`pnpm verify` did not run the half of CI that was failing.** The Python
+  worker's lint was red, and the command the guide tells you to run before
+  claiming anything works never looked at it. `pnpm verify` now runs ruff and
+  pytest over the worker, skipping out loud when Python or the tools are not
+  installed rather than silently.
+
 - **A cut chain came apart in the middle.** A clip flagged as making sense only
   after the one before it is dropped when that one is not in the cut — and the
   pass walked the selection in the order things were selected, which is by value

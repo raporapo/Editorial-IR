@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from editorial_perception.media import build_shots, _parse_showinfo, _rational, _rotation
+from editorial_perception.media import _parse_showinfo, _rational, _rotation, build_shots
 
 
 def test_rational_keeps_ntsc_exact():

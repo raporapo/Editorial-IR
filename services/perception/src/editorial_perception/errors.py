@@ -39,7 +39,8 @@ class MissingDependency(PerceptionError):
     def __init__(self, what: str, package: str) -> None:
         super().__init__(
             "missing_dependency",
-            f"{what} needs {package}. Install it with: pip install 'editorial-perception[{package_extra(package)}]'",
+            f"{what} needs {package}. Install it with: "
+            f"pip install 'editorial-perception[{package_extra(package)}]'",
             what=what,
             package=package,
         )

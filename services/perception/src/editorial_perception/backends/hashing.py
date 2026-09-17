@@ -57,7 +57,9 @@ def fnv1a(value: str) -> int:
     return hash_value & 0xFFFFFFFF
 
 
-def embed(text: str, dim: int = DEFAULT_DIM, ngrams: tuple[int, ...] = DEFAULT_NGRAMS) -> list[float]:
+def embed(
+    text: str, dim: int = DEFAULT_DIM, ngrams: tuple[int, ...] = DEFAULT_NGRAMS
+) -> list[float]:
     vector = [0.0] * dim
     counts: dict[str, int] = {}
     for feature in _features(text, ngrams):

@@ -19,7 +19,7 @@ GOLDEN = json.loads((Path(__file__).parent / "hashing_golden.json").read_text(en
 
 
 def test_dimension_matches():
-    assert hashing.DEFAULT_DIM == GOLDEN["dim"]
+    assert GOLDEN["dim"] == hashing.DEFAULT_DIM
 
 
 @pytest.mark.parametrize("text", list(GOLDEN["normalize"].keys()))

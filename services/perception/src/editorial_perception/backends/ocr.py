@@ -24,8 +24,15 @@ def load():
         raise ModelError(f"could not start the text reader: {error}") from error
 
 
-def read_frames(engine, path: str, timestamps_ms: list[int], *, frames_dir: str | None = None, progress=None) -> dict[str, Any]:
-    from ..media import extract_frame  # noqa: PLC0415
+def read_frames(
+    engine,
+    path: str,
+    timestamps_ms: list[int],
+    *,
+    frames_dir: str | None = None,
+    progress=None,
+) -> dict[str, Any]:
+    from ..media import extract_frame, image_size  # noqa: PLC0415
 
     work = Path(frames_dir) if frames_dir else Path(path).parent / "_frames"
     work.mkdir(parents=True, exist_ok=True)
@@ -44,6 +51,10 @@ def read_frames(engine, path: str, timestamps_ms: list[int], *, frames_dir: str 
         except Exception:  # noqa: BLE001 - one unreadable frame is not fatal
             continue
 
+        # The frame is written at the source resolution, so the divisor is a
+        # property of the file the reader was handed, not of the video.
+        size = image_size(str(frame_path))
+
         for entry in result or []:
             box, text, score = entry[0], entry[1], entry[2]
             cleaned = (text or "").strip()
@@ -59,7 +70,7 @@ def read_frames(engine, path: str, timestamps_ms: list[int], *, frames_dir: str 
                     "end_ms": timestamp + 1000,
                     "text": cleaned,
                     "confidence": float(score),
-                    "bbox": _normalise_box(box),
+                    "bbox": _normalise_box(box, size),
                 }
             )
 
@@ -69,12 +80,34 @@ def read_frames(engine, path: str, timestamps_ms: list[int], *, frames_dir: str 
     return {"model": "rapidocr", "observations": observations}
 
 
-def _normalise_box(box) -> list[float] | None:
+def _normalise_box(box, size: tuple[int, int] | None) -> list[float] | None:
+    """The reader's corner points as `[x, y, w, h]` in [0,1].
+
+    The contract says normalised, and this returned raw pixels: the test was
+    inverted, so a box already in [0,1] was thrown away and one in pixels was
+    passed through and stored as though it were a fraction of the frame. Every
+    box in the representation was a number in the wrong units.
+    """
     try:
         xs = [float(point[0]) for point in box]
         ys = [float(point[1]) for point in box]
     except (TypeError, ValueError, IndexError):
         return None
-    # Pixel coordinates are useless to a consumer that does not know the frame
-    # size, so they are left out unless they can be normalised.
-    return None if max(xs) <= 1 and max(ys) <= 1 else [min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)]
+    if not xs or not ys:
+        return None
+
+    left, top, right, bottom = min(xs), min(ys), max(xs), max(ys)
+    if right > 1 or bottom > 1:
+        # Pixels. Without the frame size there is nothing to divide by, and a
+        # number nobody can interpret is worse than no number.
+        if size is None:
+            return None
+        width, height = size
+        if width <= 0 or height <= 0:
+            return None
+        left, right = left / width, right / width
+        top, bottom = top / height, bottom / height
+
+    left, top = max(0.0, min(1.0, left)), max(0.0, min(1.0, top))
+    right, bottom = max(0.0, min(1.0, right)), max(0.0, min(1.0, bottom))
+    return [left, top, right - left, bottom - top]

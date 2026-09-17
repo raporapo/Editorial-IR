@@ -22,8 +22,9 @@
     "schema:export": "tsx scripts/export-schemas.ts schemas",
     "schema:check": "tsx scripts/check-schemas.ts schemas",
     "docs:check": "node scripts/check-links.mjs",
+    "python:check": "node scripts/check-python.mjs",
     "oea": "tsx apps/cli/src/bin.ts",
-    "verify": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm build && pnpm test && pnpm schema:check && pnpm docs:check",
+    "verify": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm build && pnpm test && pnpm schema:check && pnpm docs:check && pnpm python:check",
     "golden:update": "tsx scripts/make-golden.ts --write"
   },
   "devDependencies": {
