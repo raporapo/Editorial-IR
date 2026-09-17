@@ -255,7 +255,18 @@ export class FileProjectStore implements ProjectStore {
   }
 
   writeIr(ir: EditorialIR): void {
-    writeJson(this.paths.ir, ir);
+    // Validated on the way out, not only on the way in.
+    //
+    // `readIr` has always validated, and that turned out to be the wrong half
+    // of the pair: a decision model returning a narrative role outside the
+    // closed set produced a file that wrote cleanly and then failed its own
+    // schema the next time anything opened it. The analysis was gone and the
+    // project was unusable, and the first the user heard of it was the next
+    // command.
+    //
+    // Failing here costs the same run and says so immediately, at the point
+    // where the stack still names what produced the bad value.
+    writeJson(this.paths.ir, parseOrThrow(EditorialIR, ir, 'the analysis being written'));
   }
 
   readEmbeddings(): EmbeddingSet | undefined {
@@ -277,7 +288,12 @@ export class FileProjectStore implements ProjectStore {
 
   writePlan(plan: EditPlan): void {
     mkdirSync(this.paths.plansDir, { recursive: true });
-    writeJson(join(this.paths.plansDir, `${plan.id}.json`), plan);
+    // Same reasoning as writeIr: a plan that cannot be read back is worse than
+    // one that was never made, because the failure surfaces at `oea apply`.
+    writeJson(
+      join(this.paths.plansDir, `${plan.id}.json`),
+      parseOrThrow(EditPlan, plan, 'the plan being written'),
+    );
   }
 
   listPlans(): string[] {

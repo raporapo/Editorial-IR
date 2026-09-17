@@ -121,8 +121,19 @@ export class LocalSystemOneBackend implements EditorialDecisionModel {
 
     let choice: ChoiceResult | undefined;
     if (request.choice) {
-      const selected = raw[request.choice.question_id];
-      if (typeof selected === 'string') {
+      const answer = raw[request.choice.question_id];
+      // A choice is a question with a closed set of answers, and whatever the
+      // model says, an answer outside that set is not one of them.
+      //
+      // This was taken on trust. A 1B model answered the narrative-role
+      // question with `opening_candidate`, `establishing_shot` and
+      // `ending_candidate` — plausible words, none of them roles; it had
+      // blended the role question with the boolean flags asked alongside it.
+      // They went into the IR unchecked, and `oea analyze` finished by writing
+      // a file that failed its own schema when the next command read it back.
+      // Ten minutes of work, and nothing to show for it but a corrupt project.
+      const selected = matchOption(answer, request.choice.options);
+      if (selected !== undefined) {
         // One structured answer carries no distribution, so a peaked one is
         // synthesised rather than claiming certainty the model never expressed.
         const probabilities = prune(
@@ -367,3 +378,22 @@ export function batchSchema(request: BatchRequest): Record<string, unknown> {
 }
 
 export { expectedUnitValue };
+
+/**
+ * The offered option a model's answer actually names, if any.
+ *
+ * Tolerant about spelling and nothing else: case and surrounding whitespace are
+ * the model's formatting, while a word that is not on the list is a different
+ * answer to a different question. Returning nothing leaves the caller with no
+ * choice for this event, which the fallback already handles — and which is a
+ * great deal better than writing it down.
+ */
+export function matchOption(
+  answer: unknown,
+  options: readonly { value: string }[],
+): string | undefined {
+  if (typeof answer !== 'string') return undefined;
+  const cleaned = answer.trim().toLowerCase();
+  if (cleaned.length === 0) return undefined;
+  return options.find((option) => option.value.toLowerCase() === cleaned)?.value;
+}
