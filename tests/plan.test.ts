@@ -308,6 +308,21 @@ describe('what the cut does with the time it has', () => {
     // floor here is below that on purpose: it is a guard against the regression,
     // not a restatement of today's number.
     expect(survivingMs / selectedMs).toBeGreaterThan(0.87);
+
+    // And this is what that number is a number *about*.
+    //
+    // The compile above judges with rules and indexes lexically, so 89.5% is a
+    // measurement of the planner sitting on top of stand-ins — which is the
+    // right thing to regression-test, because CI has no models and this has to
+    // run everywhere. It is not a measurement of the product at full strength,
+    // and the two are not comparable: a model-backed compile selects different
+    // events, so the same percentage over a different selection means something
+    // else entirely.
+    //
+    // Asserting the tier keeps that honest. If someone wires a model into this
+    // fixture, this line fails and the floor above has to be re-derived rather
+    // than inherited.
+    expect(ir.quality.tier).toBe('offline_minimal');
   }, 60_000);
 
   it('does not run the same kind of shot past the limit the skill sets', async () => {

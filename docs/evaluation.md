@@ -28,6 +28,30 @@ and `duration_error_seconds` — and no clip was added, removed or reordered, wh
 is precisely the claim the change was making. Regenerate with `pnpm
 golden:update` and read the diff before you commit it.
 
+## 0. What tier is this number about?
+
+Before any of the three, check what produced the IR you are measuring.
+
+Every IR carries `quality.tier`. `standard` means description, judgement and
+search all ran real models. `offline_minimal` means at least one of them was a
+stand-in — rules, a template, lexical hashing. `degraded` means a model was
+configured and broke partway.
+
+**Numbers from different tiers are not comparable, and it is not a matter of
+degree.** A model-backed compile does not merely score the same events more
+accurately; it selects _different_ events. A percentage over a different
+selection is a different measurement wearing the same name.
+
+This matters here because the worked example, the golden file and every quality
+property asserted in `tests/` run at `offline_minimal` — CI has no models and
+must not need any. So "89.5% of the selected speech survives its trim" is a true
+statement about the planner sitting on top of stand-ins, and `tests/plan.test.ts`
+asserts the tier next to the number so that stays visible. It is the right thing
+to regression-test and the wrong thing to quote as the product's quality.
+
+To measure the product, analyse with models configured and compare against
+another `standard` run. `oea doctor` says whether this machine can.
+
 ## 3. Is it still good?
 
 Only the output can tell you this.
