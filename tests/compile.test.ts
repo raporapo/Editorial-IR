@@ -234,6 +234,35 @@ describe('what the user named', () => {
     }
   }, 60_000);
 
+  it('is replaced outright by what the user says, never merged with it', async () => {
+    // The linker infers "these people are in this event" from what is said and
+    // shown. An annotation is the user stating it. Merging the two would be the
+    // one thing this project's design forbids everywhere — model inference
+    // overwriting, or diluting, what the user told it.
+    const store = await makeExampleProject();
+    store.writeAnnotations([
+      {
+        id: 'ann_1',
+        type: 'person',
+        people: ['me'],
+        target: { kind: 'event', event_id: 'evt_0022' },
+        priority: 0,
+        created_at: '2026-05-17T09:00:00.000Z',
+      },
+    ] as never);
+
+    const { ir } = await compileProject({
+      store,
+      suite: exampleSuite(),
+      decision: new HeuristicDecisionBackend(),
+    });
+
+    const event = ir.events.find((e) => e.id === 'evt_0022')!;
+    // Without the annotation the two_people alias links both of them here.
+    expect(event.entities.value.people).toEqual(['me']);
+    expect(event.entities.provenance).toBe('user_provided');
+  }, 60_000);
+
   it('reaches the search index, so a name finds its footage', async () => {
     // The labels on this footage are in English and the place is named in
     // Japanese, which lexical search can never bridge on its own. The user's own
