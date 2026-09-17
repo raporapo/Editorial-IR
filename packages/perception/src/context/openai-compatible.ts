@@ -1,7 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { z } from 'zod';
-import { DescribeResult, EditorialError, type DescribeParams } from '@editorial-ir/contracts';
+import {
+  DescribeResult,
+  EditorialError,
+  extractJson,
+  rejectsResponseFormat,
+  responseFormatFor,
+  schemaInstruction,
+  weakerMode,
+  type DescribeParams,
+  type StructuredMode,
+} from '@editorial-ir/contracts';
 import type { ContextModel, ModelIdentity } from '../types.js';
 
 /**
@@ -69,7 +79,15 @@ const DESCRIBE_JSON_SCHEMA = {
 } as const;
 
 const ModelOutput = z.object({
-  description: z.string(),
+  // Non-empty, because an empty one is not an answer.
+  //
+  // A small model on a real run returned well-formed JSON with
+  // `"description": ""` for nine events out of eleven. Every layer accepted it:
+  // the JSON parsed, the schema passed, the stage reported success, and the IR
+  // came out claiming a full-strength analysis with nine blank descriptions in
+  // it. Rejecting it here turns a silent hole into a stage failure, which the
+  // compiler already knows how to fall back from and to report.
+  description: z.string().trim().min(1),
   event_type: z.string().default(''),
   title: z.string().optional(),
   entities: z
@@ -91,6 +109,8 @@ export class OpenAiCompatibleContextModel implements ContextModel {
   private readonly apiKey: string | undefined;
   private readonly maxFrames: number;
   private readonly timeoutMs: number;
+  /** How this server wants to be asked for JSON. Discovered once, then kept. */
+  private mode: StructuredMode = 'json_schema';
   private readonly temperature: number;
   private readonly pricing: { inputPerMillion: number; outputPerMillion: number } | undefined;
   private readonly fetchImpl: typeof fetch | undefined;
@@ -133,19 +153,35 @@ export class OpenAiCompatibleContextModel implements ContextModel {
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },
             { role: 'user', content: this.userContent(params) },
+            // Under the weaker modes the server is not constraining generation,
+            // so the shape has to be asked for in words. Under `json_schema` it
+            // would be duplication that costs context and buys nothing.
+            ...(this.mode === 'json_schema'
+              ? []
+              : [{ role: 'user' as const, content: schemaInstruction(DESCRIBE_JSON_SCHEMA) }]),
           ],
-          response_format: {
-            type: 'json_schema',
-            json_schema: { name: 'semantic_event', strict: true, schema: DESCRIBE_JSON_SCHEMA },
-          },
+          ...responseFormatFor(this.mode, 'semantic_event', DESCRIBE_JSON_SCHEMA),
         }),
         signal: controller.signal,
       });
 
       if (!response.ok) {
+        const body = (await response.text()).slice(0, 500);
+        // The server rejecting *how* it was asked, rather than failing to
+        // answer. llama.cpp answers `json_schema` with a 500 and a validation
+        // error naming the parameter, which made every description on the
+        // commonest local server fall back to a template.
+        const weaker = rejectsResponseFormat(response.status, body)
+          ? weakerMode(this.mode)
+          : undefined;
+        if (weaker) {
+          this.mode = weaker;
+          clearTimeout(timer);
+          return this.describe(params);
+        }
         throw new EditorialError('perception_failed', `context model returned ${response.status}`, {
           status: response.status,
-          body: (await response.text()).slice(0, 500),
+          body,
         });
       }
 
@@ -158,10 +194,8 @@ export class OpenAiCompatibleContextModel implements ContextModel {
         throw new EditorialError('perception_failed', 'context model returned no content');
       }
 
-      let raw: unknown;
-      try {
-        raw = JSON.parse(content);
-      } catch {
+      const raw = extractJson(content);
+      if (raw === undefined) {
         throw new EditorialError('perception_failed', 'context model did not return JSON', {
           content: content.slice(0, 300),
         });

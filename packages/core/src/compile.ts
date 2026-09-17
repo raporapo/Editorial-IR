@@ -412,6 +412,27 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   // Counted rather than flagged, because one failed call out of eighty is a
   // blip and eighty out of eighty is a different artefact. The line is drawn at
   // half: past that, most of what the IR says came from the fallback.
+  // Judgement, the same way: asked of what the answers actually were.
+  //
+  // A decision model wrapped in a fallback keeps the primary's identity, so it
+  // declares no stand-in — and a server that rejected every single request
+  // produced an IR judged entirely by rules and stamped `standard`.
+  const decisionAnswers = (options.decision as { answers?: { primary: number; fallback: number } })
+    .answers;
+  if (
+    decisionAnswers !== undefined &&
+    decisionAnswers.fallback > 0 &&
+    decisionAnswers.fallback >= decisionAnswers.primary
+  ) {
+    standIns.push({
+      stage: 'judgement',
+      used: 'the rules',
+      instead_of: options.decision.identity.model ?? 'the configured model',
+      reason: 'failed_during_run',
+      remedy: `${decisionAnswers.fallback} of ${decisionAnswers.fallback + decisionAnswers.primary} answers came from the rules; check the model endpoint`,
+    });
+  }
+
   // Counted from what the events actually got, not from the error list. The
   // error list stops after a handful of identical failures — and so does the
   // loop, so a run where every description came from the template reported

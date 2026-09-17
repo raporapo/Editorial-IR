@@ -1,5 +1,11 @@
 import {
   EditorialError,
+  extractJson,
+  rejectsResponseFormat,
+  responseFormatFor,
+  schemaInstruction,
+  weakerMode,
+  type StructuredMode,
   expectedUnitValue,
   type BooleanRequest,
   type BooleanResult,
@@ -53,6 +59,12 @@ export class LocalSystemOneBackend implements EditorialDecisionModel {
   private readonly apiKey: string | undefined;
   private readonly temperature: number;
   private readonly timeoutMs: number;
+  /**
+   * How this server wants to be asked for JSON. Discovered by trying, because
+   * there is no capability endpoint, and remembered so the discovery is paid
+   * once rather than on every event.
+   */
+  private mode: StructuredMode = 'json_schema';
   private readonly pricing: { inputPerMillion: number; outputPerMillion: number } | undefined;
   private readonly fetchImpl: typeof fetch | undefined;
 
@@ -188,20 +200,34 @@ export class LocalSystemOneBackend implements EditorialDecisionModel {
           temperature: this.temperature,
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: prompt },
+            {
+              role: 'user',
+              content:
+                this.mode === 'json_schema' ? prompt : `${prompt}\n\n${schemaInstruction(schema)}`,
+            },
           ],
-          response_format: {
-            type: 'json_schema',
-            json_schema: { name: schemaName, strict: true, schema },
-          },
+          ...responseFormatFor(this.mode, schemaName, schema),
         }),
         signal: controller.signal,
       });
 
       if (!response.ok) {
+        const body = (await response.text()).slice(0, 500);
+        // The server does not know how the question was asked, rather than
+        // being unable to answer it. Ask a simpler way, once per step, and
+        // remember — llama.cpp rejects `json_schema` with a 500, so without
+        // this the local path fails on one of the commonest local servers.
+        const weaker = rejectsResponseFormat(response.status, body)
+          ? weakerMode(this.mode)
+          : undefined;
+        if (weaker) {
+          this.mode = weaker;
+          clearTimeout(timer);
+          return this.call(prompt, schema, schemaName);
+        }
         throw new EditorialError('decision_failed', `decision model returned ${response.status}`, {
           status: response.status,
-          body: (await response.text()).slice(0, 500),
+          body,
         });
       }
 
@@ -212,9 +238,15 @@ export class LocalSystemOneBackend implements EditorialDecisionModel {
       const text = payload.choices?.[0]?.message?.content;
       if (!text) throw new EditorialError('decision_failed', 'decision model returned no content');
 
-      try {
+      const content = extractJson(text);
+      if (content === undefined) {
+        throw new EditorialError('decision_failed', 'decision model did not return JSON', {
+          content: text.slice(0, 300),
+        });
+      }
+      {
         return {
-          content: JSON.parse(text),
+          content,
           ...(payload.usage?.prompt_tokens === undefined
             ? {}
             : { inputTokens: payload.usage.prompt_tokens }),
@@ -222,10 +254,6 @@ export class LocalSystemOneBackend implements EditorialDecisionModel {
             ? {}
             : { outputTokens: payload.usage.completion_tokens }),
         };
-      } catch {
-        throw new EditorialError('decision_failed', 'decision model did not return JSON', {
-          content: text.slice(0, 300),
-        });
       }
     } finally {
       clearTimeout(timer);

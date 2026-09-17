@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -68,32 +69,72 @@ def describe(params: dict[str, Any]) -> dict[str, Any]:
         if data_url:
             content.append({"type": "image_url", "image_url": {"url": data_url}})
 
-    payload = {
-        "model": model,
-        "temperature": 0,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": content},
-        ],
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {"name": "semantic_event", "strict": True, "schema": RESPONSE_SCHEMA},
-        },
-    }
+    global _mode  # noqa: PLW0603 - one server per process, discovered once
 
-    body = _post(
-        f"{base_url.rstrip('/')}/chat/completions", payload, os.environ.get("OEA_VLM_API_KEY")
-    )
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    key = os.environ.get("OEA_VLM_API_KEY")
+    while True:
+        message = list(content)
+        if _mode != "json_schema":
+            # Nothing is constraining generation now, so the shape has to be
+            # asked for in words. Under `json_schema` this would be duplication
+            # that costs context and buys nothing.
+            message.append({"type": "text", "text": _schema_instruction(RESPONSE_SCHEMA)})
+
+        payload: dict[str, Any] = {
+            "model": model,
+            "temperature": 0,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": message},
+            ],
+        }
+        if _mode == "json_schema":
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "semantic_event",
+                    "strict": True,
+                    "schema": RESPONSE_SCHEMA,
+                },
+            }
+        elif _mode == "json_object":
+            payload["response_format"] = {"type": "json_object"}
+
+        try:
+            body = _post(url, payload, key)
+            break
+        except ModelError as error:
+            weaker = None
+            status = error.details.get("status")
+            if isinstance(status, int) and _rejects_response_format(
+                status, str(error.details.get("body", ""))
+            ):
+                weaker = _weaker(_mode)
+            if weaker is None:
+                raise
+            _mode = weaker
+
     text = (((body.get("choices") or [{}])[0].get("message") or {}).get("content")) or ""
-    try:
-        answer = json.loads(text)
-    except json.JSONDecodeError as error:
-        raise ModelError("the model did not return JSON", content=text[:300]) from error
+    answer = _extract_json(text)
+    if answer is None:
+        raise ModelError("the model did not return JSON", content=text[:300])
+
+    # An empty description is not an answer, whatever the JSON says.
+    #
+    # A 1B model asked in `json_object` mode returned valid JSON with an empty
+    # description for nine events out of eleven, and every layer below accepted
+    # it: the parse succeeded, the stage reported success, and the IR claimed a
+    # full-strength analysis with nine blank descriptions. Failing here is what
+    # puts the observation summary back and puts the event in the report.
+    description = str(answer.get("description", "")).strip()
+    if not description:
+        raise ModelError("the model returned an empty description", content=text[:300])
 
     usage = body.get("usage") or {}
     return {
         "model": model,
-        "description": str(answer.get("description", "")),
+        "description": description,
         "event_type": str(answer.get("event_type", "")),
         "title": answer.get("title"),
         "entities": _entities(answer.get("entities")),
@@ -192,6 +233,66 @@ def _data_url(path: str) -> str | None:
     return f"data:{mime};base64,{base64.b64encode(file.read_bytes()).decode('ascii')}"
 
 
+# How this server wants to be asked for JSON.
+#
+# "OpenAI-compatible" describes the URL and the message shape, not structured
+# output. llama.cpp's server — one of the commonest ways to run a model locally
+# — answers a `json_schema` request with HTTP 500 and
+# "Input should be 'text' or 'json_object'", so every description on it fell
+# back to a template. There is no capability endpoint to ask, so the mode is
+# discovered by trying and then remembered for the life of the process.
+#
+# Mirrors `packages/contracts/src/structured-output.ts`; the two sides have to
+# agree, because either may be the one talking to the server.
+_MODES = ("json_schema", "json_object", "none")
+_mode = "json_schema"
+
+
+def _weaker(mode: str) -> str | None:
+    index = _MODES.index(mode)
+    return _MODES[index + 1] if index + 1 < len(_MODES) else None
+
+
+def _rejects_response_format(status: int, body: str) -> bool:
+    """A server refusing *how* it was asked, rather than failing to answer.
+
+    Narrow on purpose: a timeout, a refusal or a bad answer must keep failing,
+    because retrying those with a weaker request only gets a worse answer.
+    """
+    if status not in (400, 404, 422, 500):
+        return False
+    text = body.lower()
+    return "response_format" in text or "json_schema" in text
+
+
+def _schema_instruction(schema: dict[str, Any]) -> str:
+    return (
+        "Answer with a single JSON object and nothing else. "
+        "No markdown fence, no explanation, no text before or after it. "
+        "It must match this JSON Schema exactly:\n" + json.dumps(schema)
+    )
+
+
+def _extract_json(text: str) -> Any:
+    """JSON from a reply that may carry a fence or a sentence around it."""
+    trimmed = text.strip()
+    candidates = [trimmed]
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", trimmed, re.IGNORECASE)
+    if fence:
+        candidates.append(fence.group(1).strip())
+    first, last = trimmed.find("{"), trimmed.rfind("}")
+    if first >= 0 and last > first:
+        candidates.append(trimmed[first : last + 1])
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
 def _post(
     url: str, payload: dict[str, Any], api_key: str | None, timeout: int = 120
 ) -> dict[str, Any]:
@@ -207,8 +308,11 @@ def _post(
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
+        # The status travels with the error: the caller has to tell a server
+        # that rejected the *request shape* from one that could not answer.
         raise ModelError(
             f"the model returned {error.code}",
+            status=error.code,
             body=error.read()[:500].decode("utf-8", "replace"),
         ) from error
     except urllib.error.URLError as error:

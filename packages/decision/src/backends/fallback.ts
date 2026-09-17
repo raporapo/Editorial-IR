@@ -34,6 +34,8 @@ export class FallbackDecisionBackend implements EditorialDecisionModel {
   readonly identity: DecisionBackendIdentity;
   private consecutiveFailures = 0;
   private abandoned = false;
+  private answeredByFallback = 0;
+  private answeredByPrimary = 0;
 
   constructor(
     private readonly primary: EditorialDecisionModel,
@@ -62,6 +64,20 @@ export class FallbackDecisionBackend implements EditorialDecisionModel {
   /** True once the primary backend has been given up on for this run. */
   get degraded(): boolean {
     return this.abandoned;
+  }
+
+  /**
+   * How many answers came from each side.
+   *
+   * The compiler reads this to decide the analysis tier, and it has to be a
+   * count rather than the `degraded` flag. A run against a server that rejected
+   * every request answered *entirely* from the rules while `abandoned` was
+   * still false — the give-up counter had not been reached yet — and the IR was
+   * stamped as a full-strength analysis on the strength of a model that never
+   * answered once.
+   */
+  get answers(): { primary: number; fallback: number } {
+    return { primary: this.answeredByPrimary, fallback: this.answeredByFallback };
   }
 
   async choice(state: EventState, request: ChoiceRequest): Promise<ChoiceResult> {
@@ -102,13 +118,18 @@ export class FallbackDecisionBackend implements EditorialDecisionModel {
     primary: () => Promise<T>,
     fallback: () => Promise<T>,
   ): Promise<T> {
-    if (this.abandoned) return fallback();
+    if (this.abandoned) {
+      this.answeredByFallback++;
+      return fallback();
+    }
     try {
       const result = await primary();
       this.consecutiveFailures = 0;
+      this.answeredByPrimary++;
       return result;
     } catch (error) {
       this.consecutiveFailures++;
+      this.answeredByFallback++;
       this.options.onFallback?.(error, questionId);
       const limit = this.options.giveUpAfter ?? 5;
       if (limit > 0 && this.consecutiveFailures >= limit) this.abandoned = true;

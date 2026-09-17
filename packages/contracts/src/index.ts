@@ -15,6 +15,7 @@ export * from './text.js';
 export * from './provenance.js';
 export * from './model-run.js';
 export * from './quality.js';
+export * from './structured-output.js';
 export * from './media.js';
 export * from './project.js';
 export * from './observation.js';
