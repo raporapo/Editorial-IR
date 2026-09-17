@@ -110,7 +110,24 @@ export async function ingestPaths(
   for (const file of files) {
     options.onProgress?.(basename(file), done++, files.length);
 
-    const sha256 = await hashFile(file);
+    // Hashing is the first thing that touches the file, and it was the one
+    // step outside the per-file failure handling: a clip with no read
+    // permission, a dropped network share, a card going bad, a file deleted
+    // between listing and reading — any of them rejected out of the whole call,
+    // so twenty-nine files already hashed and probed were discarded and nothing
+    // was registered at all. The comment on the probe below says what the rule
+    // is; this is the same rule, applied one line earlier.
+    let sha256: string;
+    try {
+      sha256 = await hashFile(file);
+    } catch (error) {
+      failed.push({
+        path: file,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+
     const alreadyKnown = byHash.get(sha256);
     if (alreadyKnown) {
       duplicates.push({ path: file, existingId: alreadyKnown.id });
@@ -118,8 +135,11 @@ export async function ingestPaths(
     }
 
     let probe;
+    let stat;
     try {
       probe = await probeWithCache(file, sha256, options);
+      // Inside, because a file can vanish between being hashed and being sized.
+      stat = statSync(file);
     } catch (error) {
       // One unreadable file should not abandon an ingest of thirty.
       failed.push({
@@ -136,7 +156,6 @@ export async function ingestPaths(
     }
 
     const kind = mediaKindOf(file) ?? 'video';
-    const stat = statSync(file);
     const captured = toIso8601(probe.creation_time);
     const asset: MediaAsset = {
       id: seqId('asset', nextIndex++, 3),

@@ -1,6 +1,6 @@
 import {
   compareText,
-  newId,
+  seqId,
   overlapMs,
   rangesOverlap,
   type Conflict,
@@ -86,7 +86,20 @@ export function applyAnnotations(
   applicable: readonly UserAnnotation[],
   occasion?: string,
   now: () => string = () => new Date().toISOString(),
+  /**
+   * Where to continue numbering conflicts from.
+   *
+   * Conflicts are compiler output produced in bulk, so they take a sequential
+   * id like everything else the compiler makes. They used to take `newId`,
+   * which is random, and a wall-clock `detected_at` — so a project with any
+   * annotation the model disagreed with never compiled to the same IR twice,
+   * and every re-analysis showed a diff that corresponded to nothing the user
+   * had done.
+   */
+  conflictsSoFar = 0,
 ): AppliedKnowledge {
+  let nextConflict = conflictsSoFar;
+  const conflictId = (): string => seqId('cfl', ++nextConflict);
   const knowledge: EventKnowledge = {
     ...(occasion ? { occasion } : {}),
     notes: [],
@@ -125,7 +138,7 @@ export function applyAnnotations(
         overrides.mood = annotation.mood;
         if (Object.keys(event.affect.value).length > 0) {
           conflicts.push({
-            id: newId('cfl'),
+            id: conflictId(),
             path: `events.${event.id}.affect`,
             user_value: annotation.mood,
             inferred_value: event.affect.value,
@@ -151,7 +164,7 @@ export function applyAnnotations(
     // of the two errors, and the contradiction is recorded so they can see it.
     knowledge.essential = false;
     conflicts.push({
-      id: newId('cfl'),
+      id: conflictId(),
       path: `events.${event.id}.knowledge`,
       user_value: { essential: true, excluded: true },
       resolved_with: 'user_provided',

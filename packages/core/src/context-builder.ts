@@ -63,6 +63,15 @@ export interface BuildEventsOptions {
   cache?: PerceptionCache;
 
   onProgress?: (stage: string, done: number, total: number) => void;
+  /**
+   * The clock, so that a conflict's `detected_at` is reproducible.
+   *
+   * The compiler is supposed to turn the same input into the same output, and a
+   * wall-clock timestamp on a recorded disagreement was one of the two things
+   * that made that untrue for any project with an annotation the model argued
+   * with.
+   */
+  now?: () => string;
 }
 
 /**
@@ -278,7 +287,18 @@ export async function buildSemanticEvents(
       options.annotations,
       placementOf.get(skeleton.draft.asset_id) ?? 0,
     );
-    const applied = applyAnnotations(event, applicable, options.context.background.occasion);
+    // The events are walked in a fixed order, so numbering conflicts as they
+    // are found makes their ids reproducible; `now` comes from the caller for
+    // the same reason. A wall-clock timestamp and a random id meant a project
+    // with any correction the model disagreed with never compiled to the same
+    // IR twice.
+    const applied = applyAnnotations(
+      event,
+      applicable,
+      options.context.background.occasion,
+      options.now,
+      conflicts.length,
+    );
     conflicts.push(...applied.conflicts);
     events.push(withOverrides(event, applied));
 

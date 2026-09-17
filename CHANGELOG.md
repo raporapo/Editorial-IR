@@ -75,6 +75,28 @@ is compatible with.
 
 ### Fixed
 
+- **One unreadable file abandoned the ingest of thirty.** Hashing is the first
+  thing that touches a file and it was the one step outside the per-file failure
+  handling, so a clip with no read permission — or a dropped network share, a
+  card going bad, a file deleted between listing and reading — rejected out of
+  the whole call. Every file already hashed and probed was discarded and nothing
+  was registered at all, which is exactly what the comment three lines below it
+  says must not happen.
+- **An embedding service that was down cost the whole run.** A configured
+  endpoint that could not be reached threw out of the compile, so a project was
+  lost over the stage that makes search slightly better. It now falls back to
+  the hashing encoder that an unconfigured install already uses, re-embedding
+  the whole set rather than patching the failed part — two encoders in one index
+  is the mixed-space bug this repository has already been bitten by — and says
+  that search now matches words rather than meaning.
+- **A recorded disagreement was written differently every time.** A conflict
+  took a random id and a wall-clock timestamp, so a project with any correction
+  the model argued with never compiled to the same IR twice and every
+  re-analysis showed a diff corresponding to nothing the user had done.
+  Conflicts are compiler output produced in bulk, which is the case `seqId`
+  exists for, and the clock now comes from the caller like every other time the
+  compiler writes down.
+
 - **A model that was present and refused took the whole compile with it.** "A
   missing model costs that stage, not the run" was written for a model that is
   absent; one that answers a 503 — a restarted local server, a 502 from a proxy,

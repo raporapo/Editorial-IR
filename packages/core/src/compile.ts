@@ -13,6 +13,7 @@ import {
 } from '@editorial-ir/contracts';
 import type { ContextModel, PerceptionSuite } from '@editorial-ir/perception';
 import {
+  HashingTextEmbedding,
   HeuristicContextModel,
   ModelScheduler,
   availableCapabilities,
@@ -222,6 +223,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     ...(options.escalation ? { escalation: options.escalation } : {}),
     budget,
     derived,
+    now,
     cache: store.cache,
     ...(options.frameFps === undefined ? {} : { frameFps: options.frameFps }),
     ...(options.onProgress
@@ -231,9 +233,33 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
 
   // ---- search ---------------------------------------------------------------
   options.onProgress?.('embed', 'indexing', 0, 1);
-  const embedded = await buildEmbeddings(built.events, context, options.suite.text, {
-    frameVectors,
-  });
+  // A search index that could not be built is worth less than the analysis.
+  //
+  // A configured embedding service that is down — a closed port, a container
+  // restarting, a typo in the URL — threw out of the compile, so nothing was
+  // written and the user lost the whole run over the stage that makes search
+  // slightly better. The hashing encoder is documented as the guaranteed path
+  // and is what an unconfigured install uses; falling back to it is the
+  // difference between lexical search and no project.
+  //
+  // The whole set is re-embedded rather than the failed part patched, because
+  // two encoders in one index is the bug this file's own header warns about:
+  // vectors from two spaces, ranked against each other, with nothing able to
+  // tell.
+  let embedded;
+  try {
+    embedded = await buildEmbeddings(built.events, context, options.suite.text, { frameVectors });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    failures.push({
+      stage: 'embed',
+      assetId: '(the whole index)',
+      reason: `${reason} — indexed lexically instead, so search matches words rather than meaning`,
+    });
+    embedded = await buildEmbeddings(built.events, context, new HashingTextEmbedding(), {
+      frameVectors,
+    });
+  }
   const vectorIndex = new FlatVectorIndex();
   vectorIndex.add(embedded.records);
   // Redundancy is a question about the whole set, which is why the index has to

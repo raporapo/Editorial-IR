@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { compileProject, observationsFingerprint } from '@editorial-ir/core';
+import { chmodSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { compileProject, ingestPaths, observationsFingerprint } from '@editorial-ir/core';
 import { HeuristicDecisionBackend } from '@editorial-ir/decision';
-import { EditorialIR, formatTimecode } from '@editorial-ir/contracts';
+import { EditorialIR, UserAnnotation, formatTimecode } from '@editorial-ir/contracts';
 import type { ContextModel } from '@editorial-ir/perception';
 import { exampleSuite, makeExampleProject } from './support/project.js';
 
@@ -487,5 +489,85 @@ describe('an analysis with a hole in it', () => {
       decision: new HeuristicDecisionBackend(),
     });
     expect(second.report.reusedObservations).toBe(true);
+  }, 60_000);
+});
+
+describe('a disagreement the compiler wrote down', () => {
+  it('is recorded the same way twice', async () => {
+    // A conflict took a random id and a wall-clock timestamp, so a project with
+    // any correction the model argued with never compiled to the same IR twice,
+    // and every re-analysis showed a diff corresponding to nothing the user had
+    // done. Conflicts are compiler output produced in bulk, which is exactly
+    // the case `seqId` exists for.
+    const fixed = () => '2026-05-17T09:00:00.000Z';
+
+    async function compileWithAConflict() {
+      const store = await makeExampleProject();
+      const ir = (
+        await compileProject({
+          store,
+          suite: exampleSuite(),
+          decision: new HeuristicDecisionBackend(),
+        })
+      ).ir;
+      const event = ir.events.find((e) => Object.keys(e.affect.value).length > 0)!;
+      store.writeAnnotations([
+        UserAnnotation.parse({
+          id: 'ann_0001',
+          target: { kind: 'event', event_id: event.id },
+          type: 'mood',
+          mood: { joyful: 0.9 },
+          created_at: fixed(),
+        }),
+      ]);
+      return (
+        await compileProject({
+          store,
+          suite: exampleSuite(),
+          decision: new HeuristicDecisionBackend(),
+          now: fixed,
+        })
+      ).ir;
+    }
+
+    const first = await compileWithAConflict();
+    const second = await compileWithAConflict();
+
+    expect(first.conflicts.length).toBeGreaterThan(0);
+    expect(first.conflicts.map((c) => c.id)).toEqual(second.conflicts.map((c) => c.id));
+    expect(first.conflicts[0]!.id).toMatch(/^cfl_\d{4}$/);
+    expect(first.conflicts.map((c) => c.detected_at)).toEqual(
+      second.conflicts.map((c) => c.detected_at),
+    );
+  }, 60_000);
+});
+
+describe('one file it cannot read', () => {
+  it('does not abandon the ingest of the rest', async () => {
+    // Hashing was the first thing that touched a file and the one step outside
+    // the per-file failure handling, so a clip with no read permission — or a
+    // dropped share, or a file deleted between listing and reading — rejected
+    // out of the whole call and nothing was registered at all.
+    const store = await makeExampleProject();
+    const footage = join(store.paths.root, 'footage');
+    const unreadable = join(footage, 'IMG_9999.mp4');
+    writeFileSync(unreadable, 'not really a video');
+    chmodSync(unreadable, 0o000);
+
+    try {
+      const result = await ingestPaths([footage], {
+        projectRoot: store.paths.root,
+        probe: exampleSuite().probe,
+        cache: store.cache,
+      });
+      // Running as root defeats the permission bit, so only assert the
+      // interesting half when the file really is unreadable.
+      const refused = result.failed.some((f) => f.path === unreadable);
+      if (refused) expect(result.assets.length).toBeGreaterThan(0);
+      expect(result.assets.length + result.failed.length).toBeGreaterThan(3);
+    } finally {
+      chmodSync(unreadable, 0o644);
+      rmSync(unreadable, { force: true });
+    }
   }, 60_000);
 });
