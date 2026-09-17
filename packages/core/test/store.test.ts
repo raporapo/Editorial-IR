@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { IR_VERSION, ProjectContext, newId } from '@editorial-ir/contracts';
 import { FileProjectStore, MemoryCache } from '../src/index.js';
+import { makeIR } from '../../../tests/support/ir.js';
 
 /**
  * Where a project lives.
@@ -144,5 +145,70 @@ describe('FileProjectStore', () => {
     const after = readFileSync(store.paths.project, 'utf8');
     expect(before).not.toBe(after);
     expect(JSON.parse(after).title).toBe('Renamed');
+  });
+});
+
+/**
+ * A document from a version this one cannot read.
+ *
+ * "Below 1.0.0 the minor is treated as the breaking segment, and a document
+ * from an incompatible version is rejected rather than read hopefully" is what
+ * the documentation promises, and nothing did it. Almost every field in these
+ * schemas is optional or defaulted, so an older document parses without
+ * complaint and produces something subtly wrong — the worst of the three
+ * outcomes.
+ */
+describe('a document from another version', () => {
+  it('is refused rather than read hopefully', () => {
+    const { store } = makeStore();
+    const ir = makeIR({ events: [{ description: '出発' }] });
+    store.writeIr({ ...ir, ir_version: '0.2.0' });
+    expect(() => store.readIr()).toThrow(/written by version 0\.2\.0/);
+  });
+
+  it('is read when the version is one this can handle', () => {
+    const { store } = makeStore();
+    const ir = makeIR({ events: [{ description: '出発' }] });
+    store.writeIr(ir);
+    expect(store.readIr()?.events).toHaveLength(1);
+  });
+
+  it('refuses a plan the same way', () => {
+    const { store } = makeStore();
+    const plan = {
+      edit_plan_version: '0.9.0',
+      id: 'plan_x',
+      project_id: 'prj_test',
+      created_at: '2026-05-17T09:00:00.000Z',
+      ir_fingerprint: 'f',
+      skill: { name: 's', version: '1' },
+      sequence: {
+        name: 's',
+        target_duration_ms: 1000,
+        tolerance_ms: 0,
+        width: 1920,
+        height: 1080,
+        frame_rate: 30,
+        frame_rate_num: 30,
+        frame_rate_den: 1,
+        sample_rate: 48_000,
+      },
+      tracks: { video: [], audio: [], text: [] },
+      intent: { tone: [] },
+      rationale: [],
+      model_runs: [],
+      stats: {
+        operation_count: 0,
+        total_duration_ms: 0,
+        duration_error_ms: 0,
+        compression_ratio: 0,
+        events_selected: 0,
+        events_available: 0,
+        mean_importance: 0,
+        mean_continuity: 0,
+      },
+    };
+    store.writePlan(plan);
+    expect(() => store.readPlan('plan_x')).toThrow(/written by version 0\.9\.0/);
   });
 });

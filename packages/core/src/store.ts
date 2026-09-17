@@ -11,6 +11,9 @@ import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
   compareText,
+  EDIT_PLAN_VERSION,
+  IR_VERSION,
+  isCompatibleVersion,
   EditPlan,
   EditorialError,
   MediaAsset,
@@ -75,6 +78,29 @@ export interface ProjectStore {
   writePlan(plan: EditPlan): void;
   listPlans(): string[];
   latestPlan(): EditPlan | undefined;
+}
+
+/**
+ * Refuses a document written by a version this one cannot read.
+ *
+ * Below 1.0.0 the minor is the breaking segment, which is what
+ * `isCompatibleVersion` implements. The alternative to refusing is reading it
+ * hopefully: almost every field in these schemas is optional or defaulted, so an
+ * older document parses without complaint and produces something subtly wrong,
+ * which is the worst of the three outcomes.
+ */
+function requireCompatible(
+  documentVersion: string,
+  runtimeVersion: string,
+  what: string,
+  remedy: string,
+): void {
+  if (isCompatibleVersion(documentVersion, runtimeVersion)) return;
+  throw new EditorialError(
+    'schema_violation',
+    `${what} was written by version ${documentVersion}; this is ${runtimeVersion}`,
+    { hint: `regenerate it with "${remedy}"` },
+  );
 }
 
 export class FileProjectStore implements ProjectStore {
@@ -219,7 +245,13 @@ export class FileProjectStore implements ProjectStore {
 
   readIr(): EditorialIR | undefined {
     if (!existsSync(this.paths.ir)) return undefined;
-    return parseOrThrow(EditorialIR, readJson(this.paths.ir), 'ir.json');
+    const ir = parseOrThrow(EditorialIR, readJson(this.paths.ir), 'ir.json');
+    // "A document from an incompatible version is rejected rather than read
+    // hopefully" is what the documentation promises, and nothing did it: a
+    // schema whose fields are mostly optional or defaulted parses an IR from an
+    // older shape happily and hands back something subtly wrong.
+    requireCompatible(ir.ir_version, IR_VERSION, 'ir.json', 'oea analyze --force');
+    return ir;
   }
 
   writeIr(ir: EditorialIR): void {
@@ -238,7 +270,9 @@ export class FileProjectStore implements ProjectStore {
   readPlan(planId: string): EditPlan | undefined {
     const path = join(this.paths.plansDir, `${planId}.json`);
     if (!existsSync(path)) return undefined;
-    return parseOrThrow(EditPlan, readJson(path), `${planId}.json`);
+    const plan = parseOrThrow(EditPlan, readJson(path), `${planId}.json`);
+    requireCompatible(plan.edit_plan_version, EDIT_PLAN_VERSION, `${planId}.json`, 'oea plan');
+    return plan;
   }
 
   writePlan(plan: EditPlan): void {

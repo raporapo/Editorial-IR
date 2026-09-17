@@ -75,6 +75,19 @@ is compatible with.
 
 ### Fixed
 
+- **An IR from an incompatible version was read hopefully.** "A document from an
+  incompatible version is rejected rather than read hopefully" is what the
+  documentation promises, and nothing checked: `isCompatibleVersion` existed and
+  had no callers. Almost every field in these schemas is optional or defaulted,
+  so a document from an older shape parses without complaint and produces
+  something subtly wrong, which is the worst of the three outcomes. `ir.json`
+  and a plan are both refused now, with what to run instead.
+- **`docs/cost.md` claimed two projects share a transcription.** They do not —
+  the cache lives inside the project, which is what makes "deleting the project
+  directory removes everything derived from your footage" true. The document now
+  says so, and says that copying `.oea/cache` between projects works when you
+  want it, because the keys contain no paths.
+
 - **A remote embedding endpoint appeared nowhere in the record.** Every event's
   transcript, its labels and the user's own `context.yaml` background were
   posted to a configured endpoint as plain text, and the run was not recorded:

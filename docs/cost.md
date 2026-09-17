@@ -20,8 +20,14 @@ pipeline version
 ```
 
 Nothing else invalidates it. Renaming the file does not, moving the project does
-not, re-running `oea analyze` does not. Two different projects containing the
-same clip share the transcription of it.
+not, re-running `oea analyze` does not.
+
+The cache lives inside the project, at `.oea/cache`, so a second project
+containing the same clip transcribes it again. That is deliberate: a transcript
+is derived from your footage, and the promise that deleting a project directory
+removes everything derived from it is worth more than the saving. Because the
+keys contain no paths, copying one project's `.oea/cache` into another is enough
+to share the work when you want to — 160 results recomputed becomes 161 reused.
 
 Understanding and judgement are cached the same way, one step further up:
 
