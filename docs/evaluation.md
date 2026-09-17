@@ -9,6 +9,31 @@ whose entire premise is short ones broke no schema.
 
 So there are three layers of checking, and they answer three different questions.
 
+## Calibrating on footage you cannot share
+
+Most footage worth testing this on is personal, and none of it needs to move.
+
+```bash
+node scripts/scene-report.mjs ./my-footage --continuous
+```
+
+It runs where the footage already is and prints only arithmetic — durations,
+boundary counts per sensitivity, and the score distribution. No frames, no
+transcript, no OCR, no filenames unless you pass `--names`. Every line that
+reaches stdout is in one `report()` function at the bottom of the file, so the
+claim is checkable in a minute.
+
+`--continuous` is the useful one and needs no annotation: it says these are
+unedited camera takes, so every boundary found inside one is a false positive.
+That measures over-segmentation directly, which is the risk the current default
+carries. `--cuts-at 12.0,45.5` on a single edited clip measures the other
+direction.
+
+This exists because the scene threshold is the one number here that synthetic
+material cannot settle — colour fields with grain are adversarial for a content
+metric in ways a camera is not. A few hundred bytes of output from real footage
+decides it; the footage itself is not needed and should not be sent.
+
 ## 1. Is it still correct?
 
 `pnpm verify`. Formatting, types, lint, build, tests, and a check that the
