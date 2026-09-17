@@ -44,12 +44,18 @@ export interface AssessOptions {
    */
   cache?: PerceptionCache;
   onProgress?: (stage: string, done: number, total: number) => void;
+  /** Told when a second opinion could not be had, so the substitution is visible. */
+  onDegraded?: (message: string, failures: { eventId: string; reason: string }[]) => void;
 }
 
 export async function assessEvents(
   events: readonly SemanticEvent[],
   options: AssessOptions,
-): Promise<{ editorial: EventEditorial[]; escalated: string[] }> {
+): Promise<{
+  editorial: EventEditorial[];
+  escalated: string[];
+  failures: { eventId: string; reason: string }[];
+}> {
   const ordered = [...events].sort((a, b) => a.start_ms - b.start_ms);
   const totalMs = ordered.reduce((sum, e) => sum + (e.end_ms - e.start_ms), 0) || 1;
   const states = new Map<string, EventState>();
@@ -98,6 +104,7 @@ export async function assessEvents(
   }
 
   const escalated: string[] = [];
+  const failures: { eventId: string; reason: string }[] = [];
   if (options.escalationModel) {
     const model = options.escalationModel;
     const costPerEvent = model.identity.costPerEventUsd ?? 0.002;
@@ -145,8 +152,25 @@ export async function assessEvents(
         continue;
       }
 
-      options.budget?.spend(costPerEvent, `a second opinion on ${eventId}`);
-      const draft = await assessEvent(model, state);
+      // A second opinion that cannot be had is worth less than the cut.
+      //
+      // There was no catch here, so one 500 from a restarted local server threw
+      // out of `compileProject` before the CLI ever reached `writeIr` — every
+      // minute of transcription and every cheap judgement, lost, because an
+      // optional model declined one question. The rule is that a missing model
+      // costs that stage and not the run; this was the stage costing the run.
+      let draft;
+      try {
+        options.budget?.spend(costPerEvent, `a second opinion on ${eventId}`);
+        draft = await assessEvent(model, state);
+      } catch (error) {
+        // The cheap answer is already in `drafts` and `producedBy` still points
+        // at the run that gave it, which is the truth about who answered.
+        failures.push({ eventId, reason: error instanceof Error ? error.message : String(error) });
+        // A dead endpoint should cost one request, not one per event.
+        if (failures.length >= GIVE_UP_AFTER) break;
+        continue;
+      }
       options.cache?.set(key, draft);
       drafts.set(eventId, draft);
       producedBy.set(eventId, escalationRun);
@@ -203,8 +227,18 @@ export async function assessEvents(
     return { event_id: event.id, current: assessment, history: [] };
   });
 
-  return { editorial, escalated };
+  if (failures.length > 0) {
+    options.onDegraded?.(
+      `the second opinion failed on ${failures.length} event(s); the rule-based judgement stands for them`,
+      failures,
+    );
+  }
+
+  return { editorial, escalated, failures };
 }
+
+/** How many refusals before a second-opinion model is treated as gone. */
+const GIVE_UP_AFTER = 3;
 
 /** The key an assessment is cached under: the event state, and who was asked. */
 function assessKey(

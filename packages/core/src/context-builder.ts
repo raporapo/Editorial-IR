@@ -65,12 +65,29 @@ export interface BuildEventsOptions {
   onProgress?: (stage: string, done: number, total: number) => void;
 }
 
+/**
+ * How many refusals before a context model is treated as gone.
+ *
+ * A dead endpoint should cost a handful of requests rather than one per event:
+ * seventy-three timeouts is a long way to find out that a server is down.
+ */
+const GIVE_UP_AFTER = 3;
+
 export interface BuildEventsResult {
   events: SemanticEvent[];
   conflicts: Conflict[];
   escalated: string[];
   /** Why escalation stopped where it did, for reporting to the user. */
   escalationLimitedBy: string;
+  /**
+   * Events a context model refused, and why.
+   *
+   * They keep the description they already had — the rule-based one, or the
+   * fallback built from what was observed — so the compile continues. It is
+   * reported rather than swallowed, because a description at confidence 0.15
+   * standing in for a model's answer is a thing the user should be told about.
+   */
+  failures: { eventId: string; stage: string; reason: string }[];
 }
 
 export async function buildSemanticEvents(
@@ -98,13 +115,28 @@ export async function buildSemanticEvents(
 
   // ---- cheap pass ----------------------------------------------------------
   const descriptions = new Map<string, Awaited<ReturnType<ContextModel['describe']>>>();
+  const failures: { eventId: string; stage: string; reason: string }[] = [];
   if (options.baseModel) {
     const model = options.baseModel;
     options.runs.fromIdentity('context', model.identity);
     for (const [index, skeleton] of skeletons.entries()) {
       options.onProgress?.('describe', index, skeletons.length);
       const params = describeParams(skeleton, skeletons, index, options, { includeFrames: false });
-      descriptions.set(skeleton.id, await describeCached(model, params, options.cache));
+      try {
+        descriptions.set(skeleton.id, await describeCached(model, params, options.cache));
+      } catch (error) {
+        // Leave the map empty for this one and let `fallbackDescription` below
+        // do the job it was written for, at confidence 0.15 — the honest record
+        // of what happened. There was no catch here, so one refusal from an
+        // optional model threw out of the whole compile and the user got no
+        // timeline and no plan at all.
+        failures.push({
+          eventId: skeleton.id,
+          stage: 'describe',
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        if (failures.length >= GIVE_UP_AFTER) break;
+      }
     }
   }
 
@@ -144,7 +176,20 @@ export async function buildSemanticEvents(
       // Only spend from the budget when the call is actually going to happen.
       if (!cached) options.budget?.spend(costPerEvent, `a closer look at ${skeleton.id}`);
 
-      const result = cached ?? (await describeCached(model, params, options.cache));
+      let result;
+      try {
+        result = cached ?? (await describeCached(model, params, options.cache));
+      } catch (error) {
+        // The cheap description already in the map stands. A closer look that
+        // could not be taken is worth less than the analysis.
+        failures.push({
+          eventId: skeleton.id,
+          stage: 'inspect',
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        if (failures.filter((f) => f.stage === 'inspect').length >= GIVE_UP_AFTER) break;
+        continue;
+      }
       descriptions.set(skeleton.id, result);
       escalated.push(skeleton.id);
       if (!cached)
@@ -240,7 +285,7 @@ export async function buildSemanticEvents(
     void isEscalated;
   }
 
-  return { events, conflicts, escalated, escalationLimitedBy: limitedBy };
+  return { events, conflicts, escalated, escalationLimitedBy: limitedBy, failures };
 }
 
 /**

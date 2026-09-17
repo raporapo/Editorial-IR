@@ -116,6 +116,12 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     !options.forceObservations &&
     stored !== undefined &&
     stored.fingerprint === expectedFingerprint &&
+    // An incomplete set is not the set. The fingerprint is over the media and
+    // the models, so it matches whether or not a stage actually managed to run
+    // — which meant a run that could not read one asset stored the gap and
+    // every run afterwards reported that nothing was missing. The per-asset
+    // cache survives, so re-observing costs only what failed.
+    stored.failures.length === 0 &&
     stored.pipeline_version === PIPELINE_VERSION;
 
   let observations: ObservationTimeline;
@@ -170,6 +176,13 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       // Recorded with the observations rather than only in the IR, because the
       // run that produced an observation is a fact about that observation.
       model_runs: runs.all(),
+      // And what it could not read, so the next run knows this set has a hole
+      // in it rather than matching a fingerprint and calling it complete.
+      failures: observed.failures.map((failure) => ({
+        stage: failure.stage,
+        asset_id: failure.assetId,
+        reason: failure.reason,
+      })),
     };
     frameVectors = observed.frameVectors;
     derived = observed.derived;
@@ -241,6 +254,25 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       ? { onProgress: (stage, done, total) => options.onProgress?.(stage, '', done, total) }
       : {}),
   });
+
+  // A model that refused costs its own stage and nothing else, and says so.
+  // Both of these used to throw out of the compile, so one 500 from an optional
+  // endpoint threw away every minute of transcription and cheap judgement that
+  // had already succeeded, and the user got no timeline and no plan at all.
+  for (const failure of built.failures) {
+    failures.push({
+      stage: failure.stage,
+      assetId: failure.eventId,
+      reason: `${failure.reason} — kept the description it already had`,
+    });
+  }
+  for (const failure of assessed.failures) {
+    failures.push({
+      stage: 'reassess',
+      assetId: failure.eventId,
+      reason: `${failure.reason} — the rule-based judgement stands`,
+    });
+  }
 
   // ---- structure -----------------------------------------------------------
   const { chapters, assignments } = buildChapters(built.events, options.chapters ?? {});

@@ -3332,6 +3332,9 @@
         },
         "model_runs": {
           "$ref": "#/$defs/__schema32"
+        },
+        "failures": {
+          "$ref": "#/$defs/__schema43"
         }
       },
       "required": [
@@ -3931,6 +3934,30 @@
           "type": "string",
           "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
           "description": "ISO-8601 timestamp, always UTC with a trailing Z."
+        },
+        "__schema43": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "stage": {
+                "type": "string"
+              },
+              "asset_id": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "stage",
+              "asset_id",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
         }
       }
     },

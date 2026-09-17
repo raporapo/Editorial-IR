@@ -170,6 +170,20 @@ export const ObservationTimeline = obj({
    * privacy report lost every perception model that had touched the media.
    */
   model_runs: z.array(ModelRun).default([]),
+  /**
+   * Assets a stage could not read while producing this, and why.
+   *
+   * An incomplete observation set was stored looking exactly like a complete
+   * one: `oea analyze` said "could not read: speech on asset_002", wrote the
+   * file anyway, and the next run matched its fingerprint — which is computed
+   * from media hashes and model identities, not from what was actually
+   * produced — and reported "perception was reused: nothing that affects it had
+   * changed". The user fixed the cause and the missing eleven utterances never
+   * came back.
+   */
+  failures: z
+    .array(obj({ stage: z.string(), asset_id: z.string(), reason: z.string() }))
+    .default([]),
 }).meta({ id: 'ObservationTimeline', title: 'ObservationTimeline' });
 export type ObservationTimeline = z.infer<typeof ObservationTimeline>;
 
@@ -184,4 +198,5 @@ export const EMPTY_OBSERVATIONS: Omit<
   frame_features: [],
   audio_profiles: [],
   model_runs: [],
+  failures: [],
 };

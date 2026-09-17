@@ -75,6 +75,25 @@ is compatible with.
 
 ### Fixed
 
+- **A model that was present and refused took the whole compile with it.** "A
+  missing model costs that stage, not the run" was written for a model that is
+  absent; one that answers a 503 — a restarted local server, a 502 from a proxy,
+  a dropped connection — threw out of `compileProject` before anything was
+  written. Every minute of transcription and every cheap judgement already done
+  was lost, and the user got no timeline and no plan at all, because an optional
+  second opinion declined one question. Both the closer look and the second
+  opinion now cost themselves: the description or judgement already in hand
+  stands, the event is reported under "could not read", and a model that refuses
+  three times running is treated as gone rather than asked once per event.
+- **An analysis with a hole in it was reused as though it were whole.** A run
+  that could not read one asset said so, wrote the observations anyway, and the
+  next run matched their fingerprint — which is computed from media hashes and
+  model identities, not from what was actually produced — and reported
+  "perception was reused: nothing that affects it had changed". The user fixed
+  the cause and the missing utterances never came back. The stored set now
+  records what it could not read, and a set with failures is re-observed; the
+  per-asset cache survives, so that costs only what failed.
+
 - **Changing the transcription model served the old model's transcript.** Every
   worker-backed stage reported a placeholder name — `asr`, `vlm`,
   `text-embedding` — because the real one is decided by an environment variable

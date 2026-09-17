@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { compileProject, observationsFingerprint } from '@editorial-ir/core';
 import { HeuristicDecisionBackend } from '@editorial-ir/decision';
 import { EditorialIR, formatTimecode } from '@editorial-ir/contracts';
+import type { ContextModel } from '@editorial-ir/perception';
 import { exampleSuite, makeExampleProject } from './support/project.js';
 
 async function compile(options: { force?: boolean } = {}) {
@@ -369,4 +370,122 @@ describe('observationsFingerprint', () => {
 
     expect(observationsFingerprint(store.readAssets(), suite)).toBe(before);
   });
+});
+
+/**
+ * What a model that refuses costs.
+ *
+ * "A missing model costs that stage, not the run" is one of the absolutes, and
+ * it was written for a model that is absent. A model that is present and throws
+ * — a restarted local server, a 502 from a proxy, a dropped connection — took
+ * the whole compile with it, so every minute of transcription and every cheap
+ * judgement already done was lost and the user got no timeline and no plan.
+ */
+describe('a model that refuses', () => {
+  class Refuses implements ContextModel {
+    readonly identity = {
+      backend: 'refusing',
+      locality: 'remote_api' as const,
+      mediaLeavesDevice: false,
+    };
+    calls = 0;
+    describe(): Promise<never> {
+      this.calls++;
+      return Promise.reject(new Error('503 Service Unavailable'));
+    }
+  }
+
+  class RefusingJudge extends HeuristicDecisionBackend {
+    override readonly identity = {
+      ...new HeuristicDecisionBackend().identity,
+      backend: 'refusing',
+      baseConfidence: 0.9,
+    };
+    calls = 0;
+    override score(..._args: Parameters<HeuristicDecisionBackend['score']>) {
+      this.calls++;
+      return Promise.reject(new Error('500 Internal Server Error'));
+    }
+  }
+
+  it('still produces an analysis when the closer look is unreachable', async () => {
+    const store = await makeExampleProject();
+    const closerLook = new Refuses();
+    const result = await compileProject({
+      store,
+      suite: exampleSuite(),
+      decision: new HeuristicDecisionBackend(),
+      escalationContext: closerLook,
+      escalation: { maxItems: 5, minValue: 0 },
+    });
+
+    expect(result.ir.events.length).toBeGreaterThan(50);
+    // It gave up rather than asking a dead endpoint once per event.
+    expect(closerLook.calls).toBeLessThanOrEqual(3);
+    const said = result.report.failures.filter((f) => f.stage === 'inspect');
+    expect(said.length).toBeGreaterThan(0);
+    expect(said[0]!.reason).toContain('503');
+  }, 60_000);
+
+  it('still produces an analysis when the second opinion is unreachable', async () => {
+    const store = await makeExampleProject();
+    const judge = new RefusingJudge();
+    const result = await compileProject({
+      store,
+      suite: exampleSuite(),
+      decision: new HeuristicDecisionBackend(),
+      escalationDecision: judge,
+      escalation: { maxItems: 5, minValue: 0 },
+    });
+
+    expect(result.ir.editorial.length).toBe(result.ir.events.length);
+    expect(judge.calls).toBeGreaterThan(0);
+    const said = result.report.failures.filter((f) => f.stage === 'reassess');
+    expect(said.length).toBeGreaterThan(0);
+    expect(said[0]!.reason).toContain('the rule-based judgement stands');
+  }, 60_000);
+});
+
+describe('an analysis with a hole in it', () => {
+  it('is not reused as though it were complete', async () => {
+    // The fingerprint is over the media and the models, so it matched whether or
+    // not a stage had managed to run: a set stored with one asset's speech
+    // missing came back on every later run under "nothing that affects it had
+    // changed", and the missing utterances never returned.
+    const store = await makeExampleProject();
+    const first = await compileProject({
+      store,
+      suite: exampleSuite(),
+      decision: new HeuristicDecisionBackend(),
+    });
+
+    store.writeObservations({
+      ...first.observations,
+      failures: [{ stage: 'speech', asset_id: 'asset_002', reason: 'the worker went away' }],
+    });
+
+    const second = await compileProject({
+      store,
+      suite: exampleSuite(),
+      decision: new HeuristicDecisionBackend(),
+    });
+    expect(second.report.reusedObservations).toBe(false);
+  }, 60_000);
+
+  it('is reused when it has none', async () => {
+    const store = await makeExampleProject();
+    const first = await compileProject({
+      store,
+      suite: exampleSuite(),
+      decision: new HeuristicDecisionBackend(),
+    });
+    store.writeObservations(first.observations);
+
+    const second = await compileProject({
+      store,
+      suite: exampleSuite(),
+      decision: new HeuristicDecisionBackend(),
+    });
+    expect(second.report.reusedObservations).toBe(true);
+  }, 60_000);
 });
