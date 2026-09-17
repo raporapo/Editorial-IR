@@ -395,6 +395,11 @@ export function segmentAtoms(
 
 function methodFor(segment: Atom, context: SegmentContext): SegmentDraft['method'] {
   if (context.forcedSplits?.some((ms) => Math.abs(ms - segment.start_ms) < 1200)) return 'user';
+  // A merge is a boundary the user asked to have removed, and the event that
+  // swallowed it is theirs as much as a split is. It said `shot`, so the record
+  // did not show the correction anywhere.
+  if (context.forcedMerges?.some((ms) => ms > segment.start_ms && ms < segment.end_ms))
+    return 'user';
   if (segment.shot_ids.length > 0) return 'shot';
   if (context.utterances.some((u) => rangesOverlap(u, segment))) return 'speech';
   return 'fixed';
@@ -460,7 +465,34 @@ function forcedBoundaries(
   return annotations
     .filter((a) => a.type === 'boundary' && a.action === action)
     .flatMap((a) => {
-      if (a.type !== 'boundary' || a.target.kind !== 'time_range') return [];
+      if (a.type !== 'boundary') return [];
+
+      // An event id, resolved to the footage it named when the correction was
+      // made. `oea annotate evt_0003 split 00:00:40` and `oea annotate evt_0003
+      // merge` are both forms the CLI's own help advertises, and both were
+      // dropped here: the annotation was written, reported as applied, listed
+      // in the event's `annotation_refs`, and did nothing. Merging asks for the
+      // boundary at the end of that material to go; splitting asks for one
+      // inside it, at `at_ms`.
+      const anchor = a.anchor.find((range) => range.asset_id === where.assetId);
+      if (anchor) {
+        if (action === 'merge_with_next') return [anchor.end_ms];
+        if (a.at_ms === undefined) return [];
+        const local = a.at_ms - where.offsetMs;
+        return local > anchor.start_ms && local < anchor.end_ms ? [local] : [];
+      }
+      // An annotation anchored somewhere else is not about this asset.
+      if (a.anchor.length > 0) return [];
+
+      // A whole recording: merging every atom in it into one, or splitting at a
+      // point inside it.
+      if (a.target.kind === 'asset') {
+        if (a.target.asset_id !== where.assetId) return [];
+        if (action === 'merge_with_next') return [where.durationMs];
+        return a.at_ms === undefined ? [] : [a.at_ms - where.offsetMs];
+      }
+
+      if (a.target.kind !== 'time_range') return [];
 
       // Named an asset: the time is already that asset's, and it applies to no
       // other. Named none: capture time, which belongs to whichever asset it

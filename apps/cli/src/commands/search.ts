@@ -1,4 +1,10 @@
-import { assessmentFor, formatTimecode } from '@editorial-ir/contracts';
+import {
+  EMBEDDING_KINDS,
+  EditorialError,
+  assessmentFor,
+  formatTimecode,
+  type EmbeddingKind,
+} from '@editorial-ir/contracts';
 import { openProject } from '../project.js';
 import { openIndex, requireIr } from '../ir.js';
 import { bar, colour, heading, line, note, table, truncate } from '../ui.js';
@@ -16,7 +22,20 @@ export async function runSearch(args: SearchArgs): Promise<number> {
   const ir = requireIr(store);
   const index = openIndex(store, ir);
 
-  const aspect = args.aspect && args.aspect !== 'any' ? [args.aspect as 'visual'] : undefined;
+  // Checked rather than cast. `--aspect audoi` used to search descriptions and
+  // report "nothing matched", while `--aspect visuals` returned ten hits whose
+  // "which aspect matched" column named an aspect that does not exist — the
+  // cast made every misspelling look like an answer.
+  let aspect: EmbeddingKind[] | undefined;
+  if (args.aspect && args.aspect !== 'any') {
+    const known = EMBEDDING_KINDS.find((kind) => kind === args.aspect);
+    if (!known) {
+      throw new EditorialError('invalid_input', `there is no aspect called "${args.aspect}"`, {
+        available: [...EMBEDDING_KINDS, 'any'].join(', '),
+      });
+    }
+    aspect = [known];
+  }
   const hits = await index.search(args.query, {
     limit: args.limit ?? 10,
     // Below this a match is coincidence rather than a result, and a list of

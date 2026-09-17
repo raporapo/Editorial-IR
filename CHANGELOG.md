@@ -75,6 +75,27 @@ is compatible with.
 
 ### Fixed
 
+- **`split` and `merge` on an event or a whole recording did nothing.** Both are
+  target forms `oea annotate`'s own help advertises. The annotation was written,
+  reported as applied and listed in the event's `annotation_refs`, and the
+  segmentation came back unchanged — 73 events before, 73 after, none marked as
+  the user's. The comment directly above the code that dropped them says
+  "silently discarding what the user told it is the one thing this project must
+  never do". They are now resolved against the footage the target named: a
+  merge takes out the boundary at the end of that material, a split puts one
+  inside it, and a split asked for outside it is refused rather than applied
+  somewhere else. A merged event is recorded as the user's, which it is, rather
+  than as the shot detector's.
+- **`oea search --aspect` accepted anything.** A misspelling searched event
+  descriptions and reported "nothing matched", while `--aspect visuals` returned
+  ten results whose "which aspect matched" column named an aspect that does not
+  exist. It now fails and lists the six that do.
+- **`oea timeline --chapter` was ignored by `--json`**, so a script asking for
+  one chapter was handed the whole timeline with nothing said and exit 0. An id
+  that names no chapter now says so and lists the ones there are, instead of
+  printing "nothing here yet, run oea analyze first" at somebody whose project
+  was already analysed.
+
 - **A correction moved to different footage when the events were renumbered.**
   An event id is a handle the compiler regenerates — `evt_0008` is the eighth
   event of the last analysis and nothing more — so splitting or merging anything

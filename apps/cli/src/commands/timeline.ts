@@ -1,4 +1,9 @@
-import { assessmentFor, formatTimecode, type SemanticEvent } from '@editorial-ir/contracts';
+import {
+  EditorialError,
+  assessmentFor,
+  formatTimecode,
+  type SemanticEvent,
+} from '@editorial-ir/contracts';
 import { openProject } from '../project.js';
 import { bar, colour, heading, line, note, table, truncate } from '../ui.js';
 import { requireIr } from '../ir.js';
@@ -21,18 +26,33 @@ export function runTimeline(args: TimelineArgs): number {
   const store = openProject(args.project);
   const ir = requireIr(store);
 
+  // Filtered before either branch, because `--chapter` used to apply to the
+  // text output and not to `--json`: a script asking for one chapter was handed
+  // the whole timeline, with nothing said and exit 0.
+  const chapters = args.chapter ? ir.chapters.filter((c) => c.id === args.chapter) : ir.chapters;
+
+  // And an id that names nothing is a mistake, not an empty project. It used to
+  // print "nothing here yet. Run oea analyze first." at somebody whose project
+  // was already analysed, sending them to re-run the expensive part.
+  if (args.chapter && chapters.length === 0) {
+    throw new EditorialError('not_found', `there is no chapter called "${args.chapter}"`, {
+      available:
+        ir.chapters.length === 0
+          ? 'this analysis produced no chapters'
+          : ir.chapters.map((c) => c.id).join(', '),
+    });
+  }
+
   if (args.json) {
     line(
       JSON.stringify(
-        ir.chapters.map((chapter) => ({ ...chapter, events: chapter.event_ids })),
+        chapters.map((chapter) => ({ ...chapter, events: chapter.event_ids })),
         null,
         2,
       ),
     );
     return 0;
   }
-
-  const chapters = args.chapter ? ir.chapters.filter((c) => c.id === args.chapter) : ir.chapters;
 
   for (const chapter of chapters) {
     heading(

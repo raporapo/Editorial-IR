@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { MediaAsset, ObservationTimeline, Shot } from '@editorial-ir/contracts';
+import {
+  UserAnnotation,
+  type MediaAsset,
+  type ObservationTimeline,
+  type Shot,
+} from '@editorial-ir/contracts';
 import {
   buildAtoms,
   segmentAssets,
@@ -8,6 +13,7 @@ import {
   signalsAt,
   type Atom,
 } from '../src/index.js';
+import { makeAsset } from '../../../tests/support/ir.js';
 
 const asset: MediaAsset = {
   id: 'asset_001',
@@ -427,5 +433,90 @@ describe('segmentAssets', () => {
       expect(forced[0]!.asset_id).toBe('asset_002');
       expect(forced[0]!.start_ms).toBe(15_000);
     });
+  });
+});
+
+/**
+ * A cut asked for on an event or a whole recording.
+ *
+ * Both are target forms `oea annotate`'s own help advertises, and both were
+ * dropped: the annotation was written, reported as applied, listed in the
+ * event's `annotation_refs`, and did nothing to the segmentation. "Silently
+ * discarding what the user told it is the one thing this project must never
+ * do" is the comment directly above the code that did it.
+ */
+describe('a boundary asked for on something other than a timecode', () => {
+  const recording = makeAsset({ id: 'asset_001', duration_ms: 60_000 });
+  const observed = observations({
+    shots: [
+      shot('shot_001', 0, 20_000),
+      shot('shot_002', 20_000, 40_000),
+      shot('shot_003', 40_000, 60_000),
+    ],
+  });
+
+  /** An annotation pinned to 20s-40s of the recording, as `oea annotate` writes it. */
+  function onTheMiddle(action: 'split' | 'merge_with_next', atMs?: number): UserAnnotation {
+    return UserAnnotation.parse({
+      id: 'ann_0001',
+      type: 'boundary',
+      action,
+      target: { kind: 'event', event_id: 'evt_0002' },
+      anchor: [{ asset_id: 'asset_001', start_ms: 20_000, end_ms: 40_000 }],
+      ...(atMs === undefined ? {} : { at_ms: atMs }),
+      created_at: '2026-05-17T09:00:00.000Z',
+    });
+  }
+
+  it('splits inside the event the user named', () => {
+    const drafts = segmentAssets(
+      [recording],
+      observed,
+      [onTheMiddle('split', 30_000)],
+      {},
+      undefined,
+      [{ asset_id: 'asset_001', offset_ms: 0, order: 0, ordered_by: 'file_name' }],
+    );
+    expect(drafts.some((d) => Math.abs(d.start_ms - 30_000) < 1200)).toBe(true);
+    expect(drafts.some((d) => d.method === 'user')).toBe(true);
+  });
+
+  it('refuses a split outside the event it was made about', () => {
+    const drafts = segmentAssets(
+      [recording],
+      observed,
+      [onTheMiddle('split', 50_000)],
+      {},
+      undefined,
+      [{ asset_id: 'asset_001', offset_ms: 0, order: 0, ordered_by: 'file_name' }],
+    );
+    expect(drafts.some((d) => Math.abs(d.start_ms - 50_000) < 1200 && d.method === 'user')).toBe(
+      false,
+    );
+  });
+
+  it('merges the event the user named into the one after it', () => {
+    const plain = segmentAssets([recording], observed, [], {}, undefined, [
+      { asset_id: 'asset_001', offset_ms: 0, order: 0, ordered_by: 'file_name' },
+    ]);
+    const merged = segmentAssets(
+      [recording],
+      observed,
+      [onTheMiddle('merge_with_next')],
+      {},
+      undefined,
+      [{ asset_id: 'asset_001', offset_ms: 0, order: 0, ordered_by: 'file_name' }],
+    );
+    expect(merged.length).toBeLessThan(plain.length);
+    // The event that swallowed the boundary is the user's as much as a split is.
+    expect(merged.some((d) => d.method === 'user')).toBe(true);
+  });
+
+  it('does not reach into a recording the user was not talking about', () => {
+    const other = makeAsset({ id: 'asset_002', duration_ms: 60_000 });
+    const drafts = segmentAssets([other], observed, [onTheMiddle('split', 30_000)], {}, undefined, [
+      { asset_id: 'asset_002', offset_ms: 0, order: 0, ordered_by: 'file_name' },
+    ]);
+    expect(drafts.some((d) => d.method === 'user')).toBe(false);
   });
 });
