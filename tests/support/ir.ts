@@ -224,6 +224,9 @@ export function makeIR(spec: IrSpec): EditorialIR {
     annotations: [],
     conflicts: [],
     model_runs: [],
+    // The fixtures stand for a real analysis, so they claim the tier a real
+    // analysis would. A test that needs a stand-in recorded overrides it.
+    quality: { tier: 'standard', stand_ins: [] },
     stats: {
       asset_count: assets.length,
       total_media_duration_ms: totalDuration,

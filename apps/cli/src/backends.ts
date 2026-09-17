@@ -1,5 +1,10 @@
 import { existsSync } from 'node:fs';
-import { EditorialError, type ExecutionLocality } from '@editorial-ir/contracts';
+import {
+  EditorialError,
+  type AnalysisStage,
+  type ExecutionLocality,
+  type StandInReason,
+} from '@editorial-ir/contracts';
 import {
   HashingTextEmbedding,
   OpenAiCompatibleContextModel,
@@ -16,6 +21,7 @@ import {
   WorkerVisualEmbeddingModel,
   createFixtureSuite,
   createLocalSuite,
+  isLocalEndpoint,
   loadPerceptionFixture,
   workerHealth,
   type ContextModel,
@@ -32,23 +38,48 @@ import {
 /**
  * Choosing which models to run.
  *
- * Three modes, and the first one is the default because it is the one that
- * always works:
+ * Where perception comes from:
  *
  * - `local` needs ffmpeg and nothing else. No GPU, no network, no key, no cost.
  * - `python` adds the perception runtime: real transcription, real vision.
  * - `fixture` replays recorded perception, which is how the worked example and
  *   the tests run anywhere.
  *
- * Stronger models for the hard events are configured through the environment
- * rather than flags, because a key does not belong in shell history, and because
- * whether one is available is a property of the machine rather than of the
- * command being run.
+ * Model endpoints are configured through the environment rather than flags,
+ * because a key does not belong in shell history, and because whether one is
+ * available is a property of the machine rather than of the command being run.
+ *
+ * ## Why this refuses to run by default
+ *
+ * Every stage here has a stand-in, so an unconfigured install can analyse
+ * footage end to end and produce an IR with every field populated. That is a
+ * good property and it hid a bad one: the rules-and-hashing IR is *much* worse
+ * than the model-backed one, and nothing about it says so. Benchmarks were
+ * measuring the rules while reporting a number about the product.
+ *
+ * So the standard path is the default, it requires a model for each of the three
+ * stages that decide the edit, and it fails with a list when one is missing.
+ * `--offline-minimal` is the way to say you meant it — and what comes out is
+ * stamped `offline_minimal`, so nothing downstream can mistake it for a
+ * measurement.
  */
+
+/** What a run is willing to accept. Never a claim about what it got. */
+export type QualityMode = 'standard' | 'offline-minimal';
+
 export interface BackendOptions {
   perception?: string;
   decision?: string;
+  /** Defaults to `standard`, which refuses to run on stand-ins. */
+  mode?: QualityMode;
   onLog?: (message: string) => void;
+}
+
+/** A decisive stage with no model behind it. */
+export interface MissingModel {
+  stage: AnalysisStage;
+  using: string;
+  remedy: string;
 }
 
 export interface ResolvedBackends {
@@ -58,6 +89,15 @@ export interface ResolvedBackends {
   escalationDecision?: EditorialDecisionModel;
   /** Human-readable summary, for `oea doctor` and for the analyse report. */
   description: string[];
+  /** The mode that was asked for. Passed to the compiler to label its stand-ins. */
+  mode: QualityMode;
+  standInReason: StandInReason;
+  /**
+   * Decisive stages running on a stand-in. Empty in standard mode, because
+   * standard mode refuses to resolve otherwise — `oea doctor` asks for
+   * `mode: 'offline-minimal'` precisely so it can report this instead.
+   */
+  missing: MissingModel[];
   close(): Promise<void>;
 }
 
@@ -180,21 +220,57 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
       }),
     };
     description.push(`embeddings: ${embedModel} at ${embedBase}`);
+  } else if (suite.text.identity.standIn) {
+    description.push('embeddings: hashing (lexical — matches words, not meaning)');
   } else {
-    description.push('embeddings: hashing (lexical, no model)');
+    description.push(`embeddings: ${suite.text.identity.model ?? suite.text.identity.backend}`);
   }
 
-  // The expensive look, for the events that earn it.
+  // ---- the look at each event ----------------------------------------------
+  //
+  // One model, two possible jobs, and which one it takes is about cost rather
+  // than quality.
+  //
+  // A model on this machine is free per call, so it should describe *every*
+  // event: that is what makes descriptions a model's work rather than a
+  // template's. A hosted model is not free, and making it the per-event default
+  // would put a paid call on every event of a one-hour project — so by default
+  // it waits for the events that earn it, and the base pass keeps the rules.
+  //
+  // That default is a cost decision, and it is the operator's to overturn:
+  // OEA_VLM_SCOPE=base says "describe everything with it and bill me", which is
+  // also the only way a hosted-only setup reaches standard quality.
   let escalationContext: ContextModel | undefined;
   const vlmBase = process.env.OEA_VLM_BASE_URL;
   const vlmModel = process.env.OEA_VLM_MODEL;
   if (vlmBase && vlmModel) {
-    escalationContext = new OpenAiCompatibleContextModel({
+    const configured = process.env.OEA_VLM_SCOPE;
+    if (configured !== undefined && configured !== 'base' && configured !== 'escalation') {
+      throw new EditorialError('invalid_input', `OEA_VLM_SCOPE must be "base" or "escalation"`, {
+        given: configured,
+      });
+    }
+    const scope = configured ?? (isLocalEndpoint(vlmBase) ? 'base' : 'escalation');
+    const vlm = new OpenAiCompatibleContextModel({
       baseUrl: vlmBase,
       model: vlmModel,
       ...(process.env.OEA_VLM_API_KEY ? { apiKey: process.env.OEA_VLM_API_KEY } : {}),
     });
-    description.push(`closer look: ${vlmModel} at ${vlmBase}`);
+    if (scope === 'base') {
+      // Only when the suite has nothing better already. A worker running the
+      // model in-process beats an HTTP hop to the same machine.
+      if (suite.context === undefined || suite.context.identity.standIn) {
+        suite = { ...suite, context: vlm };
+        description.push(`descriptions: ${vlmModel} at ${vlmBase}, on every event`);
+      } else {
+        escalationContext = vlm;
+        description.push(`closer look: ${vlmModel} at ${vlmBase}`);
+      }
+    } else {
+      escalationContext = vlm;
+      description.push(`closer look: ${vlmModel} at ${vlmBase} (the events that earn it)`);
+      description.push(`  OEA_VLM_SCOPE=base would describe every event with it, at a cost`);
+    }
   } else if (remoteWorkerContext) {
     // The worker has a hosted model configured and this process cannot see
     // which: reaching it through the worker for the events that earn it is
@@ -268,18 +344,94 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
     }
   }
 
+  // ---- is this the standard path, or a sketch of it? -----------------------
+  const mode: QualityMode = options.mode ?? 'standard';
+  const close = async (): Promise<void> => {
+    for (const closer of closers) await closer();
+    await suite.close?.();
+    await decision.close?.();
+  };
+  const missing = missingModels(suite, decision);
+
+  if (mode === 'standard' && missing.length > 0) {
+    // Nothing has been read or written yet, and a Python worker may be running.
+    await close();
+    throw new EditorialError('invalid_input', standardModeRefusal(missing), {
+      missing: missing.map((m) => m.stage),
+      hint: 'or pass --offline-minimal to analyse without them',
+    });
+  }
+
   return {
     suite,
     decision,
     ...(escalationContext ? { escalationContext } : {}),
     ...(escalationDecision ? { escalationDecision } : {}),
     description,
-    close: async () => {
-      for (const close of closers) await close();
-      await suite.close?.();
-      await decision.close?.();
-    },
+    mode,
+    standInReason: mode === 'offline-minimal' ? 'requested' : 'not_configured',
+    missing,
+    close,
   };
+}
+
+/**
+ * The decisive stages that have no model behind them.
+ *
+ * Asked of the resolved backends rather than of the environment variables that
+ * configured them, because those are not the same question: a variable can be
+ * set and point at a closed port, and a worker can be running a model nobody
+ * configured here. What matters is what will actually run.
+ */
+export function missingModels(
+  suite: PerceptionSuite,
+  decision: EditorialDecisionModel,
+): MissingModel[] {
+  const missing: MissingModel[] = [];
+  const add = (
+    stage: AnalysisStage,
+    standIn: { insteadOf: string; remedy?: string } | undefined,
+    using: string,
+  ): void => {
+    if (standIn)
+      missing.push({ stage, using, remedy: standIn.remedy ?? `configure ${standIn.insteadOf}` });
+  };
+
+  // An absent context model is the same situation as a rule-based one: the
+  // compiler substitutes its own, and every event gets a template.
+  if (suite.context === undefined) {
+    missing.push({
+      stage: 'description',
+      using: 'a summary of the observations',
+      remedy: 'set OEA_VLM_BASE_URL and OEA_VLM_MODEL, or install the Python runtime',
+    });
+  } else {
+    add('description', suite.context.identity.standIn, suite.context.identity.model ?? 'rules');
+  }
+  add('judgement', decision.identity.standIn, decision.identity.model ?? 'rules');
+  add('text_embedding', suite.text.identity.standIn, suite.text.identity.model ?? 'hashing');
+  return missing;
+}
+
+function standardModeRefusal(missing: readonly MissingModel[]): string {
+  const width = Math.max(...missing.map((m) => m.stage.length));
+  const rows = missing
+    .map(
+      (m) => `  ${m.stage.padEnd(width)}  now: ${m.using}
+  ${' '.repeat(width)}  fix: ${m.remedy}`,
+    )
+    .join('\n');
+  return [
+    `standard quality needs a model for each stage that decides the edit; ${missing.length} ${missing.length === 1 ? 'is' : 'are'} missing:`,
+    '',
+    rows,
+    '',
+    'Any OpenAI-compatible server will do — Ollama, vLLM, LM Studio, llama.cpp, or a',
+    'hosted provider. "oea doctor" reports what this machine can actually reach.',
+    '',
+    'To analyse without them, pass --offline-minimal. It is free and instant, and the',
+    'result is stamped offline_minimal so it is never mistaken for a measure of quality.',
+  ].join('\n');
 }
 
 /**

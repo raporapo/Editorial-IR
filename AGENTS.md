@@ -27,10 +27,18 @@ edit. Editing applications are output adapters, not the product.
    structural, not a comment.
 6. **Model names live in ModelRun records, never in schemas.** Models are
    replaceable backends.
-7. **No backend is required.** The rule-based decision layer, the hashing
-   embedding and the heuristic context model are the guaranteed path, and every
-   test runs on it. If a change only works with a model configured, it is not
-   finished.
+7. **No backend is required, and no run may pretend one was there.** The
+   rule-based decision layer, the hashing embedding and the heuristic context
+   model are the guaranteed path, and every test runs on it. If a change only
+   works with a model configured, it is not finished.
+
+   The other half of that rule: each of those three declares itself a stand-in
+   (`identity.standIn`), the compiler collects the declarations, and the IR
+   carries `quality.tier`. `oea analyze` refuses to run on stand-ins unless
+   `--offline-minimal` says so. **A new stand-in must declare itself** — one that
+   does not is invisible to the tier, and an IR that claims `standard` while a
+   stage was guessing is the one failure this mechanism exists to prevent.
+
 8. **TypeScript owns the contract; Python implements it.** Do not move core logic
    into Python because a library is convenient there.
 9. **Deterministic output.** The same input compiles to the same IR, byte for

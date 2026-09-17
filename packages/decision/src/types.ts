@@ -1,4 +1,5 @@
 import type {
+  StandInDeclaration,
   BooleanRequest,
   BooleanResult,
   ChoiceRequest,
@@ -77,6 +78,11 @@ export interface DecisionBackendIdentity {
    */
   readonly baseConfidence: number;
   readonly parameters?: Record<string, unknown>;
+  /**
+   * Set when this backend applies rules rather than judgement. Read by the
+   * compiler to decide the analysis tier.
+   */
+  readonly standIn?: StandInDeclaration;
   /** Estimated USD per event assessed. Zero for local rule-based work. */
   readonly costPerEventUsd?: number;
 }

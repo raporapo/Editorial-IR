@@ -45,6 +45,10 @@ export class HashingTextEmbedding implements TextEmbeddingModel {
       modelVersion: '1',
       locality: 'local',
       mediaLeavesDevice: false,
+      standIn: {
+        insteadOf: 'a semantic embedding model',
+        remedy: 'set OEA_EMBED_BASE_URL and OEA_EMBED_MODEL, or install the Python runtime',
+      },
       parameters: { dim: this.dim, char_ngrams: this.charNgrams, words: this.includeWords },
     };
   }

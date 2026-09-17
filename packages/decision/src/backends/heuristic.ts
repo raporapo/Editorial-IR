@@ -44,6 +44,10 @@ export class HeuristicDecisionBackend implements EditorialDecisionModel {
       locality: 'local',
       mediaLeavesDevice: false,
       baseConfidence: options.baseConfidence ?? 0.4,
+      standIn: {
+        insteadOf: 'a decision model',
+        remedy: 'set OEA_DECISION_BASE_URL and OEA_DECISION_MODEL',
+      },
       costPerEventUsd: 0,
     };
   }

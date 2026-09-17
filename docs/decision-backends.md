@@ -50,7 +50,7 @@ confident, any blend of the two.
 
 ## The shipped backends
 
-### `heuristic` (default)
+### `heuristic` (the fallback, reached with `--offline-minimal`)
 
 No model, no key, no network, same answer every time. It reports a base
 confidence of 0.4, and that number is what the escalation policy reads when
@@ -60,6 +60,13 @@ It is not as good as a model and does not pretend to be. What it has is
 legibility — every score traces to an observation you can point at — and the fact
 that it always works, which is what makes the whole pipeline testable and lets
 someone try the product before installing anything.
+
+It used to be the default, and that was a mistake worth recording. An IR judged
+by rules is indistinguishable on disk from one judged by a model — every field
+populated, nothing obviously wrong, and much worse. Benchmarks were measuring the
+rules while reporting a number about the product. So it now declares itself a
+stand-in, `oea analyze` refuses to reach it by accident, and any IR it produces
+is stamped `offline_minimal`.
 
 ### `local-system-one`
 

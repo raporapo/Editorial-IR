@@ -10,7 +10,7 @@
  *   way that invalidates cached observations even though no schema changed.
  *   It participates in every cache key (see `@editorial-ir/core`).
  */
-export const IR_VERSION = '0.1.0';
+export const IR_VERSION = '0.2.0';
 export const EDIT_PLAN_VERSION = '0.1.0';
 export const PIPELINE_VERSION = '0.1.0';
 export const SKILL_MANIFEST_VERSION = '0.1.0';

@@ -1,4 +1,5 @@
 import type {
+  StandInDeclaration,
   AnalyzeAudioParams,
   AnalyzeAudioResult,
   DescribeParams,
@@ -39,6 +40,11 @@ export interface ModelIdentity {
   readonly mediaLeavesDevice: boolean;
   /** Parameters that change the output, and therefore the cache key. */
   readonly parameters?: Record<string, unknown>;
+  /**
+   * Set when this is a stand-in rather than a model. Read by the compiler to
+   * decide the analysis tier, so it must be set by every backend that guesses.
+   */
+  readonly standIn?: StandInDeclaration;
 }
 
 export interface PerceptionModel {

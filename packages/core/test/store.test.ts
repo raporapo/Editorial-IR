@@ -162,8 +162,14 @@ describe('a document from another version', () => {
   it('is refused rather than read hopefully', () => {
     const { store } = makeStore();
     const ir = makeIR({ events: [{ description: '出発' }] });
-    store.writeIr({ ...ir, ir_version: '0.2.0' });
-    expect(() => store.readIr()).toThrow(/written by version 0\.2\.0/);
+    // Derived from the current version rather than written down. A literal here
+    // stopped testing anything the day IR_VERSION caught up with it: the file
+    // said "another version" while naming this one, and the assertion passed
+    // for the opposite reason.
+    const [major, minor] = IR_VERSION.split('.');
+    const otherVersion = `${major}.${Number(minor) + 1}.0`;
+    store.writeIr({ ...ir, ir_version: otherVersion });
+    expect(() => store.readIr()).toThrow(new RegExp(`written by version ${otherVersion}`));
   });
 
   it('is read when the version is one this can handle', () => {

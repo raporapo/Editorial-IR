@@ -34,6 +34,10 @@ export class HeuristicContextModel implements ContextModel {
       modelVersion: '1',
       locality: 'local',
       mediaLeavesDevice: false,
+      standIn: {
+        insteadOf: 'a vision-language model',
+        remedy: 'set OEA_VLM_BASE_URL and OEA_VLM_MODEL, or install the Python runtime',
+      },
     };
   }
 

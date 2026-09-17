@@ -1,6 +1,7 @@
 import {
   IR_VERSION,
   PIPELINE_VERSION,
+  analysisQuality,
   type EditorialIR,
   type EmbeddingSet,
   type MediaAsset,
@@ -9,6 +10,8 @@ import {
   type Project,
   type ProjectContext,
   type SemanticEvent,
+  type StandIn,
+  type StandInReason,
   type UserAnnotation,
 } from '@editorial-ir/contracts';
 import type { ContextModel, PerceptionSuite } from '@editorial-ir/perception';
@@ -58,6 +61,14 @@ export interface CompileOptions {
 
   segmentation?: SegmentationOptions;
   chapters?: ChapterOptions;
+  /**
+   * Why any stand-in in this run is a stand-in.
+   *
+   * The backends declare *that* they are standing in; only the caller knows
+   * whether that is because nothing was configured or because the run asked for
+   * the no-model path. Defaults to the pessimistic reading.
+   */
+  standInReason?: StandInReason;
   /** Re-run perception even when nothing that affects it changed. */
   forceObservations?: boolean;
   frameFps?: number;
@@ -74,6 +85,8 @@ export interface CompileReport {
   escalationLimitedBy: string;
   /** Perception stages the analysis went without, and why. */
   unavailable: UnavailableStage[];
+  /** Stages that ran on a stand-in, exactly as recorded on the IR. */
+  standIns: StandIn[];
   /** Assets a stage could not read, and why. */
   failures: { stage: string; assetId: string; reason: string }[];
   totalCostUsd: number;
@@ -256,6 +269,11 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   // vectors from two spaces, ranked against each other, with nothing able to
   // tell.
   let embedded;
+  // Which encoder the index actually came from, and whether that was the plan.
+  // Read below to decide the analysis tier: a run that configured a real
+  // embedding and lost it partway is degraded, not unconfigured.
+  let embeddingUsed = options.suite.text;
+  let embeddingFellBack = false;
   try {
     embedded = await buildEmbeddings(built.events, context, options.suite.text, {
       frameVectors,
@@ -273,7 +291,10 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     });
     // The fallback records itself, so the IR never claims a vector came from a
     // model that did not answer.
-    embedded = await buildEmbeddings(built.events, context, new HashingTextEmbedding(), {
+    const rescue = new HashingTextEmbedding();
+    embeddingUsed = rescue;
+    embeddingFellBack = true;
+    embedded = await buildEmbeddings(built.events, context, rescue, {
       frameVectors,
       runs,
       // The frame vectors came from the vision model, not from the text
@@ -344,6 +365,46 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
 
   const events = attachEmbeddingRefs(eventsWithChapters, embedded.records);
 
+  // ---- how good is this? ---------------------------------------------------
+  // Asked of the backends that actually ran, not of the flags that selected
+  // them. A stage that fell back partway through (the embedding rescue above)
+  // is a different answer from one that never had a model, and both are
+  // different from a run that asked for neither.
+  const declaredReason: StandInReason = options.standInReason ?? 'not_configured';
+  const standIns: StandIn[] = [];
+  const noteStandIn = (
+    stage: StandIn['stage'],
+    declaration: { insteadOf: string; remedy?: string } | undefined,
+    used: string,
+    reason: StandInReason = declaredReason,
+  ): void => {
+    if (!declaration) return;
+    standIns.push({
+      stage,
+      used,
+      instead_of: declaration.insteadOf,
+      reason,
+      ...(declaration.remedy ? { remedy: declaration.remedy } : {}),
+    });
+  };
+
+  noteStandIn(
+    'description',
+    baseContextModel.identity.standIn,
+    baseContextModel.identity.model ?? baseContextModel.identity.backend,
+  );
+  noteStandIn(
+    'judgement',
+    options.decision.identity.standIn,
+    options.decision.identity.model ?? options.decision.identity.backend,
+  );
+  noteStandIn(
+    'text_embedding',
+    embeddingUsed.identity.standIn,
+    embeddingUsed.identity.model ?? embeddingUsed.identity.backend,
+    embeddingFellBack ? 'failed_during_run' : declaredReason,
+  );
+
   // ---- assemble ------------------------------------------------------------
   const generatedAt = now();
   const fingerprint = irFingerprint({
@@ -371,6 +432,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     annotations,
     conflicts: built.conflicts,
     model_runs: runs.all(),
+    quality: analysisQuality(standIns),
     stats: {
       asset_count: assets.length,
       total_media_duration_ms: assets.reduce((sum, a) => sum + a.duration_ms, 0),
@@ -401,6 +463,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       escalatedDecision: assessed.escalated,
       escalationLimitedBy: built.escalationLimitedBy,
       unavailable,
+      standIns,
       failures,
       totalCostUsd: runs.totalCostUsd(),
       mediaLeftDevice: runs.anyMediaLeftDevice(),

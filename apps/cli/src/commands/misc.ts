@@ -113,21 +113,38 @@ export async function runDoctor(): Promise<number> {
   // with half a pair configured was told it had a model it would not get; and
   // `OEA_DECISION=model` with no base URL got "everything checks out" from the
   // command whose whole job is to find that before the analysis does.
+  //
+  // Resolved in the permissive mode on purpose. This command exists to *report*
+  // that a model is missing; refusing to resolve would turn the diagnosis into
+  // the same error the user came here to understand.
   try {
-    const backends = await resolveBackends({ onLog: (message) => note(`  ${message}`) });
+    const backends = await resolveBackends({
+      mode: 'offline-minimal',
+      onLog: (message) => note(`  ${message}`),
+    });
     try {
       for (const item of backends.description) note(`  ${item}`);
+
+      heading('standard quality');
+      if (backends.missing.length === 0) {
+        success('  every stage that decides the edit has a model behind it');
+      } else {
+        // Not counted as a problem. An offline install is a supported way to
+        // run this, and a doctor that calls it broken is a doctor nobody reads.
+        warn(`  ${backends.missing.length} stage(s) would run on a stand-in:`);
+        for (const item of backends.missing) {
+          note(`    ${item.stage}: ${item.using}`);
+          note(`      ${item.remedy}`);
+        }
+        note('  "oea analyze" will refuse until these are set, or pass --offline-minimal');
+        note('  to analyse without them and have the result stamped offline_minimal.');
+      }
     } finally {
       await backends.close();
     }
   } catch (error) {
     problems++;
     warn(`  ${error instanceof Error ? error.message : String(error)}`);
-  }
-
-  if (!process.env.OEA_VLM_BASE_URL && !process.env.OEA_DECISION_BASE_URL) {
-    note('  Everything runs locally and costs nothing. To add a stronger model for');
-    note('  the events that need one, set OEA_VLM_BASE_URL and OEA_VLM_MODEL.');
   }
 
   heading('skills and editors');

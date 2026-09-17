@@ -49,6 +49,7 @@ const OPTIONS = {
   budget: { type: 'string' as const },
   'max-escalations': { type: 'string' as const },
   force: { type: 'boolean' as const },
+  'offline-minimal': { type: 'boolean' as const },
   json: { type: 'boolean' as const },
   full: { type: 'boolean' as const },
   quiet: { type: 'boolean' as const },
@@ -123,6 +124,7 @@ export async function main(argv: string[]): Promise<number> {
       return runAnalyze({
         ...common,
         ...(values.decision ? { decision: values.decision } : {}),
+        ...(values['offline-minimal'] ? { offlineMinimal: true } : {}),
         ...(values.force ? { force: true } : {}),
         ...(number(values.budget) === undefined ? {} : { budget: number(values.budget) }),
         ...(number(values['max-escalations']) === undefined
@@ -265,7 +267,16 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
-/** Sets up the worked example and compiles it, so the first run shows something. */
+/**
+ * Sets up the worked example and compiles it, so the first run shows something.
+ *
+ * Explicitly offline-minimal, and not as a convenience. The demo replays
+ * recorded perception and judges it with rules, on a machine that may have no
+ * models configured at all — that is the whole point of a command you can run
+ * the minute you install this. What it must not do is produce an IR that looks
+ * like the product working at full strength, so it takes the same stamp any
+ * other model-less run would.
+ */
 async function runDemoCommand(directory: string | undefined): Promise<number> {
   const { root, fixture } = runDemo(directory ? { directory } : {});
   note(`made a project at ${root}`);
@@ -277,7 +288,11 @@ async function runDemoCommand(directory: string | undefined): Promise<number> {
   });
   if (ingested !== 0) return ingested;
 
-  const analysed = await runAnalyze({ project: root, perception: `fixture:${fixture}` });
+  const analysed = await runAnalyze({
+    project: root,
+    perception: `fixture:${fixture}`,
+    offlineMinimal: true,
+  });
   if (analysed !== 0) return analysed;
 
   heading('try');
@@ -302,6 +317,12 @@ function printHelp(command: string | undefined): void {
 
   heading('getting somewhere in one command');
   line('  oea demo ./demo              set up the worked example and analyse it');
+
+  heading('quality');
+  line('  Analysis needs a model for description, judgement and search. Set them with');
+  line('  OEA_VLM_*, OEA_DECISION_* and OEA_EMBED_*, or run with --offline-minimal to');
+  line('  use rules and lexical search — marked as such on the result. "oea doctor" says');
+  line('  what this machine has.');
 
   heading('a project');
   line('  oea init [dir]               make a project here');

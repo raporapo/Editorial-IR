@@ -12,8 +12,12 @@ export interface IngestArgs {
 
 export async function runIngest(args: IngestArgs): Promise<number> {
   const store = openProject(args.project);
+  // Ingestion reads container metadata and nothing else. It has no opinion to
+  // be wrong about, so it must not be held up by a missing judgement model —
+  // otherwise you could not even add footage before configuring one.
   const backends = await resolveBackends({
     ...(args.perception ? { perception: args.perception } : {}),
+    mode: 'offline-minimal',
   });
   const progress = new Progress();
 

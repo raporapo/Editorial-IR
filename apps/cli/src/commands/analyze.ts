@@ -1,5 +1,5 @@
 import { compileProject } from '@editorial-ir/core';
-import { formatTimecode } from '@editorial-ir/contracts';
+import { describeStandIn, formatTimecode } from '@editorial-ir/contracts';
 import { resolveBackends } from '../backends.js';
 import { openProject } from '../project.js';
 import { Progress, colour, detail, formatCost, heading, note, success, warn } from '../ui.js';
@@ -9,6 +9,8 @@ export interface AnalyzeArgs {
   perception?: string;
   decision?: string;
   force?: boolean;
+  /** Analyse with rules and lexical hashing, and say so on the result. */
+  offlineMinimal?: boolean;
   budget?: number;
   maxEscalations?: number;
 }
@@ -23,11 +25,28 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
   const previous = store.readProject().perception;
   const perception = args.perception ?? previous;
 
+  // And it remembers the tier it was analysed at, for the same reason.
+  //
+  // A project that already holds an offline_minimal IR was analysed that way on
+  // purpose — there is no other way for one to exist, because the first run
+  // would have refused. Making the user repeat the flag to add one annotation
+  // and re-compile is friction with nothing behind it.
+  //
+  // Inheriting is safe because the mode only decides whether to *refuse*: a
+  // model that has since been configured is still picked up, and the result is
+  // stamped by what actually ran either way.
+  const inherited = previousTier(store) === 'offline_minimal';
+  const offlineMinimal = args.offlineMinimal === true || inherited;
+
   const backends = await resolveBackends({
     ...(perception ? { perception } : {}),
     ...(args.decision ? { decision: args.decision } : {}),
+    ...(offlineMinimal ? { mode: 'offline-minimal' as const } : {}),
     onLog: (message) => warn(message),
   });
+  if (inherited && args.offlineMinimal !== true && backends.missing.length > 0) {
+    note('  carrying on without models, as this project was analysed before');
+  }
   const progress = new Progress();
 
   heading('using');
@@ -47,6 +66,7 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
       },
       ...(args.budget === undefined ? {} : { budgetUsd: args.budget }),
       ...(args.force ? { forceObservations: true } : {}),
+      standInReason: backends.standInReason,
       onProgress: (stage, message, done, total) => progress.update(stage, message, done, total),
     });
     progress.clear();
@@ -89,6 +109,20 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
       }
     }
 
+    // Said plainly, and said here rather than only in the file, because the
+    // next command the user runs will not mention it and the number they get
+    // from a benchmark will look exactly like a real one.
+    if (ir.quality.tier !== 'standard') {
+      heading('quality');
+      detail(
+        'tier',
+        ir.quality.tier === 'degraded'
+          ? colour.yellow('degraded — a model was configured and fell back')
+          : colour.yellow('offline_minimal — not a measure of quality'),
+      );
+      for (const standIn of ir.quality.stand_ins) note(`  ${describeStandIn(standIn)}`);
+    }
+
     heading('privacy');
     detail('media left this machine', report.mediaLeftDevice ? colour.yellow('yes') : 'no');
     if (report.mediaLeftDevice) {
@@ -124,5 +158,20 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
   } finally {
     progress.clear();
     await backends.close();
+  }
+}
+
+/**
+ * The tier of the analysis already on disk, if there is one this build can read.
+ *
+ * Deliberately forgiving: a project with no IR yet, or one written by a version
+ * whose shape has since changed, simply has no previous tier. Neither is a
+ * reason to refuse to analyse — analysing is how both get fixed.
+ */
+function previousTier(store: ReturnType<typeof openProject>): string | undefined {
+  try {
+    return store.readIr()?.quality.tier;
+  } catch {
+    return undefined;
   }
 }

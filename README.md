@@ -48,9 +48,21 @@ the analysis
   took: 0.1s
   cost: nothing
 
+quality
+  tier: offline_minimal — not a measure of quality
+  description: observation-summary instead of a vision-language model (asked for)
+  judgement: editorial-rules instead of a decision model (asked for)
+  text_embedding: hashing-256 instead of a semantic embedding model (asked for)
+
 privacy
   media left this machine: no
 ```
+
+That `quality` block is the honest part. The demo runs with no models at all, so
+descriptions come from a template, judgement from rules and search from lexical
+hashing. It is a real pipeline producing a real cut, and it is not the product at
+full strength — so it says so, on screen and inside the IR, where a benchmark
+cannot lose it.
 
 Then look at what it understood, and cut it:
 
@@ -75,6 +87,23 @@ oea analyze
 oea plan --skill travel-vlog --duration 180
 oea apply --editor premiere
 ```
+
+`oea analyze` will stop and tell you what is missing, because three stages decide
+what the edit says and all three have a stand-in that will quietly do a worse job:
+
+| stage       | set                                                                            |
+| ----------- | ------------------------------------------------------------------------------ |
+| description | `OEA_VLM_BASE_URL`, `OEA_VLM_MODEL`                                            |
+| judgement   | `OEA_DECISION=local-system-one`, `OEA_DECISION_BASE_URL`, `OEA_DECISION_MODEL` |
+| search      | `OEA_EMBED_BASE_URL`, `OEA_EMBED_MODEL`                                        |
+
+Any OpenAI-compatible server satisfies all three — Ollama, vLLM, LM Studio,
+llama.cpp, or a hosted provider. `oea doctor` reports what your machine can reach.
+A model on `localhost` describes every event, because that is free; a hosted one
+waits for the events that earn it unless you set `OEA_VLM_SCOPE=base`.
+
+To analyse without any of them, pass `--offline-minimal`. Nothing is hidden from
+you either way: what comes out is stamped with what produced it.
 
 `context.yaml` is where you write what the footage cannot contain: that this is a
 first anniversary, who the two people are, that it should end on the night view.

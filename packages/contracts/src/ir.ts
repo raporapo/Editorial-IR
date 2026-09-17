@@ -7,6 +7,7 @@ import { EditorialAssessment } from './editorial.js';
 import { EventRelation } from './relation.js';
 import { Conflict } from './provenance.js';
 import { ModelRun } from './model-run.js';
+import { AnalysisQuality } from './quality.js';
 import { EmbeddingKind } from './embedding.js';
 import { IR_VERSION } from './version.js';
 
@@ -86,6 +87,13 @@ export const EditorialIR = obj({
   conflicts: z.array(Conflict).default([]),
 
   model_runs: z.array(ModelRun).default([]),
+  /**
+   * Which stages ran a real model and which ran a stand-in.
+   *
+   * Required, and deliberately not defaulted: an IR that cannot say how it was
+   * produced should fail to load rather than be assumed to be good.
+   */
+  quality: AnalysisQuality,
   stats: IrStats,
 }).meta({ id: 'EditorialIR', title: 'EditorialIR' });
 export type EditorialIR = z.infer<typeof EditorialIR>;

@@ -4,7 +4,7 @@
   "title": "Editorial IR contracts",
   "description": "Canonical contracts for Editorial IR. Generated from the TypeScript definitions in @editorial-ir/contracts; do not edit by hand.",
   "x-contract-versions": {
-    "ir": "0.1.0",
+    "ir": "0.2.0",
     "edit_plan": "0.1.0",
     "skill_manifest": "0.1.0",
     "perception_protocol": "0.1.0"
@@ -60,6 +60,9 @@
         "model_runs": {
           "$ref": "#/$defs/__schema146"
         },
+        "quality": {
+          "$ref": "#/$defs/AnalysisQuality"
+        },
         "stats": {
           "$ref": "#/$defs/IrStats"
         }
@@ -70,13 +73,14 @@
         "fingerprint",
         "project",
         "context",
+        "quality",
         "stats"
       ],
       "additionalProperties": false,
       "title": "EditorialIR",
       "$defs": {
         "__schema0": {
-          "default": "0.1.0",
+          "default": "0.2.0",
           "type": "string"
         },
         "__schema1": {
@@ -2407,41 +2411,129 @@
           "default": false,
           "type": "boolean"
         },
+        "AnalysisQuality": {
+          "type": "object",
+          "properties": {
+            "tier": {
+              "$ref": "#/$defs/AnalysisTier"
+            },
+            "stand_ins": {
+              "$ref": "#/$defs/__schema157"
+            }
+          },
+          "required": [
+            "tier"
+          ],
+          "additionalProperties": false
+        },
+        "AnalysisTier": {
+          "type": "string",
+          "enum": [
+            "standard",
+            "degraded",
+            "offline_minimal"
+          ]
+        },
+        "__schema157": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StandIn"
+          }
+        },
+        "StandIn": {
+          "type": "object",
+          "properties": {
+            "stage": {
+              "$ref": "#/$defs/AnalysisStage"
+            },
+            "used": {
+              "$ref": "#/$defs/__schema158"
+            },
+            "instead_of": {
+              "$ref": "#/$defs/__schema159"
+            },
+            "reason": {
+              "$ref": "#/$defs/StandInReason"
+            },
+            "remedy": {
+              "$ref": "#/$defs/__schema160"
+            }
+          },
+          "required": [
+            "stage",
+            "used",
+            "instead_of",
+            "reason"
+          ],
+          "additionalProperties": false
+        },
+        "AnalysisStage": {
+          "type": "string",
+          "enum": [
+            "transcription",
+            "visual_embedding",
+            "audio_events",
+            "description",
+            "judgement",
+            "text_embedding"
+          ]
+        },
+        "__schema158": {
+          "type": "string",
+          "minLength": 1
+        },
+        "__schema159": {
+          "type": "string",
+          "minLength": 1
+        },
+        "StandInReason": {
+          "type": "string",
+          "enum": [
+            "not_configured",
+            "unavailable",
+            "requested",
+            "failed_during_run"
+          ]
+        },
+        "__schema160": {
+          "type": "string"
+        },
         "IrStats": {
           "type": "object",
           "properties": {
             "asset_count": {
-              "$ref": "#/$defs/__schema157"
+              "$ref": "#/$defs/__schema161"
             },
             "total_media_duration_ms": {
               "$ref": "#/$defs/Milliseconds"
             },
             "event_count": {
-              "$ref": "#/$defs/__schema158"
+              "$ref": "#/$defs/__schema162"
             },
             "chapter_count": {
-              "$ref": "#/$defs/__schema159"
+              "$ref": "#/$defs/__schema163"
             },
             "relation_count": {
-              "$ref": "#/$defs/__schema160"
+              "$ref": "#/$defs/__schema164"
             },
             "utterance_count": {
-              "$ref": "#/$defs/__schema161"
+              "$ref": "#/$defs/__schema165"
             },
             "shot_count": {
-              "$ref": "#/$defs/__schema162"
+              "$ref": "#/$defs/__schema166"
             },
             "mean_event_duration_ms": {
               "$ref": "#/$defs/Milliseconds"
             },
             "total_cost_usd": {
-              "$ref": "#/$defs/__schema163"
+              "$ref": "#/$defs/__schema167"
             },
             "compile_ms": {
               "$ref": "#/$defs/Milliseconds"
             },
             "embedding_kinds": {
-              "$ref": "#/$defs/__schema164"
+              "$ref": "#/$defs/__schema168"
             }
           },
           "required": [
@@ -2458,26 +2550,6 @@
           ],
           "additionalProperties": false
         },
-        "__schema157": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "__schema158": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "__schema159": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "__schema160": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
         "__schema161": {
           "type": "integer",
           "minimum": 0,
@@ -2489,10 +2561,30 @@
           "maximum": 9007199254740991
         },
         "__schema163": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "__schema164": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "__schema165": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "__schema166": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "__schema167": {
           "type": "number",
           "minimum": 0
         },
-        "__schema164": {
+        "__schema168": {
           "default": [],
           "type": "array",
           "items": {
