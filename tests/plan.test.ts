@@ -869,3 +869,61 @@ describe('a transition a skill asks for', () => {
     expect(operations.find((op) => op.event_id === 'evt_middle')?.transition_out).toBeUndefined();
   });
 });
+
+describe('a clip that only makes sense after another', () => {
+  const base = registry.resolve('base-editor');
+
+  /** Question, answer, and a reply to the answer — then the question is cut. */
+  function chain() {
+    return makeIR({
+      events: [
+        { id: 'evt_question', description: 'それでどうだった？', excluded: true },
+        {
+          id: 'evt_answer',
+          description: 'すごく良かった',
+          metrics: { story_importance: 0.9 },
+          flags: { requires_previous_context: 0.9 },
+        },
+        {
+          id: 'evt_reply',
+          description: 'でしょう',
+          metrics: { story_importance: 0.8 },
+          flags: { requires_previous_context: 0.9 },
+        },
+        { id: 'evt_unrelated', description: '別の場面', metrics: { story_importance: 0.7 } },
+      ],
+    });
+  }
+
+  it('takes the whole chain out, not just the first link', () => {
+    // The pass walked the selection in the order things were selected, which is
+    // by value within an arc segment. Dropping the answer orphaned the reply,
+    // and the reply had already been looked at and kept.
+    const kept = planEdit({ ir: chain(), skill: base, targetDurationMs: 60_000 }).tracks.video.map(
+      (op) => op.event_id,
+    );
+    expect(kept).toEqual(['evt_unrelated']);
+  });
+
+  it('keeps a clip whose predecessor is in the cut', () => {
+    const ir = makeIR({
+      events: [
+        {
+          id: 'evt_question',
+          description: 'それでどうだった？',
+          metrics: { story_importance: 0.9 },
+        },
+        {
+          id: 'evt_answer',
+          description: 'すごく良かった',
+          metrics: { story_importance: 0.9 },
+          flags: { requires_previous_context: 0.9 },
+        },
+      ],
+    });
+    const kept = planEdit({ ir, skill: base, targetDurationMs: 60_000 }).tracks.video.map(
+      (op) => op.event_id,
+    );
+    expect(kept).toEqual(['evt_question', 'evt_answer']);
+  });
+});

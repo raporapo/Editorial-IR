@@ -207,8 +207,16 @@ export function planEdit(options: PlanOptions): EditPlan {
     relations: relationIndex(ir),
   });
 
-  enforceContextDependencies(selected, candidates, ir, rationale);
-  capConsecutiveRoles(selected, skill, targetDurationMs, rationale);
+  // Both passes only ever remove, and each can create work for the other: the
+  // role cap drops a clip that something else depended on. Repeating until the
+  // cut stops changing is what keeps the two from leaving a mess between them —
+  // running them once in a fixed order left orphans behind whichever ran first.
+  for (let pass = 0; pass < selected.length + 1; pass++) {
+    const before = selected.length;
+    enforceContextDependencies(selected, ir, rationale);
+    capConsecutiveRoles(selected, skill, targetDurationMs, rationale);
+    if (selected.length === before) break;
+  }
   allocateDurations(selected, targetDurationMs);
 
   // ---- ordering ------------------------------------------------------------
@@ -774,24 +782,37 @@ function suppressDuplicates(
  */
 function enforceContextDependencies(
   selected: Selected[],
-  candidates: readonly Candidate[],
   ir: EditorialIR,
   rationale: PlanRationale[],
 ): void {
   const chosen = new Set(selected.map((c) => c.event.id));
-  const ordered = eventsInOrder(ir);
+  const position = new Map(eventsInOrder(ir).map((event, index) => [event.id, index]));
+  const previousOf = new Map(
+    eventsInOrder(ir).map((event, index, all) => [event.id, all[index - 1]?.id]),
+  );
 
-  for (let i = selected.length - 1; i >= 0; i--) {
-    const candidate = selected[i]!;
+  // Chronologically, so that a clip's predecessor has already been decided by
+  // the time the clip itself is considered. Walking `selected` — which is in
+  // selection order, by value within each arc segment — meant a chain could
+  // survive in pieces: drop A, and the B that needed it goes, but the C that
+  // needed B was visited first and stays. A reply to a question the viewer
+  // never heard is the single most recognisable failure of an automatic edit,
+  // and it was reachable by a chain of two.
+  const chronological = [...selected].sort(
+    (a, b) => (position.get(a.event.id) ?? 0) - (position.get(b.event.id) ?? 0),
+  );
+
+  for (const candidate of chronological) {
     if (candidate.required) continue;
     const needsContext = candidate.assessment.flags.requires_previous_context ?? 0;
     if (needsContext < 0.6) continue;
 
-    const position = ordered.findIndex((e) => e.id === candidate.event.id);
-    const previous = position > 0 ? ordered[position - 1] : undefined;
-    if (!previous || chosen.has(previous.id)) continue;
+    const previous = previousOf.get(candidate.event.id);
+    if (previous === undefined || chosen.has(previous)) continue;
 
-    selected.splice(i, 1);
+    const at = selected.indexOf(candidate);
+    if (at < 0) continue;
+    selected.splice(at, 1);
     chosen.delete(candidate.event.id);
     rationale.push({
       event_id: candidate.event.id,
@@ -801,8 +822,6 @@ function enforceContextDependencies(
       skill_rule_ids: candidate.directive.matched_rule_ids,
     });
   }
-
-  void candidates;
 }
 
 /**

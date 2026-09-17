@@ -12,6 +12,9 @@
  * 3. Keep the reaction. The two seconds after someone finishes speaking are
  *    frequently the reason the moment was worth keeping.
  */
+/** How much of what follows the last words is kept when a skill asks for it. */
+const REACTION_MS = 1200;
+
 export interface TrimWindow {
   start_ms: number;
   end_ms: number;
@@ -69,9 +72,15 @@ export function chooseTrim(request: TrimRequest): TrimResult {
     start = Math.max(request.range.start_ms, inside[0]!.start_ms - request.padInMs);
     end = start + desired;
 
-    const lastSpeechEnd = inside.at(-1)!.end_ms;
     if (request.preserveReaction) {
-      end = Math.max(end, Math.min(request.range.end_ms, lastSpeechEnd + request.padOutMs + 1200));
+      // The reaction belongs to the words this clip actually contains. Measured
+      // from the last speech anywhere in the *event*, a take with a few words at
+      // the start and a few more half a minute later swallowed everything in
+      // between: a 29-second clip out of an 8-second ceiling, and a cut that ran
+      // minutes past the target it was selected against.
+      const spoken = inside.filter((s) => s.start_ms < end).at(-1) ?? inside[0]!;
+      const wanted = spoken.end_ms + request.padOutMs + REACTION_MS;
+      end = Math.max(end, Math.min(request.range.end_ms, start + request.maxMs, wanted));
     }
 
     // Prefer to stop between sentences rather than inside one.

@@ -75,6 +75,22 @@ is compatible with.
 
 ### Fixed
 
+- **A cut chain came apart in the middle.** A clip flagged as making sense only
+  after the one before it is dropped when that one is not in the cut — and the
+  pass walked the selection in the order things were selected, which is by value
+  within an arc segment rather than by time. So dropping an answer orphaned the
+  reply to it, because the reply had already been looked at and kept. The pass
+  now walks the cut in time order, where a clip's predecessor is always decided
+  first, and it runs again after the cap on consecutive shots of the same kind,
+  which drops clips of its own.
+- **"Keep the reaction" could quadruple a clip.** The tail was measured from the
+  last speech anywhere in the event rather than the last speech the clip
+  actually contains, and nothing held it to the skill's ceiling. A thirty-second
+  take with a few words at the start and a few more half a minute later produced
+  a 29.3-second clip out of an 8-second ceiling. `memory-film` was carrying two
+  clips past its own 8-second limit and finishing five seconds over target; it
+  now finishes within half a second of it.
+
 - **Inheriting a skill lost most of what the parent had tuned.** `defaults`,
   `constraints` and `intent` are documented as merging field by field, and did
   not: the schema fills in every field it has a default for before the merge

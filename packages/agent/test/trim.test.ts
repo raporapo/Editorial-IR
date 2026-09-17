@@ -118,6 +118,38 @@ describe('chooseTrim', () => {
   });
 });
 
+describe('keeping the reaction', () => {
+  const take = {
+    ...base,
+    range: { start_ms: 0, end_ms: 30_000 },
+    desiredMs: 8000,
+    minMs: 2000,
+    maxMs: 8000,
+    preserveReaction: true,
+  };
+
+  it('holds a moment past the last words it contains', () => {
+    const result = chooseTrim({ ...take, speech: [{ start_ms: 300, end_ms: 2200 }] });
+    expect(result.out_ms).toBeGreaterThan(2200);
+    expect(result.out_ms - result.in_ms).toBeLessThanOrEqual(take.maxMs);
+  });
+
+  it('does not run to speech the clip was never going to reach', () => {
+    // Measured from the last speech anywhere in the event, a take with a few
+    // words at the start and a few more half a minute later swallowed
+    // everything in between: 29.3 seconds out of an 8-second ceiling, and a cut
+    // that ran minutes past the length it had been selected for.
+    const result = chooseTrim({
+      ...take,
+      speech: [
+        { start_ms: 300, end_ms: 2200 },
+        { start_ms: 25_000, end_ms: 28_000 },
+      ],
+    });
+    expect(result.out_ms - result.in_ms).toBeLessThanOrEqual(take.maxMs);
+  });
+});
+
 describe('snapTo', () => {
   it('finds the nearest edge inside the window', () => {
     expect(snapTo(1000, [{ start_ms: 500, end_ms: 1200 }], 600, 'end')).toBe(1200);
