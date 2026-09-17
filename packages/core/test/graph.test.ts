@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SemanticEvent } from '@editorial-ir/contracts';
 import {
   buildEventGraph,
+  featureSimilarity,
   continuityBetween,
   dependenciesOf,
   duplicateGroups,
@@ -88,6 +89,100 @@ describe('buildEventGraph', () => {
 
   it('is deterministic', () => {
     expect(JSON.stringify(buildEventGraph(events))).toBe(JSON.stringify(buildEventGraph(events)));
+  });
+});
+
+describe('the graph at the size of a real recording', () => {
+  function manyEvents(count: number) {
+    return Array.from({ length: count }, (_, i) =>
+      makeEvent(
+        {
+          id: `evt_${String(i + 1).padStart(4, '0')}`,
+          description: `出来事 ${i} ${'あいうえおかきくけこ'[i % 10]}`,
+          places: [`place_${i % 5}`],
+          people: i % 3 === 0 ? ['me'] : [],
+        },
+        i,
+      ),
+    );
+  }
+
+  it('grows with the number of events, not with its square', () => {
+    // The associative links are pairwise, and an hour of footage is not a small
+    // number of events: 600 of them produced 220,000 relations and 28 MB of JSON
+    // inside ir.json, and 1,200 produced 716,000 and 101 MB. One long recording
+    // is the commonest input there is.
+    const small = buildEventGraph(manyEvents(100));
+    const large = buildEventGraph(manyEvents(400));
+
+    const perEvent = (relations: unknown[], events: number): number => relations.length / events;
+    expect(perEvent(large, 400)).toBeLessThan(perEvent(small, 100) * 2);
+    expect(perEvent(large, 400)).toBeLessThan(40);
+  });
+
+  it('never thins continuation, which would invent a discontinuity', () => {
+    const events = manyEvents(200);
+    const relations = buildEventGraph(events);
+    const continuations = relations.filter((r) => r.relation_type === 'continuation');
+    expect(continuations).toHaveLength(events.length - 1);
+  });
+
+  it('still groups a cluster of repeats after capping its links', () => {
+    // The reason duplicate_of can be capped at all: its one consumer takes the
+    // transitive closure, and a cluster whose every member links to its
+    // strongest few neighbours is still one cluster. A static camera running for
+    // three hours is what makes this matter — 400 near-identical events link to
+    // each other 80,000 times without a bound.
+    const repeats = Array.from({ length: 200 }, (_, i) =>
+      makeEvent(
+        {
+          id: `evt_${String(i + 1).padStart(4, '0')}`,
+          description: '同じ話を繰り返している',
+          speech: ['同じ話を繰り返しています'],
+          visual_labels: ['lecture_hall', 'speaker', 'slide'],
+        },
+        i,
+      ),
+    );
+    const relations = buildEventGraph(repeats);
+    const groups = duplicateGroups(relations);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toHaveLength(repeats.length);
+  });
+
+  it('keeps a link that matters to one event even when it matters less to the other', () => {
+    // An edge survives if either end wants it, so a link that is one event's
+    // strongest is not lost because the other has better ones.
+    const relations = buildEventGraph(manyEvents(120));
+    const byEvent = new Map<string, number>();
+    for (const relation of relations) {
+      if (relation.relation_type !== 'same_topic') continue;
+      for (const id of [relation.source_event_id, relation.target_event_id]) {
+        byEvent.set(id, (byEvent.get(id) ?? 0) + 1);
+      }
+    }
+    // Every event that has any topic links at all has at least one.
+    expect([...byEvent.values()].every((count) => count >= 1)).toBe(true);
+  });
+});
+
+describe('featureSimilarity', () => {
+  it('is the shared features over the smaller set, either way round', () => {
+    const a = new Set(['x', 'y', 'z', 'w']);
+    const b = new Set(['x', 'y']);
+    // b is entirely inside a, so they are as alike as two events get.
+    expect(featureSimilarity(a, b)).toBe(1);
+    expect(featureSimilarity(b, a)).toBe(1);
+  });
+
+  it('is zero when either side has nothing to compare', () => {
+    expect(featureSimilarity(new Set(), new Set(['x']))).toBe(0);
+    expect(featureSimilarity(undefined, new Set(['x']))).toBe(0);
+  });
+
+  it('counts only what both sides have', () => {
+    expect(featureSimilarity(new Set(['a', 'b']), new Set(['b', 'c']))).toBe(0.5);
   });
 });
 

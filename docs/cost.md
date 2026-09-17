@@ -118,10 +118,32 @@ CPU:  ffmpeg, shot detection, orchestration, the index
 GPU:  one of { transcription, visual embeddings, description, judgement }
 ```
 
+## Size, and why the graph is bounded
+
+An hour of footage is roughly six hundred events, and the relations between them
+are pairwise: same topic, same place, same person, callback, duplicate. Left
+unbounded that grows with the square of the events, and the numbers are not
+academic — 600 events produced 220,000 relations and 28 MB of JSON inside
+`ir.json`, and 1,200 produced 716,000 and 101 MB.
+
+Each event keeps its strongest few links of each kind, which makes the graph
+linear: about 23 relations per event whatever the length of the recording. Every
+consumer already worked this way — the agent toolkit returns the six strongest,
+`oea explain` prints six — so nothing is lost that anything was using.
+
+`continuation` is never thinned. It is one link per adjacent pair, already
+linear, and dropping one would invent a discontinuity that is not there.
+
 ## Speed
 
 The stated target for an hour of video is 0.25–0.5× its duration once optimised,
 and roughly real time before that.
+
+The thing to watch is anything inside a pairwise loop, because it runs a number
+of times that grows with the square of the events. Splitting a description into
+its matchable features was being done four times per pair; hoisting it to once
+per event took an hour of footage from 3.9 seconds to 0.28, and three hours from
+36 seconds to 2.5.
 
 Speed is deliberately second to quality of the IR. A fast pipeline that
 misunderstands the footage produces a cut you have to redo, which is not faster.

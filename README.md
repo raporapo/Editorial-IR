@@ -44,7 +44,7 @@ the analysis
   events: 73, averaging 22s
   transcribed: 26 utterances
   shots: 104
-  relations: 532
+  relations: 450
   took: 0.1s
   cost: nothing
 

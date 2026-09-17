@@ -1,5 +1,6 @@
 import {
   coverage,
+  matchFeatures,
   seqId,
   type EventRelation,
   type RelationType,
@@ -26,13 +27,54 @@ export interface GraphOptions {
   similarity?: (a: string, b: string) => number | undefined;
   /** How far apart two events may be and still be linked as a callback. */
   maxCallbackDistance?: number;
+  /**
+   * How many links of one associative kind an event keeps, strongest first.
+   *
+   * The associative kinds — same topic, same place, same person, callback — are
+   * pairwise, so without a bound the graph grows with the square of the events
+   * and an hour of footage is not a small number of events. Measured on
+   * synthetic material: 600 events produced 220,000 relations and 28 MB of JSON
+   * inside `ir.json`, and 1,200 produced 716,000 and 101 MB, taking fifteen
+   * seconds to build. One long recording is the commonest input there is.
+   *
+   * Nothing wants them all. These links are an associative aid — "what else is
+   * about this" — and every consumer already takes a handful: the agent toolkit
+   * returns the six strongest, `oea explain` prints six. Keeping each event's
+   * strongest few preserves what they are for and makes the graph linear.
+   *
+   * `continuation` is never capped: it is one link per adjacent pair, so already
+   * linear, and dropping one would invent a discontinuity that is not there.
+   */
+  maxPerEventPerKind?: number;
 }
 
 const DEFAULTS = {
   duplicateThreshold: 0.88,
   topicThreshold: 0.6,
   maxCallbackDistance: 40,
+  maxPerEventPerKind: 8,
 };
+
+/**
+ * Links that say two events are alike, rather than that one follows another.
+ *
+ * `duplicate_of` is here despite being read exhaustively, because it is pairwise
+ * too and its threshold is no protection on the material that matters: a static
+ * camera running for three hours produces hundreds of near-identical events, and
+ * 400 of them link to each other 80,000 times. Capping is safe for its one
+ * consumer — `duplicateGroups` takes the transitive closure, and a cluster whose
+ * every member links to its strongest few neighbours is still one cluster.
+ *
+ * `continuation` is not here. It is one link per adjacent pair, so it is already
+ * linear, and dropping one would invent a discontinuity that is not there.
+ */
+const ASSOCIATIVE: ReadonlySet<RelationType> = new Set([
+  'same_topic',
+  'same_location',
+  'same_person',
+  'callback',
+  'duplicate_of',
+]);
 
 export function buildEventGraph(
   events: readonly SemanticEvent[],
@@ -40,8 +82,22 @@ export function buildEventGraph(
 ): EventRelation[] {
   const settings = { ...DEFAULTS, ...options };
   const ordered = [...events].sort((a, b) => a.start_ms - b.start_ms);
-  const relations: EventRelation[] = [];
-  let counter = 0;
+
+  // Each event's matchable features, once.
+  //
+  // The comparison below is pairwise, so anything computed inside it is computed
+  // a number of times that grows with the square of the events. Splitting a
+  // description into features is not free — it normalises, then walks the string
+  // deciding which runs are words and which are character bigrams — and it was
+  // being done four times per pair. Hoisting it leaves set intersection in the
+  // inner loop and nothing else.
+  const features = new Map<string, Set<string>>();
+  for (const event of ordered) {
+    features.set(event.id, new Set(matchFeatures(distinctiveText(event))));
+  }
+  // Collected before they are numbered, because the associative ones are
+  // thinned first and an id has to mean the same thing across two runs.
+  const draft: Omit<EventRelation, 'id'>[] = [];
 
   const add = (
     source: string,
@@ -52,8 +108,7 @@ export function buildEventGraph(
     note?: string,
   ): void => {
     if (strength <= 0) return;
-    relations.push({
-      id: seqId('rel', ++counter, 5),
+    draft.push({
       source_event_id: source,
       target_event_id: target,
       relation_type: type,
@@ -85,7 +140,9 @@ export function buildEventGraph(
     for (let j = i + 1; j < ordered.length; j++) {
       const a = ordered[i]!;
       const b = ordered[j]!;
-      const similarity = settings.similarity?.(a.id, b.id) ?? textSimilarity(a, b);
+      const similarity =
+        settings.similarity?.(a.id, b.id) ??
+        featureSimilarity(features.get(a.id), features.get(b.id));
 
       if (similarity >= settings.duplicateThreshold) {
         add(
@@ -118,7 +175,59 @@ export function buildEventGraph(
     }
   }
 
-  return relations;
+  return keepStrongest(draft, settings.maxPerEventPerKind).map((relation, index) => ({
+    id: seqId('rel', index + 1, 5),
+    ...relation,
+  }));
+}
+
+/**
+ * Thins the associative links to each event's strongest few.
+ *
+ * An edge survives if either of its two events wants it, so a link that matters
+ * a great deal to one event is not lost because the other has better ones. The
+ * original order is preserved rather than the ranking order, so that the graph
+ * still reads chronologically and two runs over the same events produce the same
+ * ids.
+ */
+function keepStrongest(
+  draft: readonly Omit<EventRelation, 'id'>[],
+  limit: number,
+): Omit<EventRelation, 'id'>[] {
+  if (!Number.isFinite(limit) || limit <= 0) return [...draft];
+
+  const ranked = new Map<string, number[]>();
+  const rankKey = (eventId: string, type: RelationType): string => `${eventId}\u0000${type}`;
+
+  for (const [index, relation] of draft.entries()) {
+    if (!ASSOCIATIVE.has(relation.relation_type)) continue;
+    for (const eventId of [relation.source_event_id, relation.target_event_id]) {
+      const key = rankKey(eventId, relation.relation_type);
+      const bucket = ranked.get(key);
+      if (bucket) bucket.push(index);
+      else ranked.set(key, [index]);
+    }
+  }
+
+  const wanted = new Set<number>();
+  for (const bucket of ranked.values()) {
+    bucket
+      .sort((a, b) => {
+        const first = draft[a]!;
+        const second = draft[b]!;
+        return (
+          second.strength - first.strength ||
+          first.source_event_id.localeCompare(second.source_event_id) ||
+          first.target_event_id.localeCompare(second.target_event_id)
+        );
+      })
+      .slice(0, limit)
+      .forEach((index) => wanted.add(index));
+  }
+
+  return draft.filter(
+    (relation, index) => !ASSOCIATIVE.has(relation.relation_type) || wanted.has(index),
+  );
 }
 
 /**
@@ -222,11 +331,22 @@ export function duplicateGroups(relations: readonly EventRelation[]): string[][]
  * would make every quiet moment in a project a duplicate of every other. So an
  * event with nothing to compare is compared to nothing.
  */
-function textSimilarity(a: SemanticEvent, b: SemanticEvent): number {
-  const left = distinctiveText(a);
-  const right = distinctiveText(b);
-  if (left.length === 0 || right.length === 0) return 0;
-  return Math.max(coverage(left, right), coverage(right, left));
+/**
+ * How much two events have in common, from their precomputed features.
+ *
+ * The same number `Math.max(coverage(a, b), coverage(b, a))` produced, which is
+ * the shared features over the smaller of the two sets: two events are alike
+ * when one is largely contained in the other, whichever way round that is.
+ */
+export function featureSimilarity(
+  a: ReadonlySet<string> | undefined,
+  b: ReadonlySet<string> | undefined,
+): number {
+  if (!a?.size || !b?.size) return 0;
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  let shared = 0;
+  for (const feature of small) if (large.has(feature)) shared++;
+  return shared / small.size;
 }
 
 function distinctiveText(event: SemanticEvent): string {

@@ -47,7 +47,7 @@ describe('the walkthrough in the README', () => {
     // like it is describing a different program.
     expect(stdout()).toContain('73 events');
     expect(stdout()).toContain('shots: 104');
-    expect(stdout()).toContain('relations: 532');
+    expect(stdout()).toContain('relations: 450');
     expect(stdout()).toContain('cost: nothing');
 
     output = [];

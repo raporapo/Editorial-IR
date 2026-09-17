@@ -102,6 +102,19 @@ is compatible with.
   it. Retrieval now drops zero-overlap hits when the encoder declares itself
   lexical; a real embedding model is unaffected, since finding "night view" for
   夜景 with nothing in common is exactly what one is for.
+- **The event graph grew with the square of the events.** An hour of footage is
+  roughly six hundred events, and the relations between them are pairwise: 600
+  events produced 220,000 relations and 28 MB of JSON inside `ir.json`, and 1,200
+  produced 716,000 and 101 MB, taking fifteen seconds to build. One long
+  recording is the commonest input there is. Each event now keeps its strongest
+  few links of each associative kind, which makes the graph linear — about 23 per
+  event at any length — and nothing is lost that anything was using, since every
+  consumer already took a handful. `continuation` is never thinned.
+- **Building that graph was fifteen times slower than it needed to be.**
+  Splitting a description into its matchable features was being done four times
+  per pair, inside a loop that runs a number of times that grows with the square
+  of the events. Hoisting it to once per event took an hour of footage from 3.9
+  seconds to 0.28, and three hours from 36 seconds to 2.5, with identical output.
 - **The consecutive-shot cap could eat the cut.** Material where one role
   dominates is ordinary — forty shots from one afternoon are frequently all
   `context` — and the cap, enforced blindly, saw a single run of forty, kept
