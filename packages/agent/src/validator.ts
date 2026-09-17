@@ -233,11 +233,31 @@ export function validatePlan(plan: unknown, options: ValidateOptions = {}): Vali
   const target = editPlan.sequence.target_duration_ms;
   const tolerance = editPlan.sequence.tolerance_ms;
   if (target > 0 && Math.abs(duration - target) > tolerance) {
+    // A short cut that used everything it had is a different situation from a
+    // short cut the planner chose, and the number alone does not say which.
+    //
+    // Real material showed the difference: eleven events, a skill capping every
+    // clip at nine seconds, and a three-minute target. Ninety-nine seconds was
+    // the longest cut that could exist — the planner had already kept every
+    // event at its maximum length — and the report said only that it was
+    // eighty-one seconds short, which reads like a failure to try.
+    const ceiling = maximumReachableMs(editPlan, options.skill);
+    const capped = duration < target && ceiling !== undefined && target > ceiling;
     issues.push({
       code: 'duration_out_of_tolerance',
       severity: 'warning',
-      message: `the cut is ${formatSeconds(duration)} against a target of ${formatSeconds(target)}`,
-      details: { duration_ms: duration, target_ms: target, tolerance_ms: tolerance },
+      message: capped
+        ? `the cut is ${formatSeconds(duration)} against a target of ${formatSeconds(target)}: ` +
+          `${editPlan.tracks.video.length} moment(s) at this skill's ${formatSeconds(
+            options.skill?.defaults.max_clip_duration_ms ?? 0,
+          )} limit cannot fill it. Analyse more material, raise the limit, or aim shorter.`
+        : `the cut is ${formatSeconds(duration)} against a target of ${formatSeconds(target)}`,
+      details: {
+        duration_ms: duration,
+        target_ms: target,
+        tolerance_ms: tolerance,
+        ...(ceiling === undefined ? {} : { longest_possible_ms: ceiling }),
+      },
     });
   }
 
@@ -376,4 +396,20 @@ export function capabilityIssues(
 
 function formatSeconds(ms: number): string {
   return `${Math.round(ms / 100) / 10}s`;
+}
+
+/**
+ * The longest cut this plan's moments could make under the skill's own limit.
+ *
+ * Only meaningful when a skill caps clip length; without one there is no
+ * ceiling and the answer is nothing, which the caller reads as "no explanation
+ * to offer" rather than "zero".
+ */
+function maximumReachableMs(
+  editPlan: EditPlan,
+  skill: { defaults: { max_clip_duration_ms?: number } } | undefined,
+): number | undefined {
+  const cap = skill?.defaults.max_clip_duration_ms;
+  if (cap === undefined || cap <= 0) return undefined;
+  return editPlan.tracks.video.length * cap;
 }

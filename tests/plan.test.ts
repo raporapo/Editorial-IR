@@ -1006,3 +1006,46 @@ describe('a skill that leaves nothing', () => {
     }
   });
 });
+
+describe('when the cut cannot reach its target', () => {
+  /**
+   * A short cut that used everything it had is a different situation from a
+   * short cut the planner chose, and the number alone does not say which.
+   *
+   * Real material showed the difference: eleven events, a skill capping every
+   * clip at nine seconds, and a three-minute target. Ninety-nine seconds was
+   * the longest cut that could exist, and the report said only that it was
+   * eighty-one seconds short — which reads like a failure to try.
+   */
+  it('says the skill’s own limit is what stopped it', async () => {
+    const { ir, plan, observations, store } = await planned('travel-vlog', 3_600_000);
+    const report = validatePlan(plan, {
+      ir,
+      observations,
+      projectRoot: store.paths.root,
+      skill: registry.resolve('travel-vlog'),
+    });
+    const short = report.issues.find((issue) => issue.code === 'duration_out_of_tolerance');
+    expect(short).toBeDefined();
+    expect(short!.message).toMatch(/cannot fill it/);
+    expect(short!.message).toMatch(/moment\(s\)/);
+    // And it says what the ceiling actually was, so the advice is checkable.
+    expect(short!.details?.longest_possible_ms).toBe(
+      plan.tracks.video.length * registry.resolve('travel-vlog').defaults.max_clip_duration_ms,
+    );
+  }, 60_000);
+
+  it('does not blame the limit when the cut is too long', async () => {
+    // Over target is never the clip cap's doing, and saying so would send the
+    // user off to raise a limit that is not in their way.
+    const { ir, plan, observations, store } = await planned('travel-vlog', 1000);
+    const report = validatePlan(plan, {
+      ir,
+      observations,
+      projectRoot: store.paths.root,
+      skill: registry.resolve('travel-vlog'),
+    });
+    const issue = report.issues.find((i) => i.code === 'duration_out_of_tolerance');
+    expect(issue?.message ?? '').not.toMatch(/cannot fill it/);
+  }, 60_000);
+});
