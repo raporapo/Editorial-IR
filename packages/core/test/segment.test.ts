@@ -37,6 +37,7 @@ function observations(overrides: Partial<ObservationTimeline> = {}): Observation
     fingerprint: 'test',
     pipeline_version: '0.1.0',
     generated_at: '2026-09-16T00:00:00.000Z',
+    model_runs: [],
     utterances: [],
     shots: [],
     audio_events: [],

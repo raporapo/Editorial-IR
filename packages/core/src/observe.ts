@@ -48,6 +48,19 @@ export interface ObserveOptions {
   onProgress?: (stage: string, message: string, done: number, total: number) => void;
 }
 
+/**
+ * A stage the analysis went without.
+ *
+ * The reason belongs to the entry rather than to whoever prints it. Reusing an
+ * earlier analysis drops the frame vectors, which is a different thing from
+ * having no vision model, and a report that said "no model configured" for both
+ * was describing one of them wrongly.
+ */
+export interface UnavailableStage {
+  stage: string;
+  reason: string;
+}
+
 export interface ObserveResult {
   observations: ObservationTimeline;
   /** Derivative paths per asset, needed later by the context builder for frames. */
@@ -60,8 +73,8 @@ export interface ObserveResult {
    * because both segmentation and the visual index need them during this compile.
    */
   frameVectors: Map<string, number[]>;
-  /** Stages that were skipped because no model provides them. */
-  unavailable: string[];
+  /** Stages the analysis went without, and why. */
+  unavailable: UnavailableStage[];
   /**
    * Assets a stage could not read, and why.
    *
@@ -79,7 +92,7 @@ export async function observeAssets(
   const scheduler = options.scheduler ?? new ModelScheduler();
   const ordered = [...assets].sort((a, b) => a.id.localeCompare(b.id));
   const derived = new Map<string, PrepareResult>();
-  const unavailable: string[] = [];
+  const unavailable: UnavailableStage[] = [];
   const failures: ObserveResult['failures'] = [];
 
   const attempt = async (
@@ -133,7 +146,7 @@ export async function observeAssets(
       });
     }
   } else {
-    unavailable.push('prepare');
+    unavailable.push({ stage: 'prepare', reason: 'no model is configured for it' });
   }
 
   // ---- speech --------------------------------------------------------------
@@ -188,7 +201,7 @@ export async function observeAssets(
       }
     });
   } else {
-    unavailable.push('speech');
+    unavailable.push({ stage: 'speech', reason: 'no model is configured for it' });
   }
 
   // ---- shots ---------------------------------------------------------------
@@ -226,7 +239,7 @@ export async function observeAssets(
       }
     }
   } else {
-    unavailable.push('shots');
+    unavailable.push({ stage: 'shots', reason: 'no model is configured for it' });
   }
 
   // ---- audio ---------------------------------------------------------------
@@ -279,7 +292,7 @@ export async function observeAssets(
       });
     }
   } else {
-    unavailable.push('audio');
+    unavailable.push({ stage: 'audio', reason: 'no model is configured for it' });
   }
 
   // ---- visual --------------------------------------------------------------
@@ -327,7 +340,7 @@ export async function observeAssets(
       }
     });
   } else {
-    unavailable.push('visual');
+    unavailable.push({ stage: 'visual', reason: 'no model is configured for it' });
   }
 
   // ---- ocr -----------------------------------------------------------------
@@ -373,7 +386,7 @@ export async function observeAssets(
       }
     });
   } else {
-    unavailable.push('ocr');
+    unavailable.push({ stage: 'ocr', reason: 'no model is configured for it' });
   }
 
   return {

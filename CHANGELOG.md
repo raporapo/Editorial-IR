@@ -75,6 +75,30 @@ is compatible with.
 
 ### Fixed
 
+- **One index held vectors from two different spaces.** An event a vision model
+  reached got a frame vector under the `visual` aspect; an event it missed got
+  an embedding of the words attached to the picture, under the same name. The
+  two are points in unrelated spaces and their scores are not comparable, so the
+  events a vision model happened to cover were ranked against the rest on a
+  number that meant something different for each. Nothing downstream could see
+  it: the vector index refuses vectors of different widths, which catches this
+  only when the two models disagree about how wide a vector is. Either every
+  visual vector in an index comes from the pictures or none of them does, and an
+  event without one is still searchable as words through the same aspect.
+- **Re-analysing a project erased its provenance.** Model runs lived only in the
+  IR of the compile that made them, and observations are reused — that is the
+  normal path, and the one `oea annotate` tells you to take. So a second run
+  produced an IR holding two runs instead of eight, whose utterances, shots and
+  frames all pointed at model runs that were not in it. "Did any of my footage
+  leave this machine" was being answered without the models that had touched it.
+  The runs are now stored with the observations they produced and taken back on
+  reuse.
+- **The report said "no model configured" for a stage that had one.** Reusing an
+  analysis drops the frame vectors — visual search falls back to words and
+  boundaries are found without them — and the only thing said about it was
+  nothing, unless no vision model was configured at all, which is the case where
+  nothing was lost. Each skipped stage now carries its own reason.
+
 - **A slow file took the rest of the run with it.** The Python worker handles
   one request at a time and cannot be told to stop, so abandoning a request on
   timeout did not free it: everything sent afterwards waited behind work nobody

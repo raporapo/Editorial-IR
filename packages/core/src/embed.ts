@@ -32,8 +32,18 @@ export async function buildEmbeddings(
   const jobs: { eventId: string; kind: EmbeddingKind; text: string }[] = [];
   const records: EmbeddingRecord[] = [];
 
+  // Either every visual vector in this index came from the pictures, or none of
+  // them did. A frame vector and an embedding of the words attached to a frame
+  // are points in two unrelated spaces, and one `visual` slot holding some of
+  // each is an index whose scores cannot be compared: the events a vision model
+  // happened to cover would be ranked against the rest on a number that means
+  // something different for each. Nothing downstream can detect it either — the
+  // vector index refuses vectors of different widths, which catches this only
+  // when the two models disagree about how wide a vector is.
+  const seen = options.frameVectors ? options.frameVectors.size > 0 : false;
+
   for (const event of events) {
-    const visual = options.frameVectors ? visualVectorFor(event, options.frameVectors) : undefined;
+    const visual = seen ? visualVectorFor(event, options.frameVectors!) : undefined;
     if (visual) {
       records.push({
         id: embeddingRefFor(event.id, 'visual'),
@@ -44,7 +54,10 @@ export async function buildEmbeddings(
       });
     }
     for (const kind of populatedAspects(event, context)) {
-      if (kind === 'visual' && visual) continue;
+      // An event a vision model did not reach gets no visual vector rather than
+      // a text one standing in for it. Its labels and on-screen text are still
+      // searchable as words, through the lexical half of the same aspect.
+      if (kind === 'visual' && seen) continue;
       jobs.push({ eventId: event.id, kind, text: aspectText(event, kind, context) });
     }
   }

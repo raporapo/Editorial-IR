@@ -99,8 +99,8 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
 
     if (report.unavailable.length > 0) {
       heading('not available');
-      for (const stage of report.unavailable) {
-        note(`  ${stage}: no model configured, so the analysis has less to go on`);
+      for (const { stage, reason } of report.unavailable) {
+        note(`  ${stage}: ${reason}, so the analysis has less to go on`);
       }
     }
 

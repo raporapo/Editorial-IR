@@ -65,6 +65,20 @@ export class ModelRunRecorder {
     });
   }
 
+  /**
+   * Takes back runs recorded by an earlier compile.
+   *
+   * Their ids are kept, because the observations that came back with them point
+   * at those ids. A run already held under the same stage and backend wins, so
+   * re-recording the same model in this compile does not produce two entries.
+   */
+  adopt(runs: readonly ModelRun[]): void {
+    for (const run of runs) {
+      const key = `${run.stage}:${run.backend}:${run.model ?? ''}`;
+      if (!this.runs.has(key)) this.runs.set(key, { ...run });
+    }
+  }
+
   addCost(runId: string, costUsd: number, inputTokens?: number, outputTokens?: number): void {
     const run = [...this.runs.values()].find((r) => r.id === runId);
     if (!run) return;

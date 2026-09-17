@@ -21,7 +21,7 @@ import type { EditorialDecisionModel } from '@editorial-ir/decision';
 import { FlatVectorIndex } from '@editorial-ir/index';
 import type { ProjectStore } from './store.js';
 import { placeAssets } from './ingest.js';
-import { frameSimilarityFrom, observeAssets } from './observe.js';
+import { frameSimilarityFrom, observeAssets, type UnavailableStage } from './observe.js';
 import { segmentAssets, type SegmentationOptions } from './segment.js';
 import { buildSemanticEvents } from './context-builder.js';
 import { buildEmbeddings, attachEmbeddingRefs } from './embed.js';
@@ -71,8 +71,8 @@ export interface CompileReport {
   escalatedContext: string[];
   escalatedDecision: string[];
   escalationLimitedBy: string;
-  /** Perception stages no configured model provides. */
-  unavailable: string[];
+  /** Perception stages the analysis went without, and why. */
+  unavailable: UnavailableStage[];
   /** Assets a stage could not read, and why. */
   failures: { stage: string; assetId: string; reason: string }[];
   totalCostUsd: number;
@@ -121,15 +121,35 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   let observations: ObservationTimeline;
   let frameVectors = new Map<string, number[]>();
   let derived = new Map<string, PrepareResult>();
-  let unavailable: string[] = [];
+  let unavailable: UnavailableStage[] = [];
   let failures: { stage: string; assetId: string; reason: string }[] = [];
 
   if (reusable && stored) {
     observations = stored;
+    // The runs that produced these observations came back with them, so the
+    // model_run_id on every utterance, shot and frame still resolves, and the
+    // privacy report still names every model that touched the media. They were
+    // recorded only in the IR of the compile that made them, and a reuse — the
+    // normal path, and the one `oea annotate` tells you to take — left the whole
+    // perception half of the provenance trail pointing at nothing.
+    runs.adopt(stored.model_runs);
     // Frame vectors are not persisted, so a reused observation set has none.
     // Segmentation falls back to the signals it does have, which is why the
     // scorer renormalises rather than assuming a missing signal means "same".
-    unavailable = availableCapabilities(options.suite).includes('visual') ? [] : ['visual'];
+    //
+    // It said so only when no vision model was configured at all, which is the
+    // case where nothing was lost. With one configured, a reuse quietly dropped
+    // the frame vectors — visual search fell back to the words attached to the
+    // picture, boundaries were found without it, and the report said everything
+    // was available. Saying nothing is what makes a silent downgrade silent.
+    unavailable = [
+      availableCapabilities(options.suite).includes('visual')
+        ? {
+            stage: 'visual',
+            reason: 'this run reused an earlier analysis, which does not keep frame vectors',
+          }
+        : { stage: 'visual', reason: 'no model is configured for it' },
+    ];
   } else {
     const observed = await observeAssets(assets, {
       projectRoot: store.paths.root,
@@ -147,6 +167,9 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       project_id: project.id,
       fingerprint: expectedFingerprint,
       generated_at: now(),
+      // Recorded with the observations rather than only in the IR, because the
+      // run that produced an observation is a fact about that observation.
+      model_runs: runs.all(),
     };
     frameVectors = observed.frameVectors;
     derived = observed.derived;

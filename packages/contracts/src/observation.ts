@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Confidence, Milliseconds, obj } from './primitives.js';
 import { AssetId, AudioEventId, FrameId, ModelRunId, OcrId, ShotId, UtteranceId } from './ids.js';
+import { ModelRun } from './model-run.js';
 
 /**
  * The observation layer records what was seen and heard, and nothing else.
@@ -158,6 +159,17 @@ export const ObservationTimeline = obj({
   ocr: z.array(OcrObservation).default([]),
   frame_features: z.array(FrameFeature).default([]),
   audio_profiles: z.array(AudioProfile).default([]),
+  /**
+   * The runs that produced everything above.
+   *
+   * Every observation names the run it came from, and the runs themselves lived
+   * only in the IR of the compile that made them. Reusing an observation set —
+   * which is the normal path, and the one `oea annotate` tells you to take —
+   * therefore produced an IR whose utterances, shots and frames all pointed at
+   * model runs that were not in it: the provenance trail led nowhere, and the
+   * privacy report lost every perception model that had touched the media.
+   */
+  model_runs: z.array(ModelRun).default([]),
 }).meta({ id: 'ObservationTimeline', title: 'ObservationTimeline' });
 export type ObservationTimeline = z.infer<typeof ObservationTimeline>;
 
@@ -171,4 +183,5 @@ export const EMPTY_OBSERVATIONS: Omit<
   ocr: [],
   frame_features: [],
   audio_profiles: [],
+  model_runs: [],
 };

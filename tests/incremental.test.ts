@@ -145,3 +145,60 @@ describe('running it again', () => {
     expect(second.report.reusedObservations).toBe(true);
   }, 60_000);
 });
+
+/**
+ * What a second run still has to say about itself.
+ *
+ * Reuse is the normal path — `oea annotate` ends by telling you to take it —
+ * and it must not cost the representation anything it is supposed to carry.
+ */
+describe('what survives reusing an analysis', () => {
+  it('keeps the runs its observations point at', async () => {
+    const { store, compile } = await project();
+    const first = await compile();
+    // What the CLI does after a compile, and what makes the next one a reuse.
+    store.writeObservations(first.observations);
+    const perceptionStages = first.ir.model_runs
+      .map((run) => run.stage)
+      .filter((stage) => stage !== 'context' && stage !== 'decision');
+    expect(perceptionStages.length).toBeGreaterThan(0);
+
+    const second = await compile();
+    const known = new Set(second.ir.model_runs.map((run) => run.id));
+    const observations = store.readObservations()!;
+    const referenced = [
+      ...observations.utterances,
+      ...observations.shots,
+      ...observations.audio_events,
+      ...observations.ocr,
+      ...observations.frame_features,
+      ...observations.audio_profiles,
+    ]
+      .map((observation) => observation.model_run_id)
+      .filter((id): id is string => id !== undefined);
+
+    expect(referenced.length).toBeGreaterThan(0);
+    // Every one of these pointed at nothing: the runs lived only in the IR of
+    // the compile that made them, so re-analysing left the whole perception
+    // half of the provenance trail — and of the privacy report — dangling.
+    expect([...new Set(referenced)].filter((id) => !known.has(id))).toEqual([]);
+    for (const stage of perceptionStages) {
+      expect(second.ir.model_runs.map((run) => run.stage)).toContain(stage);
+    }
+  }, 60_000);
+
+  it('says why it went without a stage, rather than guessing one reason for all', async () => {
+    const { store, compile } = await project();
+    const first = await compile();
+    store.writeObservations(first.observations);
+    const second = await compile();
+
+    // Nothing here is missing for want of a model: the fixture suite provides
+    // the visual stage, and it is this run that threw the frame vectors away by
+    // reusing what was on disk. The report said "no model configured" for both
+    // cases, which is a true sentence about one of them.
+    const visual = second.report.unavailable.find((entry) => entry.stage === 'visual');
+    expect(visual?.reason).toMatch(/reused an earlier analysis/);
+    expect(first.report.unavailable.map((entry) => entry.stage)).not.toContain('visual');
+  }, 60_000);
+});

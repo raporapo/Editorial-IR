@@ -32,6 +32,9 @@
     },
     "audio_profiles": {
       "$ref": "#/$defs/__schema27"
+    },
+    "model_runs": {
+      "$ref": "#/$defs/__schema32"
     }
   },
   "required": [
@@ -44,7 +47,8 @@
     "audio_events",
     "ocr",
     "frame_features",
-    "audio_profiles"
+    "audio_profiles",
+    "model_runs"
   ],
   "additionalProperties": false,
   "title": "ObservationTimeline",
@@ -507,6 +511,142 @@
     },
     "__schema31": {
       "$ref": "#/$defs/runId"
+    },
+    "__schema32": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ModelRun"
+      }
+    },
+    "ModelRun": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/runId"
+        },
+        "stage": {
+          "$ref": "#/$defs/PipelineStage"
+        },
+        "backend": {
+          "$ref": "#/$defs/__schema33"
+        },
+        "model": {
+          "$ref": "#/$defs/__schema34"
+        },
+        "model_version": {
+          "$ref": "#/$defs/__schema35"
+        },
+        "locality": {
+          "$ref": "#/$defs/__schema36"
+        },
+        "parameters": {
+          "$ref": "#/$defs/__schema37"
+        },
+        "cost_usd": {
+          "$ref": "#/$defs/__schema38"
+        },
+        "input_tokens": {
+          "$ref": "#/$defs/__schema39"
+        },
+        "output_tokens": {
+          "$ref": "#/$defs/__schema40"
+        },
+        "latency_ms": {
+          "$ref": "#/$defs/__schema41"
+        },
+        "media_left_device": {
+          "$ref": "#/$defs/__schema42"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Iso8601"
+        }
+      },
+      "required": [
+        "id",
+        "stage",
+        "backend",
+        "locality",
+        "parameters",
+        "cost_usd",
+        "media_left_device",
+        "created_at"
+      ],
+      "additionalProperties": false
+    },
+    "PipelineStage": {
+      "type": "string",
+      "enum": [
+        "ingest",
+        "speech",
+        "visual",
+        "audio",
+        "ocr",
+        "shot_detection",
+        "segmentation",
+        "context",
+        "decision",
+        "embedding",
+        "planning",
+        "review"
+      ]
+    },
+    "__schema33": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema34": {
+      "type": "string"
+    },
+    "__schema35": {
+      "type": "string"
+    },
+    "__schema36": {
+      "default": "unknown",
+      "$ref": "#/$defs/ExecutionLocality"
+    },
+    "ExecutionLocality": {
+      "type": "string",
+      "enum": [
+        "local",
+        "remote_api",
+        "unknown"
+      ]
+    },
+    "__schema37": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    },
+    "__schema38": {
+      "default": 0,
+      "type": "number",
+      "minimum": 0
+    },
+    "__schema39": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema40": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema41": {
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "__schema42": {
+      "default": false,
+      "type": "boolean"
+    },
+    "Iso8601": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ISO-8601 timestamp, always UTC with a trailing Z."
     }
   }
 }
