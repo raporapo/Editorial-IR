@@ -571,3 +571,55 @@ describe('one file it cannot read', () => {
     }
   }, 60_000);
 });
+
+describe('what the analysis tier survives', () => {
+  /**
+   * A context model that is real, is configured, and then stops answering.
+   *
+   * This is the case a real run found. The backends declare what they *are*,
+   * and a model that was there at the start and gone by event three has nothing
+   * to declare — so every description fell back to the template, every failure
+   * was dutifully reported, and the tier still read `standard`.
+   */
+  class DyingContextModel implements ContextModel {
+    readonly identity = {
+      backend: 'openai-compatible' as const,
+      model: 'a-model-that-stops-answering',
+      locality: 'local' as const,
+      mediaLeavesDevice: false,
+    };
+    async describe(): Promise<never> {
+      throw new Error('could not reach the model: connection refused');
+    }
+  }
+
+  it('is not standard when most descriptions fell back to the template', async () => {
+    const store = await makeExampleProject();
+    const result = await compileProject({
+      store,
+      suite: { ...exampleSuite(), context: new DyingContextModel() },
+      decision: new HeuristicDecisionBackend(),
+    });
+
+    // The rules are still standing in for judgement here, so the tier is not
+    // `degraded`; what matters is that it is not `standard`, and that the
+    // description stage is named as one of the reasons.
+    expect(result.ir.quality.tier).not.toBe('standard');
+    const stages = result.ir.quality.stand_ins.map((standIn) => standIn.stage);
+    expect(stages).toContain('description');
+    const description = result.ir.quality.stand_ins.find((s) => s.stage === 'description');
+    expect(description?.reason).toBe('failed_during_run');
+    expect(description?.remedy).toMatch(/fell back/);
+  }, 60_000);
+
+  it('says how many events it lost, not just that something went wrong', async () => {
+    const store = await makeExampleProject();
+    const result = await compileProject({
+      store,
+      suite: { ...exampleSuite(), context: new DyingContextModel() },
+      decision: new HeuristicDecisionBackend(),
+    });
+    const description = result.ir.quality.stand_ins.find((s) => s.stage === 'description');
+    expect(description?.remedy).toMatch(/\d+ of \d+ events/);
+  }, 60_000);
+});

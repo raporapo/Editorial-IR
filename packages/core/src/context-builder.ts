@@ -97,6 +97,17 @@ export interface BuildEventsResult {
    * standing in for a model's answer is a thing the user should be told about.
    */
   failures: { eventId: string; stage: string; reason: string }[];
+  /**
+   * How many events ended up with the fallback description rather than a
+   * model's, whether or not each one produced its own failure entry.
+   *
+   * The failure list stops at {@link GIVE_UP_AFTER}, because listing the same
+   * connection error eighty times helps nobody. What that hid is that the loop
+   * also *stops*: with a model that had gone away, three failures were reported
+   * and the remaining events were never attempted, so a run where every single
+   * description came from a template looked like a run where three did.
+   */
+  describedByFallback: number;
 }
 
 export async function buildSemanticEvents(
@@ -148,6 +159,10 @@ export async function buildSemanticEvents(
       }
     }
   }
+  // Counted after the loop rather than inside it, so that giving up early is
+  // included: what matters downstream is how many events have a model's
+  // description, not how many errors were worth printing.
+  const describedByFallback = skeletons.length - descriptions.size;
 
   // ---- escalation ----------------------------------------------------------
   const escalated: string[] = [];
@@ -305,7 +320,14 @@ export async function buildSemanticEvents(
     void isEscalated;
   }
 
-  return { events, conflicts, escalated, escalationLimitedBy: limitedBy, failures };
+  return {
+    events,
+    conflicts,
+    escalated,
+    escalationLimitedBy: limitedBy,
+    failures,
+    describedByFallback,
+  };
 }
 
 /**

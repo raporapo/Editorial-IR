@@ -398,6 +398,37 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     options.decision.identity.standIn,
     options.decision.identity.model ?? options.decision.identity.backend,
   );
+
+  // A model that was there and then was not.
+  //
+  // The backends declare what they *are*; they cannot declare what happened to
+  // them halfway through. A real run against a local model server found this:
+  // the server went away, every description fell back to the template, the
+  // failures were all dutifully reported — and the tier still read `standard`,
+  // because the context model wired at the start was a real one and never said
+  // otherwise. An IR whose every description is a template is not a
+  // full-strength analysis whatever was configured when it began.
+  //
+  // Counted rather than flagged, because one failed call out of eighty is a
+  // blip and eighty out of eighty is a different artefact. The line is drawn at
+  // half: past that, most of what the IR says came from the fallback.
+  // Counted from what the events actually got, not from the error list. The
+  // error list stops after a handful of identical failures — and so does the
+  // loop, so a run where every description came from the template reported
+  // three failures and looked like a run where three did.
+  if (
+    baseContextModel.identity.standIn === undefined &&
+    built.events.length > 0 &&
+    built.describedByFallback * 2 >= built.events.length
+  ) {
+    standIns.push({
+      stage: 'description',
+      used: 'the observation summary',
+      instead_of: baseContextModel.identity.model ?? 'the configured model',
+      reason: 'failed_during_run',
+      remedy: `${built.describedByFallback} of ${built.events.length} events fell back; check the model endpoint`,
+    });
+  }
   noteStandIn(
     'text_embedding',
     embeddingUsed.identity.standIn,

@@ -131,6 +131,26 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
         note(`  ${run.stage} to ${run.backend}${run.model ? ` (${run.model})` : ''}`);
     }
 
+    // A multi-minute recording that came back as one shot is almost always the
+    // scene detector's threshold rather than a genuine continuous take, and the
+    // effect is severe: shot boundaries are what the segmentation layer has to
+    // work with, so one shot becomes one event for the whole asset. It cannot
+    // be decided from here which it is, so it is reported rather than guessed.
+    const SUSPICIOUS_MS = 120_000;
+    const oneShot = ir.assets.filter((asset) => {
+      if (asset.kind !== 'video' || asset.duration_ms < SUSPICIOUS_MS) return false;
+      return observationsShotCount(result.observations, asset.id) === 1;
+    });
+    if (oneShot.length > 0) {
+      heading('one shot each');
+      for (const asset of oneShot) {
+        note(`  ${asset.file_name}: ${formatTimecode(asset.duration_ms, false)} with no cut found`);
+      }
+      note('  Either these are continuous takes, or the scene detector is set too high');
+      note('  for this footage. Everything downstream reads shot boundaries, so if it is');
+      note('  the latter the whole asset becomes one event.');
+    }
+
     if (report.unavailable.length > 0) {
       heading('not available');
       for (const { stage, reason } of report.unavailable) {
@@ -159,6 +179,13 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
     progress.clear();
     await backends.close();
   }
+}
+
+function observationsShotCount(
+  observations: { shots: readonly { asset_id: string }[] },
+  assetId: string,
+): number {
+  return observations.shots.filter((shot) => shot.asset_id === assetId).length;
 }
 
 /**
