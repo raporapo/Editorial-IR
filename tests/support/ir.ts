@@ -10,6 +10,7 @@ import {
   type EventEditorial,
   type MediaAsset,
   type NarrativeRole,
+  type RelationType,
   type SemanticEvent,
 } from '@editorial-ir/contracts';
 
@@ -147,6 +148,8 @@ export interface IrSpec {
   goal?: string;
   tone?: string[];
   targetDurationMs?: number;
+  /** `[source, type, target]`, or `[source, type, target, strength]`. */
+  relations?: ([string, RelationType, string] | [string, RelationType, string, number])[];
 }
 
 export function makeIR(spec: IrSpec): EditorialIR {
@@ -210,7 +213,14 @@ export function makeIR(spec: IrSpec): EditorialIR {
     chapters: [],
     events,
     editorial,
-    relations: [],
+    relations: (spec.relations ?? []).map(([source, type, target, strength], i) => ({
+      id: seqId('rel', i + 1),
+      source_event_id: source,
+      relation_type: type,
+      target_event_id: target,
+      strength: strength ?? 0.8,
+      provenance: 'inferred' as const,
+    })),
     annotations: [],
     conflicts: [],
     model_runs: [],
@@ -219,7 +229,7 @@ export function makeIR(spec: IrSpec): EditorialIR {
       total_media_duration_ms: totalDuration,
       event_count: events.length,
       chapter_count: 0,
-      relation_count: 0,
+      relation_count: spec.relations?.length ?? 0,
       utterance_count: 0,
       shot_count: 0,
       mean_event_duration_ms:

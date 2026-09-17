@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import {
   EditorialError,
+  SkillDefaults,
   SkillManifest,
+  SkillRule,
   parseOrThrow,
   type SkillManifest as SkillManifestType,
   type SkillRule as SkillRuleType,
@@ -26,13 +28,34 @@ export interface SkillSource {
   name: string;
   /** The manifest as written, before `extends` is resolved. */
   manifest: SkillManifestType;
+  /**
+   * The same file as a plain object, holding only the keys it actually wrote.
+   *
+   * Inheritance needs this. Once the schema has been applied, `defaults` and
+   * `constraints` carry every key — the ones the author wrote and the ones the
+   * schema filled in — and the two are indistinguishable, so merging a child
+   * over a parent overwrites the parent with defaults the child never asked
+   * for. The fragment is what the author said; the manifest is what it means.
+   *
+   * A source registered from a manifest in code rather than from a file may
+   * leave this out: handing over a parsed manifest is saying every value in it.
+   */
+  declared?: SkillFragment;
   /** Where it came from, for error messages. */
   origin: string;
   /** Contents of the skill's README, when it has one. */
   readme?: string;
 }
 
+/** A skill file as written: the keys its author put in it, and nothing else. */
+export type SkillFragment = Record<string, unknown>;
+
 export function parseSkill(text: string, origin: string): SkillManifestType {
+  return parseOrThrow(SkillManifest, readSkillFragment(text, origin), `skill manifest ${origin}`);
+}
+
+/** Reads a skill file into the object its author wrote, without applying the schema. */
+export function readSkillFragment(text: string, origin: string): SkillFragment {
   let raw: unknown;
   try {
     raw = origin.endsWith('.json') ? JSON.parse(text) : parseYaml(text);
@@ -45,18 +68,23 @@ export function parseSkill(text: string, origin: string): SkillManifestType {
       },
     );
   }
-  return parseOrThrow(SkillManifest, raw, `skill manifest ${origin}`);
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new EditorialError('skill_error', `${origin} is not a skill manifest`);
+  }
+  return raw as SkillFragment;
 }
 
 export function loadSkillFile(path: string): SkillSource {
   if (!existsSync(path)) {
     throw new EditorialError('not_found', `no skill file at ${path}`);
   }
-  const manifest = parseSkill(readFileSync(path, 'utf8'), path);
+  const declared = readSkillFragment(readFileSync(path, 'utf8'), path);
+  const manifest = parseOrThrow(SkillManifest, declared, `skill manifest ${path}`);
   const readmePath = join(path, '..', 'SKILL.md');
   return {
     name: manifest.name,
     manifest,
+    declared,
     origin: path,
     ...(existsSync(readmePath) ? { readme: readFileSync(readmePath, 'utf8') } : {}),
   };
@@ -128,12 +156,21 @@ export class SkillRegistry {
   resolve(name: string): SkillManifestType {
     const cached = this.resolved.get(name);
     if (cached) return cached;
-    const manifest = this.resolveWithStack(name, []);
+    const source = this.sources.get(name);
+    // The schema is applied once, to the finished composition. Applying it to
+    // each file first and merging afterwards is what made inheritance lossy:
+    // the defaults the schema had filled in were indistinguishable from the
+    // ones the child had asked for, and they overwrote the parent.
+    const manifest = parseOrThrow(
+      SkillManifest,
+      this.resolveWithStack(name, []),
+      `skill ${name}${source ? ` (${source.origin})` : ''}`,
+    );
     this.resolved.set(name, manifest);
     return manifest;
   }
 
-  private resolveWithStack(name: string, stack: string[]): SkillManifestType {
+  private resolveWithStack(name: string, stack: string[]): SkillFragment {
     if (stack.includes(name)) {
       throw new EditorialError(
         'skill_error',
@@ -148,13 +185,14 @@ export class SkillRegistry {
       });
     }
 
-    let merged: SkillManifestType | undefined;
+    let merged: SkillFragment | undefined;
     for (const parentName of source.manifest.extends) {
       const parent = this.resolveWithStack(parentName, [...stack, name]);
-      merged = merged ? mergeSkills(merged, parent) : parent;
+      merged = merged ? mergeFragments(merged, parent) : parent;
     }
 
-    const result = merged ? mergeSkills(merged, source.manifest) : source.manifest;
+    const own: SkillFragment = source.declared ?? source.manifest;
+    const result = merged ? mergeFragments(merged, own) : own;
     // The resolved skill keeps its own identity, not its parent's.
     return {
       ...result,
@@ -177,7 +215,8 @@ export class SkillRegistry {
  * - `arc` is replaced wholesale when the child declares one, because a partial
  *   arc whose segment budgets no longer sum to one is not a useful shape.
  * - `rules` are concatenated, parent first. At equal priority the child's rule
- *   is applied later and therefore wins.
+ *   is applied later and therefore wins. A child rule that reuses a parent's id
+ *   replaces it in place, which is the only way to switch an inherited rule off.
  * - An inherited rule's clip bounds are clamped to the child's own defaults. A
  *   rule may tighten the window the child declared; it may not widen it.
  */
@@ -185,22 +224,117 @@ export function mergeSkills(
   parent: SkillManifestType,
   child: SkillManifestType,
 ): SkillManifestType {
-  const defaults = { ...parent.defaults, ...child.defaults };
-  return {
+  return parseOrThrow(
+    SkillManifest,
+    mergeFragments(parent as unknown as SkillFragment, child as unknown as SkillFragment),
+    `${child.name} extending ${parent.name}`,
+  );
+}
+
+/**
+ * The same merge, over the objects the authors actually wrote.
+ *
+ * This is where the composition happens, because only here is "the child did
+ * not mention `snap_to_silence`" distinguishable from "the child asked for the
+ * default". A manifest that has been through the schema says the same thing
+ * either way, and merging one over a parent silently reset every tuned value
+ * the child had not restated — a child that changed `max_operations` and
+ * nothing else put its parent's cap on consecutive shots back to three.
+ */
+function mergeFragments(parent: SkillFragment, child: SkillFragment): SkillFragment {
+  const defaults = mergeSection(parent.defaults, child.defaults);
+  const parentScoring = section(parent.scoring);
+  const childScoring = section(child.scoring);
+  const scoring: SkillFragment = {
+    ...parentScoring,
+    ...childScoring,
+    ...nonEmpty('weights', mergeSection(parentScoring.weights, childScoring.weights)),
+    ...nonEmpty(
+      'flag_weights',
+      mergeSection(parentScoring.flag_weights, childScoring.flag_weights),
+    ),
+  };
+  const childArc = section(child.arc);
+  const merged: SkillFragment = {
     ...parent,
     ...child,
-    defaults,
-    scoring: {
-      ...parent.scoring,
-      ...child.scoring,
-      weights: { ...parent.scoring.weights, ...child.scoring.weights },
-      flag_weights: { ...parent.scoring.flag_weights, ...child.scoring.flag_weights },
-    },
-    arc: child.arc.segments.length > 0 ? child.arc : parent.arc,
-    constraints: { ...parent.constraints, ...child.constraints },
-    intent: { ...parent.intent, ...child.intent },
-    rules: [...parent.rules.map((rule) => clampToDefaults(rule, defaults)), ...child.rules],
+    ...nonEmpty('defaults', defaults),
+    ...nonEmpty('scoring', scoring),
+    arc: hasSegments(childArc) ? child.arc : parent.arc,
+    ...nonEmpty('constraints', mergeSection(parent.constraints, child.constraints)),
+    ...nonEmpty('intent', mergeSection(parent.intent, child.intent)),
+    rules: mergeRules(
+      rulesOf(parent).map((rule) => clampToDefaults(rule, SkillDefaults.parse(defaults))),
+      rulesOf(child),
+    ),
   };
+  if (merged.arc === undefined) delete merged.arc;
+  return merged;
+}
+
+/**
+ * Parent rules then child rules, except that a shared id is one rule.
+ *
+ * Without this a child can only add. `tech-youtube` inherits `drop-silence`
+ * from `talking-head` — wordless and unimportant, so cut it — which is right
+ * for one person talking to camera and wrong for a tech video, where a silent
+ * screen recording of the thing working is the part a written article cannot
+ * replace. tech-youtube says exactly that in a rule of its own, and could not
+ * reach it: dropping is sticky, by design, so nothing a later rule says can
+ * bring the material back.
+ *
+ * A child rule with a parent's id replaces it, in the parent's position, so
+ * that an override does not silently change where the rule sits in the file
+ * order that breaks priority ties.
+ */
+function mergeRules(
+  parent: readonly SkillRuleType[],
+  child: readonly SkillRuleType[],
+): SkillRuleType[] {
+  const overrides = new Map<string, SkillRuleType>();
+  for (const rule of child) if (rule.id !== undefined) overrides.set(rule.id, rule);
+
+  const used = new Set<string>();
+  const merged = parent.map((rule) => {
+    const override = rule.id === undefined ? undefined : overrides.get(rule.id);
+    if (!override) return rule;
+    used.add(rule.id!);
+    return override;
+  });
+
+  return [...merged, ...child.filter((rule) => rule.id === undefined || !used.has(rule.id))];
+}
+
+function section(value: unknown): SkillFragment {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as SkillFragment)
+    : {};
+}
+
+function mergeSection(parent: unknown, child: unknown): SkillFragment {
+  return { ...section(parent), ...section(child) };
+}
+
+/** Omits a section the composition never mentioned, so the schema still supplies it. */
+function nonEmpty(key: string, value: SkillFragment): SkillFragment {
+  return Object.keys(value).length > 0 ? { [key]: value } : {};
+}
+
+function hasSegments(arc: SkillFragment): boolean {
+  return Array.isArray(arc.segments) && arc.segments.length > 0;
+}
+
+/**
+ * The rules of a fragment, as rules.
+ *
+ * Rules are the one section that has to be understood before the merge rather
+ * than after it, because an inherited one is clamped to the child's defaults.
+ * A fragment whose rules do not parse is a broken skill file, and it was
+ * already refused when the file was read.
+ */
+function rulesOf(fragment: SkillFragment): SkillRuleType[] {
+  if (!Array.isArray(fragment.rules)) return [];
+  return fragment.rules.map((rule) => SkillRule.parse(rule));
 }
 
 /**

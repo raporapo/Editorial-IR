@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SkillManifest } from '@editorial-ir/contracts';
 import {
@@ -385,5 +388,117 @@ describe('deriveFacts', () => {
     const facts = deriveFacts(ir);
     expect(facts.get('evt_0002')!.has_laughter).toBe(true);
     expect(facts.get('evt_0001')!.has_laughter).toBe(false);
+  });
+});
+
+/**
+ * Inheriting from a skill someone tuned.
+ *
+ * The documented model is that `defaults`, `constraints` and `intent` merge
+ * field by field, and it was not true of any field the schema has a default
+ * for — which is most of them. Composition happens on what the author wrote,
+ * and the schema is applied once at the end.
+ */
+describe('what a child skill inherits', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'oea-skill-'));
+
+  function write(name: string, yaml: string): void {
+    mkdirSync(join(directory, name), { recursive: true });
+    writeFileSync(join(directory, name, 'skill.yaml'), yaml);
+  }
+
+  write(
+    'house',
+    `name: house
+constraints:
+  max_consecutive_same_role: 6
+defaults:
+  pad_out_ms: 900
+  snap_to_silence: false
+intent:
+  ending: hold on the last frame
+  tone: [warm]
+`,
+  );
+  write(
+    'house-short',
+    `name: house-short
+extends: [house]
+constraints:
+  max_operations: 12
+defaults:
+  min_clip_duration_ms: 800
+intent:
+  opening: start on the face
+`,
+  );
+
+  const resolved = SkillRegistry.withBuiltIns([directory]).resolve('house-short');
+
+  it('keeps the values the parent tuned and the child never mentioned', () => {
+    // Each of these came back as the schema's default instead: a child that
+    // changed its clip cap silently put its parent's cap on consecutive shots
+    // back to three, and turned silence snapping back on.
+    expect(resolved.constraints.max_consecutive_same_role).toBe(6);
+    expect(resolved.defaults.pad_out_ms).toBe(900);
+    expect(resolved.defaults.snap_to_silence).toBe(false);
+    expect(resolved.intent.tone).toEqual(['warm']);
+  });
+
+  it('still takes the child’s own values', () => {
+    expect(resolved.constraints.max_operations).toBe(12);
+    expect(resolved.defaults.min_clip_duration_ms).toBe(800);
+    expect(resolved.intent.opening).toBe('start on the face');
+    expect(resolved.intent.ending).toBe('hold on the last frame');
+  });
+
+  it('gives an unmentioned field the schema’s default', () => {
+    expect(resolved.defaults.pad_in_ms).toBe(150);
+  });
+});
+
+/**
+ * Switching off a rule you inherited.
+ *
+ * Dropping is sticky by design — "never use this" should not be undone by a
+ * later rule about duration — which means a child skill that inherits a drop
+ * it disagrees with has no way to say so, and its own rule about that material
+ * can never fire.
+ */
+describe('a rule a child skill disagrees with', () => {
+  const ir = makeIR({
+    events: [
+      {
+        description: 'ターミナルでビルドが通るところ',
+        event_type: 'demonstration',
+        visual_labels: ['screen', 'terminal'],
+      },
+    ],
+  });
+  const event = ir.events[0]!;
+  event.observed.speech = [];
+  event.observed.ocr = ['npm run build', 'ok'];
+  for (const entry of ir.editorial) entry.current.metrics.story_importance = 0.5;
+
+  function directiveUnder(skill: string) {
+    return new SkillRuntime(registry.resolve(skill)).evaluate(ir).get(event.id)!;
+  }
+
+  it('drops a silent screen recording under talking-head, which is right there', () => {
+    expect(directiveUnder('talking-head').dropped).toBe(true);
+  });
+
+  it('keeps it under tech-youtube, where the demonstration is the point', () => {
+    // `screen-without-speech-is-b-roll` existed and could not be reached: the
+    // inherited `drop-silence` had already thrown the material away.
+    const directive = directiveUnder('tech-youtube');
+    expect(directive.dropped).toBe(false);
+    expect(directive.as_b_roll).toBe(true);
+    expect(directive.matched_rule_ids).toContain('screen-without-speech-is-b-roll');
+  });
+
+  it('replaces the inherited rule rather than adding a second one', () => {
+    const ids = registry.resolve('tech-youtube').rules.map((rule) => rule.id);
+    expect(ids.filter((id) => id === 'drop-silence')).toHaveLength(1);
   });
 });

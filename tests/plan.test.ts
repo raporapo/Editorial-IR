@@ -14,6 +14,9 @@ import {
   operationTimelineDuration,
   operationTimelineEnd,
   planDurationMs,
+  type EditorialIR,
+  type NarrativeRole,
+  type SkillManifest,
 } from '@editorial-ir/contracts';
 import { exampleSuite, makeExampleProject } from './support/project.js';
 import { makeIR } from './support/ir.js';
@@ -711,5 +714,158 @@ describe('reviewing a cut', () => {
     };
     const suggestions = suggestRevisions(reviewPlan(tiny, ir), tiny, ir);
     expect(suggestions.some((s) => s.action === 'extend_operation')).toBe(true);
+  });
+});
+
+/**
+ * The three parts of a skill that say what a moment is worth beside the others.
+ *
+ * `duplicate_penalty`, `continuity_bonus` and an arc segment's `require_roles`
+ * are all declared in the schema, documented in the contract and, until now,
+ * read by nothing. Each is checked against the same skill with the field turned
+ * off, so the test says what the field does rather than what the planner
+ * happens to do.
+ */
+describe('what a moment is worth beside the others', () => {
+  const base = registry.resolve('base-editor');
+
+  /** Room for two clips and no more, so the test is about which two. */
+  function styled(over: Partial<SkillManifest>): SkillManifest {
+    return {
+      ...base,
+      // The hard suppression rule is a different mechanism and would otherwise
+      // answer the duplicate question before the penalty could.
+      rules: base.rules.filter((rule) => rule.id !== 'suppress-duplicates'),
+      arc: { ordering: 'chronological', segments: [] },
+      constraints: { ...base.constraints, max_operations: 2 },
+      ...over,
+    };
+  }
+
+  function chosen(ir: EditorialIR, skill: SkillManifest): (string | undefined)[] {
+    return planEdit({ ir, skill, targetDurationMs: 60_000 }).tracks.video.map((op) => op.event_id);
+  }
+
+  /** Two takes of the same thing, one better, and an unrelated moment. */
+  function twoTakesAndAnother(): EditorialIR {
+    return makeIR({
+      events: [
+        { id: 'evt_take_a', description: '一回目', metrics: { story_importance: 0.9 } },
+        { id: 'evt_take_b', description: '二回目', metrics: { story_importance: 0.88 } },
+        { id: 'evt_other', description: '別の場面', metrics: { story_importance: 0.86 } },
+      ],
+      relations: [['evt_take_a', 'duplicate_of', 'evt_take_b', 1]],
+    });
+  }
+
+  it('leaves out the second take of something already in the cut', () => {
+    const skill = styled({
+      scoring: { ...base.scoring, duplicate_penalty: 0.5, continuity_bonus: 0 },
+    });
+    expect(chosen(twoTakesAndAnother(), skill)).toEqual(['evt_take_a', 'evt_other']);
+  });
+
+  it('takes both takes when the skill sets no penalty', () => {
+    const skill = styled({
+      scoring: { ...base.scoring, duplicate_penalty: 0, continuity_bonus: 0 },
+    });
+    expect(chosen(twoTakesAndAnother(), skill)).toEqual(['evt_take_a', 'evt_take_b']);
+  });
+
+  it('prefers the moment that continues one already in the cut', () => {
+    // evt_other is the better moment on its own; evt_next cuts cleanly from the
+    // one already chosen, which is what a skill valuing continuity is asking for.
+    const ir = makeIR({
+      events: [
+        { id: 'evt_first', description: '始まり', metrics: { story_importance: 0.9 } },
+        { id: 'evt_next', description: '続き', metrics: { story_importance: 0.8 } },
+        { id: 'evt_other', description: '別の場面', metrics: { story_importance: 0.83 } },
+      ],
+      relations: [['evt_first', 'continuation', 'evt_next', 1]],
+    });
+
+    expect(chosen(ir, styled({ scoring: { ...base.scoring, continuity_bonus: 0 } }))).toEqual([
+      'evt_first',
+      'evt_other',
+    ]);
+    expect(chosen(ir, styled({ scoring: { ...base.scoring, continuity_bonus: 0.3 } }))).toEqual([
+      'evt_first',
+      'evt_next',
+    ]);
+  });
+
+  it('fills a segment that insists on a role with one that has it', () => {
+    // The opening wants a setup shot and the loudest material is not one.
+    // tech-youtube declares exactly this, for exactly this reason: a piece that
+    // never says what it is about loses the viewer in the first seconds.
+    const ir = makeIR({
+      events: [
+        {
+          id: 'evt_loud',
+          description: '派手な場面',
+          role: 'reaction',
+          metrics: { story_importance: 0.95, emotional_intensity: 0.95 },
+        },
+        {
+          id: 'evt_setup',
+          description: '今日はこれの話',
+          role: 'setup',
+          metrics: { story_importance: 0.4 },
+        },
+        {
+          id: 'evt_end',
+          description: '終わり',
+          role: 'ending',
+          metrics: { story_importance: 0.9 },
+        },
+      ],
+    });
+
+    const withOpening = (require_roles: NarrativeRole[]): SkillManifest =>
+      styled({
+        arc: {
+          ordering: 'chronological',
+          segments: [
+            { name: 'opening', budget: 0.5, prefer_roles: [], require_roles },
+            { name: 'ending', budget: 0.5, prefer_roles: [], require_roles: [] },
+          ],
+        },
+      });
+
+    expect(chosen(ir, withOpening([]))).not.toContain('evt_setup');
+    expect(chosen(ir, withOpening(['setup']))).toContain('evt_setup');
+  });
+});
+
+describe('a transition a skill asks for', () => {
+  it('writes the one on the way out, not only the one on the way in', () => {
+    // The plan contract carries `transition_out`, the validator checks it and
+    // both adapters write it. The planner was the link that dropped it, so a
+    // skill rule asking for a fade out did nothing whatsoever.
+    const base = registry.resolve('base-editor');
+    const skill: SkillManifest = {
+      ...base,
+      rules: [
+        ...base.rules,
+        {
+          id: 'fade-out-of-the-last-look',
+          when: { narrative_role: 'ending' },
+          action: { transition_out: { type: 'fade_out', duration_ms: 900 } },
+          priority: 50,
+        },
+      ],
+    };
+
+    const ir = makeIR({
+      events: [
+        { id: 'evt_middle', description: '途中', role: 'context' },
+        { id: 'evt_last', description: '終わり', role: 'ending' },
+      ],
+    });
+
+    const operations = planEdit({ ir, skill, targetDurationMs: 30_000 }).tracks.video;
+    const last = operations.find((op) => op.event_id === 'evt_last');
+    expect(last?.transition_out).toEqual({ type: 'fade_out', duration_ms: 900 });
+    expect(operations.find((op) => op.event_id === 'evt_middle')?.transition_out).toBeUndefined();
   });
 });

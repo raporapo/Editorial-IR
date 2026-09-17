@@ -75,6 +75,42 @@ is compatible with.
 
 ### Fixed
 
+- **Inheriting a skill lost most of what the parent had tuned.** `defaults`,
+  `constraints` and `intent` are documented as merging field by field, and did
+  not: the schema fills in every field it has a default for before the merge
+  happens, so a child that changed `max_operations` and nothing else silently
+  put its parent's cap on consecutive shots back to three, its padding back to
+  250ms and silence snapping back on. Composition now happens on what each file
+  actually wrote, and the schema is applied once to the finished skill.
+- **A child skill could not switch off a rule it inherited.** Dropping is sticky
+  by design — "never use this" should not be undone by a later rule about
+  duration — which left no way to disagree with a parent. `tech-youtube`
+  inherits `drop-silence` from `talking-head`, and its own
+  `screen-without-speech-is-b-roll` could never fire, because a silent screen
+  recording of the thing working had already been thrown away: in a tech video
+  that is the demonstration, the part a written article cannot replace. A rule
+  that reuses an inherited rule's `id` now replaces it, in the parent's
+  position, and `tech-youtube` redeclares `drop-silence` to leave anything with
+  something on screen alone.
+- **`duplicate_penalty` and `continuity_bonus` were declared and never applied.**
+  Both are in the schema with documented meanings and defaults, and selection
+  ranked every candidate once, in isolation, before anything had been chosen —
+  so neither could have been read. Selection now re-ranks after each pick: a
+  shot loses value when something it duplicates is already in, and gains a
+  little when it continues something that is. On the worked example the
+  three-minute travel cut keeps 74.3% of its speech rather than 70.7%, makes 22
+  clean cuts rather than 18, and carries two fewer wordless shots at the same
+  length.
+- **An arc segment's `require_roles` did nothing.** `tech-youtube` declares
+  `require_roles: [setup]` on its opening because a piece that never says what
+  it is about loses the viewer in the first seconds; the planner read only
+  `prefer_roles`. A segment that insists on a role now takes the best material
+  carrying one before the ordinary ranking spends its budget.
+- **`transition_out` was dropped between the skill and the plan.** The rule
+  runtime set it, the plan contract carries it, the validator checks it and both
+  adapters write it — and the planner never copied it onto the operation, so a
+  skill asking for a fade out of the last shot had no effect anywhere.
+
 - **"Cut here" landed in the wrong asset, or nowhere at all.** A `split` or
   `merge` boundary annotation carries a position on the capture timeline, and the
   segmenter compared it against asset-local offsets — so a cut asked for once was

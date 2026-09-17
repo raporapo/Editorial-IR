@@ -43,6 +43,20 @@ rules:
     action:
       prefer: 0.25
 
+  # Overrides the rule of the same name in talking-head, which drops anything
+  # wordless and unremarkable. In a piece about one person explaining something
+  # that is right; here a silent screen recording of the thing working is the
+  # demonstration, and dropping is sticky, so the b-roll rule below could never
+  # reach the material it was written for.
+  - id: drop-silence
+    description: Quiet is only dead air when there is nothing to look at either.
+    when:
+      has_speech: false
+      has_text_on_screen: false
+      story_importance: '<0.6'
+    action:
+      drop: true
+
   - id: screen-without-speech-is-b-roll
     when:
       has_text_on_screen: true

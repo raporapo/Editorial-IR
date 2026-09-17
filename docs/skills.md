@@ -74,6 +74,21 @@ at 25.
   budgets no longer sum to one is not a useful shape.
 - `rules` are concatenated, parent first. At equal priority the child's rule is
   applied later and therefore wins.
+- **A rule that reuses an inherited rule's `id` replaces it, in place.** This is
+  the only way to switch an inherited rule off, and you need one: `drop` is
+  sticky on purpose, so a rule of your own cannot bring back material a parent
+  threw away. `tech-youtube` inherits `drop-silence` from `talking-head` — cut
+  anything wordless and unremarkable — which is right for one person talking to
+  camera and wrong for a tech video, where a silent screen recording of the
+  thing working is the part a written article cannot replace. It redeclares
+  `drop-silence` with `has_text_on_screen: false` added, and its own
+  `screen-without-speech-is-b-roll` becomes reachable.
+
+Merging happens on what you wrote, before the defaults are filled in, so a field
+you did not mention keeps the parent's value rather than the schema's. A child
+that sets `max_operations` and nothing else used to put its parent's cap on
+consecutive shots back to three.
+
 - **An inherited rule's `minimum_duration_sec` and `maximum_duration_sec` are
   clamped to your `defaults`.** An inherited rule may make a clip shorter than
   your ceiling or longer than your floor; it may not take one outside them.
