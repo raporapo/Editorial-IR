@@ -36,8 +36,7 @@
     "duration_ms",
     "relative_position",
     "observed",
-    "semantic",
-    "user_context"
+    "semantic"
   ],
   "additionalProperties": false,
   "title": "EventState",
@@ -105,15 +104,6 @@
           "$ref": "#/$defs/UnitScore"
         }
       },
-      "required": [
-        "speech",
-        "visual_labels",
-        "ocr",
-        "audio",
-        "shot_count",
-        "speech_ratio",
-        "silence_ratio"
-      ],
       "additionalProperties": false
     },
     "__schema2": {
@@ -128,6 +118,7 @@
           "type": "string"
         },
         "entities": {
+          "default": {},
           "type": "object",
           "properties": {
             "people": {
@@ -152,11 +143,6 @@
               }
             }
           },
-          "required": [
-            "people",
-            "places",
-            "topics"
-          ],
           "additionalProperties": false
         },
         "affect": {
@@ -164,12 +150,6 @@
           "$ref": "#/$defs/Affect"
         }
       },
-      "required": [
-        "description",
-        "event_type",
-        "entities",
-        "affect"
-      ],
       "additionalProperties": false
     },
     "Affect": {
@@ -218,6 +198,7 @@
       "additionalProperties": false
     },
     "__schema6": {
+      "default": {},
       "type": "object",
       "properties": {
         "occasion": {
@@ -266,11 +247,6 @@
           "type": "boolean"
         }
       },
-      "required": [
-        "tone",
-        "notes",
-        "essential"
-      ],
       "additionalProperties": false
     },
     "__schema7": {

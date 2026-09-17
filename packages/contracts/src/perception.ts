@@ -96,6 +96,16 @@ export const OcrParams = obj({
   path: z.string().min(1),
   timestamps_ms: z.array(Milliseconds).min(1),
   language: z.string().optional(),
+  /**
+   * Where to put the frames it has to extract to read them.
+   *
+   * The caller decides, because the worker's guess was "beside the file", and
+   * for an asset with no proxy that is the user's own footage directory. The
+   * first rule of ingest is that the original is never modified or moved;
+   * filling the folder it sits in with a `_frames` directory is the same
+   * promise broken more slowly.
+   */
+  frames_dir: z.string().optional(),
 }).meta({ id: 'OcrParams' });
 export type OcrParams = z.infer<typeof OcrParams>;
 

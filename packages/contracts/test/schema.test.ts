@@ -108,3 +108,69 @@ describe('documents', () => {
     expect(SCHEMA_REGISTRY.EditPlan).toBe(EditPlan);
   });
 });
+
+/**
+ * What the published contract says about an optional field.
+ *
+ * `schemas/` is the cross-language contract, and the producer it exists for is
+ * the Python worker. It was exported from the output side, where a field that
+ * Zod fills in is "required" — and `jsonOptional`, which every optional field
+ * in the perception protocol uses, is a transform, so it came out as the empty
+ * schema `{}` and was listed as required. The published contract said `width`
+ * was mandatory and could be anything.
+ */
+describe('the exported schemas', () => {
+  const probe = toJsonSchema('ProbeResult') as {
+    required?: string[];
+    properties: Record<string, { $ref?: string }>;
+    $defs?: Record<string, Record<string, unknown>>;
+  };
+
+  function resolved(name: string): Record<string, unknown> {
+    const property = probe.properties[name]!;
+    const key = property.$ref?.replace('#/$defs/', '');
+    return key ? probe.$defs![key]! : property;
+  }
+
+  it('does not demand a field the producer may leave out', () => {
+    expect(probe.required).toEqual(['duration_ms']);
+  });
+
+  it('says what an optional field contains', () => {
+    // `{}` is not a description of anything; it validates a string, an object
+    // and null alike.
+    const width = resolved('width');
+    expect(width).not.toEqual({});
+    expect(JSON.stringify(width)).toContain('integer');
+    expect(JSON.stringify(width)).toContain('null');
+  });
+
+  it('still refuses keys the contract does not define', () => {
+    expect((probe as { additionalProperties?: unknown }).additionalProperties).toBe(false);
+  });
+
+  it('never demands a field it describes as anything at all', () => {
+    // `{}` validates a string, an object and null alike, so a required property
+    // described that way asks a producer for something and says nothing about
+    // what. Three fields in `Conflict` genuinely hold any value — a conflict is
+    // about whatever was in dispute — and they are optional, which is the
+    // difference: nothing is being demanded that nothing has described.
+    for (const name of SCHEMA_NAMES) {
+      const json = toJsonSchema(name) as {
+        required?: string[];
+        properties?: Record<string, Record<string, unknown>>;
+        $defs?: Record<string, Record<string, unknown>>;
+      };
+      const defs = json.$defs ?? {};
+      for (const field of json.required ?? []) {
+        const property = json.properties?.[field] ?? {};
+        const ref = property.$ref as string | undefined;
+        const described = ref ? (defs[ref.replace('#/$defs/', '')] ?? {}) : property;
+        expect(
+          Object.keys(described).length,
+          `${name}.${field} is required and nothing describes it`,
+        ).toBeGreaterThan(0);
+      }
+    }
+  });
+});

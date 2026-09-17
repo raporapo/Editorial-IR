@@ -358,6 +358,10 @@ export async function observeAssets(
         const params = {
           path: prepared?.proxy_path ?? absolutePath(asset, options.projectRoot),
           timestamps_ms: timestamps,
+          // Inside the project, never beside the footage. Excluded from the
+          // cache key along with the other paths, because where the frames went
+          // is not part of what was read.
+          frames_dir: join(options.workDir, asset.sha256.slice(0, 12), 'ocr-frames'),
           ...(options.context?.editing_goal.language
             ? { language: options.context.editing_goal.language }
             : {}),
@@ -505,7 +509,13 @@ function keyFor(
   // Paths are excluded from the key: the same media analysed from a different
   // working directory is the same analysis, and including the path would turn
   // every move of a project into a full re-run.
-  const { audio_path: _audio, path: _path, ...stable } = parameters;
+  const {
+    audio_path: _audio,
+    path: _path,
+    frames_dir: _framesDir,
+    work_dir: _workDir,
+    ...stable
+  } = parameters;
   return {
     operation,
     mediaSha256: asset.sha256,

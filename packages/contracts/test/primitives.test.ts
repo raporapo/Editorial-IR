@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  Iso8601,
   PROVENANCE_AUTHORITY,
   durationOf,
   formatTimecode,
@@ -10,6 +11,7 @@ import {
   parseTimecode,
   rangesOverlap,
   seqId,
+  toIso8601,
   isCompatibleVersion,
   TimeRange,
 } from '../src/index.js';
@@ -101,5 +103,55 @@ describe('version compatibility', () => {
     expect(isCompatibleVersion('0.1.0', '0.2.0')).toBe(false);
     expect(isCompatibleVersion('1.2.0', '1.9.0')).toBe(true);
     expect(isCompatibleVersion('1.2.0', '2.0.0')).toBe(false);
+  });
+});
+
+/**
+ * A timestamp that says what it is.
+ *
+ * `Iso8601` documents "always UTC with a trailing Z" and validated only that
+ * the string was non-empty, which accepts "yesterday". It matters because
+ * assets go on the capture timeline in the order these sort in.
+ */
+describe('Iso8601', () => {
+  it('accepts an instant in UTC', () => {
+    expect(Iso8601.parse('2026-05-17T09:00:00Z')).toBe('2026-05-17T09:00:00Z');
+    expect(Iso8601.parse('2026-05-17T09:00:00.123Z')).toBe('2026-05-17T09:00:00.123Z');
+  });
+
+  it('refuses everything that is not one', () => {
+    for (const bad of [
+      'yesterday',
+      '2026-05-17',
+      '2026-05-17T09:00:00',
+      '2026-05-17T09:00:00+09:00',
+      '2026/05/17 09:00:00',
+      '',
+    ]) {
+      expect(() => Iso8601.parse(bad)).toThrow();
+    }
+  });
+});
+
+describe('toIso8601', () => {
+  it('normalises the forms a camera actually writes', () => {
+    // A local offset sorts before an earlier UTC instant as a string, which is
+    // how a misread date reorders footage.
+    expect(toIso8601('2026-05-17T18:00:00+09:00')).toBe('2026-05-17T09:00:00.000Z');
+    expect(toIso8601('2026-05-17 09:00:00')).toBe('2026-05-17T09:00:00.000Z');
+    // EXIF spells the date with colons.
+    expect(toIso8601('2026:05:17 09:00:00')).toBe('2026-05-17T09:00:00.000Z');
+  });
+
+  it('leaves the result parseable by the schema', () => {
+    expect(() => Iso8601.parse(toIso8601('2026-05-17 09:00:00')!)).not.toThrow();
+  });
+
+  it('gives nothing back for a date it cannot read', () => {
+    // Nothing is right: ordering by file name is arbitrary, ordering by a
+    // misread date is wrong, and wrong invents continuity that was never there.
+    expect(toIso8601('yesterday')).toBeUndefined();
+    expect(toIso8601('')).toBeUndefined();
+    expect(toIso8601(undefined)).toBeUndefined();
   });
 });

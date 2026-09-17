@@ -40,10 +40,48 @@ export type Probability = z.infer<typeof Probability>;
 /** A unit score in [0, 1] used for editorial metrics. */
 export const UnitScore = z.number().min(0).max(1).meta({ id: 'UnitScore' });
 
-export const Iso8601 = z.string().min(1).meta({
-  id: 'Iso8601',
-  description: 'ISO-8601 timestamp, always UTC with a trailing Z.',
-});
+/**
+ * An instant, always UTC with a trailing Z.
+ *
+ * Validated, because the field beside it that says what it contains is checked
+ * and this one was not: `min(1)` accepts "yesterday". A camera's
+ * `creation_time` comes from whatever the container happens to say, and assets
+ * are laid on the capture timeline in the order these strings sort in — so a
+ * file written as `2026/05/17 09:00:00`, or with a local offset instead of Z,
+ * ordered the footage wrongly and invented continuity that was never there.
+ */
+export const Iso8601 = z
+  .string()
+  .regex(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
+    'expected an ISO-8601 instant in UTC, like 2026-05-17T09:00:00.000Z',
+  )
+  .meta({
+    id: 'Iso8601',
+    description: 'ISO-8601 timestamp, always UTC with a trailing Z.',
+  });
+
+/**
+ * Reads a timestamp from somewhere that does not promise the canonical form.
+ *
+ * Returns the instant as `Iso8601`, or nothing at all. Nothing is the right
+ * answer for a container whose date cannot be understood: ordering by file name
+ * is arbitrary, and ordering by a misread date is wrong.
+ */
+export function toIso8601(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  // Some containers write `2026-05-17 09:00:00`, and some cameras use colons in
+  // the date, which is what EXIF specifies: `2026:05:17 09:00:00`.
+  const candidate = /^\d{4}:\d{2}:\d{2}[ T]/.test(trimmed)
+    ? `${trimmed.slice(0, 10).replace(/:/g, '-')}T${trimmed.slice(11)}`
+    : trimmed.replace(' ', 'T');
+  const parsed = new Date(
+    candidate.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(candidate) ? candidate : `${candidate}Z`,
+  );
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
 
 export const Sha256 = z
   .string()

@@ -74,8 +74,7 @@
     "kind",
     "sha256",
     "byte_size",
-    "duration_ms",
-    "metadata"
+    "duration_ms"
   ],
   "additionalProperties": false,
   "title": "MediaAsset",
@@ -173,7 +172,7 @@
     },
     "Iso8601": {
       "type": "string",
-      "minLength": 1,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
       "description": "ISO-8601 timestamp, always UTC with a trailing Z."
     },
     "__schema16": {

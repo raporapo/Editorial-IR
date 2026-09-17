@@ -117,11 +117,39 @@ export function resolveAssetPath(request: ApplyRequest, assetId: string): string
     : `${request.projectRoot.replace(/\/$/, '')}/${asset.path}`;
 }
 
-/** A `file://` URL, which is what every interchange format wants. */
+/**
+ * A `file://` URL, which is what every interchange format wants.
+ *
+ * `encodeURI` leaves the characters that delimit the parts of a URL alone,
+ * which is right for a URL and wrong for a path that has to become one.
+ * `#` was already handled; `?` was not, so a file called `what? really.mp4`
+ * produced `file:///media/what?%20really.mp4` — a path of `/media/what` with a
+ * query string after it, and a clip that imports offline. `[` and `]` belong to
+ * the host part and go the same way.
+ *
+ * A UNC path names a machine: `\\\\server\\share\\clip.mp4` is
+ * `file://server/share/clip.mp4`, with the server in the authority. Treating it
+ * as an ordinary path produced `file:////server/share/clip.mp4`, which has an
+ * empty authority and a path beginning with two slashes, and which resolvers
+ * reject.
+ */
 export function toFileUrl(path: string): string {
   const normalised = path.replace(/\\/g, '/');
-  const withLeadingSlash = normalised.startsWith('/') ? normalised : `/${normalised}`;
-  return `file://${encodeURI(withLeadingSlash).replace(/#/g, '%23')}`;
+
+  const unc = /^\/\/([^/]+)(\/.*)?$/.exec(normalised);
+  const host = unc ? encodeURIComponent(unc[1]!) : '';
+  const rest = unc ? (unc[2] ?? '/') : normalised;
+  const withLeadingSlash = rest.startsWith('/') ? rest : `/${rest}`;
+
+  return `file://${host}${escapePath(withLeadingSlash)}`;
+}
+
+/** Percent-encodes a path, including the delimiters `encodeURI` preserves. */
+function escapePath(path: string): string {
+  return encodeURI(path).replace(
+    /[?#[\]]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
 }
 
 /** Converts milliseconds to whole frames at a rational rate. */

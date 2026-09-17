@@ -38,7 +38,6 @@
     }
   },
   "required": [
-    "edit_plan_version",
     "id",
     "project_id",
     "created_at",
@@ -46,8 +45,6 @@
     "skill",
     "sequence",
     "tracks",
-    "intent",
-    "rationale",
     "stats"
   ],
   "additionalProperties": false,
@@ -67,7 +64,7 @@
     },
     "Iso8601": {
       "type": "string",
-      "minLength": 1,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
       "description": "ISO-8601 timestamp, always UTC with a trailing Z."
     },
     "__schema1": {
@@ -122,14 +119,7 @@
       },
       "required": [
         "name",
-        "target_duration_ms",
-        "tolerance_ms",
-        "width",
-        "height",
-        "frame_rate",
-        "frame_rate_num",
-        "frame_rate_den",
-        "sample_rate"
+        "target_duration_ms"
       ],
       "additionalProperties": false
     },
@@ -207,11 +197,6 @@
           }
         }
       },
-      "required": [
-        "video",
-        "audio",
-        "text"
-      ],
       "additionalProperties": false
     },
     "VideoOperation": {
@@ -265,11 +250,7 @@
         "source_asset_id",
         "source_in_ms",
         "source_out_ms",
-        "timeline_start_ms",
-        "track",
-        "speed",
-        "use_source_audio",
-        "provenance"
+        "timeline_start_ms"
       ],
       "additionalProperties": false,
       "title": "VideoOperation"
@@ -333,8 +314,7 @@
         }
       },
       "required": [
-        "type",
-        "duration_ms"
+        "type"
       ],
       "additionalProperties": false
     },
@@ -372,9 +352,6 @@
           "$ref": "#/$defs/__schema22"
         }
       },
-      "required": [
-        "locked"
-      ],
       "additionalProperties": false
     },
     "__schema20": {
@@ -435,9 +412,7 @@
         }
       },
       "required": [
-        "type",
-        "track",
-        "gain_db"
+        "type"
       ],
       "additionalProperties": false
     },
@@ -479,12 +454,7 @@
       },
       "required": [
         "type",
-        "track",
-        "asset_id",
-        "source_in_ms",
-        "timeline_start_ms",
-        "gain_db",
-        "duck_under_speech"
+        "asset_id"
       ],
       "additionalProperties": false
     },
@@ -520,9 +490,7 @@
         "operation_id",
         "timeline_start_ms",
         "timeline_end_ms",
-        "text",
-        "kind",
-        "provenance"
+        "text"
       ],
       "additionalProperties": false
     },
@@ -563,6 +531,7 @@
       "$ref": "#/$defs/Provenance"
     },
     "__schema32": {
+      "default": {},
       "$ref": "#/$defs/PlanIntent"
     },
     "PlanIntent": {
@@ -581,9 +550,6 @@
           "$ref": "#/$defs/__schema36"
         }
       },
-      "required": [
-        "tone"
-      ],
       "additionalProperties": false
     },
     "__schema33": {
@@ -634,8 +600,7 @@
       "required": [
         "event_id",
         "decision",
-        "reason",
-        "skill_rule_ids"
+        "reason"
       ],
       "additionalProperties": false
     },

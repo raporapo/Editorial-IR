@@ -21,9 +21,6 @@
   },
   "required": [
     "project_id",
-    "background",
-    "editing_goal",
-    "constraints",
     "updated_at"
   ],
   "additionalProperties": false,
@@ -34,6 +31,7 @@
       "description": "A project."
     },
     "__schema0": {
+      "default": {},
       "$ref": "#/$defs/ProjectBackground"
     },
     "ProjectBackground": {
@@ -58,12 +56,6 @@
           "$ref": "#/$defs/__schema15"
         }
       },
-      "required": [
-        "people",
-        "places",
-        "vocabulary",
-        "notes"
-      ],
       "additionalProperties": false
     },
     "__schema1": {
@@ -99,8 +91,7 @@
         }
       },
       "required": [
-        "id",
-        "aliases"
+        "id"
       ],
       "additionalProperties": false
     },
@@ -148,8 +139,7 @@
         }
       },
       "required": [
-        "id",
-        "aliases"
+        "id"
       ],
       "additionalProperties": false
     },
@@ -185,6 +175,7 @@
       }
     },
     "__schema16": {
+      "default": {},
       "$ref": "#/$defs/EditingGoal"
     },
     "EditingGoal": {
@@ -218,12 +209,6 @@
           "$ref": "#/$defs/__schema25"
         }
       },
-      "required": [
-        "tone",
-        "opening",
-        "middle",
-        "ending"
-      ],
       "additionalProperties": false
     },
     "__schema17": {
@@ -276,6 +261,7 @@
       "type": "string"
     },
     "__schema26": {
+      "default": {},
       "$ref": "#/$defs/ProjectConstraints"
     },
     "ProjectConstraints": {
@@ -306,14 +292,6 @@
           "$ref": "#/$defs/__schema34"
         }
       },
-      "required": [
-        "forbidden",
-        "required_assets",
-        "excluded_assets",
-        "allow_speed_change",
-        "allowed_music",
-        "forbidden_music"
-      ],
       "additionalProperties": false
     },
     "__schema27": {
@@ -367,7 +345,7 @@
     },
     "Iso8601": {
       "type": "string",
-      "minLength": 1,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
       "description": "ISO-8601 timestamp, always UTC with a trailing Z."
     }
   }

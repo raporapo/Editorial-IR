@@ -27,12 +27,7 @@
   },
   "required": [
     "protocol_version",
-    "worker_version",
-    "python_version",
-    "capabilities",
-    "device",
-    "vram_total_mb",
-    "ffmpeg_available"
+    "worker_version"
   ],
   "additionalProperties": false,
   "$defs": {
@@ -42,7 +37,12 @@
     "__schema1": {
       "type": "string"
     },
-    "__schema2": {},
+    "__schema2": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "__schema3": {
       "default": {},
       "type": "object",
@@ -57,7 +57,18 @@
       "default": "cpu",
       "type": "string"
     },
-    "__schema5": {},
+    "__schema5": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "__schema6": {
       "default": false,
       "type": "boolean"

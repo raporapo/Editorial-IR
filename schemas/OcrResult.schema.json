@@ -10,15 +10,15 @@
       "$ref": "#/$defs/__schema1"
     }
   },
-  "required": [
-    "model",
-    "observations"
-  ],
   "additionalProperties": false,
   "$defs": {
-    "__schema0": {},
+    "__schema0": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "__schema1": {
-      "default": [],
       "type": "array",
       "items": {
         "type": "object",
@@ -36,14 +36,38 @@
             "default": 0.5,
             "$ref": "#/$defs/Confidence"
           },
-          "bbox": {}
+          "bbox": {
+            "anyOf": [
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "items": false,
+                "minItems": 4,
+                "maxItems": 4
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
         },
         "required": [
           "start_ms",
           "end_ms",
-          "text",
-          "confidence",
-          "bbox"
+          "text"
         ],
         "additionalProperties": false
       }

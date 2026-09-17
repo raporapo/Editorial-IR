@@ -114,6 +114,7 @@ def handle_ocr(params: dict[str, Any], session: Session) -> dict[str, Any]:
         engine,
         _require(params, "path"),
         [int(t) for t in params.get("timestamps_ms") or []],
+        frames_dir=params.get("frames_dir"),
         progress=lambda fraction: session.progress(fraction),
     )
 

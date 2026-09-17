@@ -65,21 +65,11 @@
         }
       },
       "required": [
-        "ir_version",
         "pipeline_version",
         "generated_at",
         "fingerprint",
         "project",
         "context",
-        "assets",
-        "placements",
-        "chapters",
-        "events",
-        "editorial",
-        "relations",
-        "annotations",
-        "conflicts",
-        "model_runs",
         "stats"
       ],
       "additionalProperties": false,
@@ -94,7 +84,7 @@
         },
         "Iso8601": {
           "type": "string",
-          "minLength": 1,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
           "description": "ISO-8601 timestamp, always UTC with a trailing Z."
         },
         "__schema2": {
@@ -131,7 +121,6 @@
           "required": [
             "id",
             "title",
-            "status",
             "ir_version",
             "created_at",
             "updated_at"
@@ -190,15 +179,13 @@
           },
           "required": [
             "project_id",
-            "background",
-            "editing_goal",
-            "constraints",
             "updated_at"
           ],
           "additionalProperties": false,
           "title": "ProjectContext"
         },
         "__schema8": {
+          "default": {},
           "$ref": "#/$defs/ProjectBackground"
         },
         "ProjectBackground": {
@@ -223,12 +210,6 @@
               "$ref": "#/$defs/__schema23"
             }
           },
-          "required": [
-            "people",
-            "places",
-            "vocabulary",
-            "notes"
-          ],
           "additionalProperties": false
         },
         "__schema9": {
@@ -264,8 +245,7 @@
             }
           },
           "required": [
-            "id",
-            "aliases"
+            "id"
           ],
           "additionalProperties": false
         },
@@ -313,8 +293,7 @@
             }
           },
           "required": [
-            "id",
-            "aliases"
+            "id"
           ],
           "additionalProperties": false
         },
@@ -350,6 +329,7 @@
           }
         },
         "__schema24": {
+          "default": {},
           "$ref": "#/$defs/EditingGoal"
         },
         "EditingGoal": {
@@ -383,12 +363,6 @@
               "$ref": "#/$defs/__schema33"
             }
           },
-          "required": [
-            "tone",
-            "opening",
-            "middle",
-            "ending"
-          ],
           "additionalProperties": false
         },
         "__schema25": {
@@ -441,6 +415,7 @@
           "type": "string"
         },
         "__schema34": {
+          "default": {},
           "$ref": "#/$defs/ProjectConstraints"
         },
         "ProjectConstraints": {
@@ -471,14 +446,6 @@
               "$ref": "#/$defs/__schema42"
             }
           },
-          "required": [
-            "forbidden",
-            "required_assets",
-            "excluded_assets",
-            "allow_speed_change",
-            "allowed_music",
-            "forbidden_music"
-          ],
           "additionalProperties": false
         },
         "__schema35": {
@@ -611,8 +578,7 @@
             "kind",
             "sha256",
             "byte_size",
-            "duration_ms",
-            "metadata"
+            "duration_ms"
           ],
           "additionalProperties": false,
           "title": "MediaAsset"
@@ -790,7 +756,6 @@
             "start_ms",
             "end_ms",
             "title",
-            "event_ids",
             "provenance"
           ],
           "additionalProperties": false,
@@ -946,7 +911,6 @@
             "observed",
             "knowledge",
             "segmentation",
-            "embedding_refs",
             "confidence"
           ],
           "additionalProperties": false,
@@ -1029,13 +993,6 @@
               "$ref": "#/$defs/__schema80"
             }
           },
-          "required": [
-            "people",
-            "places",
-            "objects",
-            "topics",
-            "organisations"
-          ],
           "additionalProperties": false
         },
         "__schema76": {
@@ -1174,16 +1131,6 @@
               "$ref": "#/$defs/__schema97"
             }
           },
-          "required": [
-            "speech",
-            "visual_labels",
-            "ocr",
-            "audio",
-            "shot_ids",
-            "shot_count",
-            "speech_ratio",
-            "silence_ratio"
-          ],
           "additionalProperties": false
         },
         "__schema88": {
@@ -1303,12 +1250,6 @@
               "$ref": "#/$defs/__schema104"
             }
           },
-          "required": [
-            "notes",
-            "essential",
-            "excluded",
-            "annotation_refs"
-          ],
           "additionalProperties": false
         },
         "__schema98": {
@@ -1416,8 +1357,7 @@
           },
           "required": [
             "event_id",
-            "current",
-            "history"
+            "current"
           ],
           "additionalProperties": false
         },
@@ -1553,8 +1493,7 @@
             }
           },
           "required": [
-            "selected",
-            "probabilities"
+            "selected"
           ],
           "additionalProperties": false
         },
@@ -1721,7 +1660,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type"
           ],
@@ -1873,7 +1811,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type"
           ],
@@ -1908,7 +1845,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "value"
@@ -1944,7 +1880,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "strength"
@@ -1981,7 +1916,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "title"
@@ -2021,7 +1955,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "labels"
@@ -2064,7 +1997,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "people"
@@ -2109,7 +2041,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "mood"
@@ -2145,7 +2076,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "role"
@@ -2188,7 +2118,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "action"
@@ -2225,7 +2154,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "text"
@@ -2346,10 +2274,6 @@
             "id",
             "stage",
             "backend",
-            "locality",
-            "parameters",
-            "cost_usd",
-            "media_left_device",
             "created_at"
           ],
           "additionalProperties": false
@@ -2470,8 +2394,7 @@
             "shot_count",
             "mean_event_duration_ms",
             "total_cost_usd",
-            "compile_ms",
-            "embedding_kinds"
+            "compile_ms"
           ],
           "additionalProperties": false
         },
@@ -2569,7 +2492,6 @@
         }
       },
       "required": [
-        "edit_plan_version",
         "id",
         "project_id",
         "created_at",
@@ -2577,8 +2499,6 @@
         "skill",
         "sequence",
         "tracks",
-        "intent",
-        "rationale",
         "stats"
       ],
       "additionalProperties": false,
@@ -2598,7 +2518,7 @@
         },
         "Iso8601": {
           "type": "string",
-          "minLength": 1,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
           "description": "ISO-8601 timestamp, always UTC with a trailing Z."
         },
         "__schema1": {
@@ -2653,14 +2573,7 @@
           },
           "required": [
             "name",
-            "target_duration_ms",
-            "tolerance_ms",
-            "width",
-            "height",
-            "frame_rate",
-            "frame_rate_num",
-            "frame_rate_den",
-            "sample_rate"
+            "target_duration_ms"
           ],
           "additionalProperties": false
         },
@@ -2738,11 +2651,6 @@
               }
             }
           },
-          "required": [
-            "video",
-            "audio",
-            "text"
-          ],
           "additionalProperties": false
         },
         "VideoOperation": {
@@ -2796,11 +2704,7 @@
             "source_asset_id",
             "source_in_ms",
             "source_out_ms",
-            "timeline_start_ms",
-            "track",
-            "speed",
-            "use_source_audio",
-            "provenance"
+            "timeline_start_ms"
           ],
           "additionalProperties": false,
           "title": "VideoOperation"
@@ -2864,8 +2768,7 @@
             }
           },
           "required": [
-            "type",
-            "duration_ms"
+            "type"
           ],
           "additionalProperties": false
         },
@@ -2903,9 +2806,6 @@
               "$ref": "#/$defs/__schema22"
             }
           },
-          "required": [
-            "locked"
-          ],
           "additionalProperties": false
         },
         "__schema20": {
@@ -2966,9 +2866,7 @@
             }
           },
           "required": [
-            "type",
-            "track",
-            "gain_db"
+            "type"
           ],
           "additionalProperties": false
         },
@@ -3010,12 +2908,7 @@
           },
           "required": [
             "type",
-            "track",
-            "asset_id",
-            "source_in_ms",
-            "timeline_start_ms",
-            "gain_db",
-            "duck_under_speech"
+            "asset_id"
           ],
           "additionalProperties": false
         },
@@ -3051,9 +2944,7 @@
             "operation_id",
             "timeline_start_ms",
             "timeline_end_ms",
-            "text",
-            "kind",
-            "provenance"
+            "text"
           ],
           "additionalProperties": false
         },
@@ -3094,6 +2985,7 @@
           "$ref": "#/$defs/Provenance"
         },
         "__schema32": {
+          "default": {},
           "$ref": "#/$defs/PlanIntent"
         },
         "PlanIntent": {
@@ -3112,9 +3004,6 @@
               "$ref": "#/$defs/__schema36"
             }
           },
-          "required": [
-            "tone"
-          ],
           "additionalProperties": false
         },
         "__schema33": {
@@ -3165,8 +3054,7 @@
           "required": [
             "event_id",
             "decision",
-            "reason",
-            "skill_rule_ids"
+            "reason"
           ],
           "additionalProperties": false
         },
@@ -3305,15 +3193,7 @@
       "required": [
         "project_id",
         "pipeline_version",
-        "generated_at",
-        "fingerprint",
-        "utterances",
-        "shots",
-        "audio_events",
-        "ocr",
-        "frame_features",
-        "audio_profiles",
-        "model_runs"
+        "generated_at"
       ],
       "additionalProperties": false,
       "title": "ObservationTimeline",
@@ -3685,8 +3565,7 @@
           "required": [
             "id",
             "asset_id",
-            "timestamp_ms",
-            "labels"
+            "timestamp_ms"
           ],
           "additionalProperties": false
         },
@@ -3831,10 +3710,6 @@
             "id",
             "stage",
             "backend",
-            "locality",
-            "parameters",
-            "cost_usd",
-            "media_left_device",
             "created_at"
           ],
           "additionalProperties": false
@@ -3910,7 +3785,7 @@
         },
         "Iso8601": {
           "type": "string",
-          "minLength": 1,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
           "description": "ISO-8601 timestamp, always UTC with a trailing Z."
         }
       }
@@ -3961,17 +3836,7 @@
         }
       },
       "required": [
-        "manifest_version",
-        "name",
-        "version",
-        "description",
-        "extends",
-        "defaults",
-        "scoring",
-        "arc",
-        "constraints",
-        "rules",
-        "intent"
+        "name"
       ],
       "additionalProperties": false,
       "title": "SkillManifest",
@@ -4006,6 +3871,7 @@
           }
         },
         "__schema7": {
+          "default": {},
           "$ref": "#/$defs/SkillDefaults"
         },
         "SkillDefaults": {
@@ -4036,15 +3902,6 @@
               "$ref": "#/$defs/__schema16"
             }
           },
-          "required": [
-            "min_clip_duration_ms",
-            "max_clip_duration_ms",
-            "pad_in_ms",
-            "pad_out_ms",
-            "snap_to_silence",
-            "snap_window_ms",
-            "default_transition"
-          ],
           "additionalProperties": false
         },
         "__schema8": {
@@ -4095,8 +3952,7 @@
             }
           },
           "required": [
-            "type",
-            "duration_ms"
+            "type"
           ],
           "additionalProperties": false
         },
@@ -4119,6 +3975,7 @@
           "$ref": "#/$defs/Transition"
         },
         "__schema17": {
+          "default": {},
           "$ref": "#/$defs/SkillScoring"
         },
         "SkillScoring": {
@@ -4137,12 +3994,6 @@
               "$ref": "#/$defs/__schema21"
             }
           },
-          "required": [
-            "weights",
-            "flag_weights",
-            "duplicate_penalty",
-            "continuity_bonus"
-          ],
           "additionalProperties": false
         },
         "__schema18": {
@@ -4176,6 +4027,7 @@
           "minimum": 0
         },
         "__schema22": {
+          "default": {},
           "$ref": "#/$defs/SkillArc"
         },
         "SkillArc": {
@@ -4188,10 +4040,6 @@
               "$ref": "#/$defs/__schema24"
             }
           },
-          "required": [
-            "ordering",
-            "segments"
-          ],
           "additionalProperties": false
         },
         "__schema23": {
@@ -4227,9 +4075,7 @@
           },
           "required": [
             "name",
-            "budget",
-            "prefer_roles",
-            "require_roles"
+            "budget"
           ],
           "additionalProperties": false
         },
@@ -4273,6 +4119,7 @@
           }
         },
         "__schema28": {
+          "default": {},
           "$ref": "#/$defs/SkillConstraints"
         },
         "SkillConstraints": {
@@ -4294,11 +4141,6 @@
               "$ref": "#/$defs/__schema33"
             }
           },
-          "required": [
-            "preserve_user_essential_events",
-            "max_consecutive_same_role",
-            "forbid_roles"
-          ],
           "additionalProperties": false
         },
         "__schema29": {
@@ -4354,8 +4196,7 @@
           },
           "required": [
             "when",
-            "action",
-            "priority"
+            "action"
           ],
           "additionalProperties": false
         },
@@ -4832,6 +4673,7 @@
           "maximum": 9007199254740991
         },
         "__schema102": {
+          "default": {},
           "type": "object",
           "properties": {
             "opening": {
@@ -4851,9 +4693,6 @@
               }
             }
           },
-          "required": [
-            "tone"
-          ],
           "additionalProperties": false
         }
       }
@@ -4881,9 +4720,6 @@
       },
       "required": [
         "project_id",
-        "background",
-        "editing_goal",
-        "constraints",
         "updated_at"
       ],
       "additionalProperties": false,
@@ -4894,6 +4730,7 @@
           "description": "A project."
         },
         "__schema0": {
+          "default": {},
           "$ref": "#/$defs/ProjectBackground"
         },
         "ProjectBackground": {
@@ -4918,12 +4755,6 @@
               "$ref": "#/$defs/__schema15"
             }
           },
-          "required": [
-            "people",
-            "places",
-            "vocabulary",
-            "notes"
-          ],
           "additionalProperties": false
         },
         "__schema1": {
@@ -4959,8 +4790,7 @@
             }
           },
           "required": [
-            "id",
-            "aliases"
+            "id"
           ],
           "additionalProperties": false
         },
@@ -5008,8 +4838,7 @@
             }
           },
           "required": [
-            "id",
-            "aliases"
+            "id"
           ],
           "additionalProperties": false
         },
@@ -5045,6 +4874,7 @@
           }
         },
         "__schema16": {
+          "default": {},
           "$ref": "#/$defs/EditingGoal"
         },
         "EditingGoal": {
@@ -5078,12 +4908,6 @@
               "$ref": "#/$defs/__schema25"
             }
           },
-          "required": [
-            "tone",
-            "opening",
-            "middle",
-            "ending"
-          ],
           "additionalProperties": false
         },
         "__schema17": {
@@ -5136,6 +4960,7 @@
           "type": "string"
         },
         "__schema26": {
+          "default": {},
           "$ref": "#/$defs/ProjectConstraints"
         },
         "ProjectConstraints": {
@@ -5166,14 +4991,6 @@
               "$ref": "#/$defs/__schema34"
             }
           },
-          "required": [
-            "forbidden",
-            "required_assets",
-            "excluded_assets",
-            "allow_speed_change",
-            "allowed_music",
-            "forbidden_music"
-          ],
           "additionalProperties": false
         },
         "__schema27": {
@@ -5227,7 +5044,7 @@
         },
         "Iso8601": {
           "type": "string",
-          "minLength": 1,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
           "description": "ISO-8601 timestamp, always UTC with a trailing Z."
         }
       }
@@ -5252,7 +5069,6 @@
       },
       "required": [
         "ok",
-        "issues",
         "checked_at"
       ],
       "additionalProperties": false,
@@ -5387,8 +5203,7 @@
       },
       "required": [
         "project_id",
-        "generated_at",
-        "records"
+        "generated_at"
       ],
       "additionalProperties": false,
       "$defs": {
@@ -5541,23 +5356,7 @@
       "required": [
         "id",
         "name",
-        "mode",
-        "output_extensions",
-        "text",
-        "captions",
-        "basic_transition",
-        "transition_types",
-        "keyframes",
-        "masking",
-        "nested_sequence",
-        "speed_change",
-        "still_images",
-        "color_adjustment",
-        "audio_tracks",
-        "max_video_tracks",
-        "reads_back_timeline",
-        "renders_preview",
-        "notes"
+        "mode"
       ],
       "additionalProperties": false,
       "title": "AdapterCapabilities",
@@ -5689,10 +5488,7 @@
         }
       },
       "required": [
-        "adapter",
-        "artifacts",
-        "downgrades",
-        "warnings"
+        "adapter"
       ],
       "additionalProperties": false,
       "title": "ApplyResult",
@@ -5725,8 +5521,7 @@
           },
           "required": [
             "path",
-            "kind",
-            "description"
+            "kind"
           ],
           "additionalProperties": false
         },
@@ -5834,7 +5629,6 @@
         "plan_id",
         "revision_number",
         "reason",
-        "observations",
         "created_at"
       ],
       "additionalProperties": false,
@@ -5933,7 +5727,7 @@
         },
         "Iso8601": {
           "type": "string",
-          "minLength": 1,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
           "description": "ISO-8601 timestamp, always UTC with a trailing Z."
         }
       }
@@ -5967,13 +5761,13 @@
           "$ref": "#/$defs/__schema30"
         },
         {
-          "$ref": "#/$defs/__schema34"
+          "$ref": "#/$defs/__schema35"
         },
         {
-          "$ref": "#/$defs/__schema45"
+          "$ref": "#/$defs/__schema46"
         },
         {
-          "$ref": "#/$defs/__schema49"
+          "$ref": "#/$defs/__schema50"
         }
       ],
       "title": "PerceptionRequest",
@@ -5998,9 +5792,7 @@
           },
           "required": [
             "id",
-            "v",
-            "op",
-            "params"
+            "op"
           ],
           "additionalProperties": false
         },
@@ -6036,7 +5828,6 @@
           },
           "required": [
             "id",
-            "v",
             "op",
             "params"
           ],
@@ -6077,7 +5868,6 @@
           },
           "required": [
             "id",
-            "v",
             "op",
             "params"
           ],
@@ -6104,10 +5894,7 @@
           },
           "required": [
             "path",
-            "work_dir",
-            "proxy_height",
-            "extract_audio",
-            "frame_fps"
+            "work_dir"
           ],
           "additionalProperties": false
         },
@@ -6153,7 +5940,6 @@
           },
           "required": [
             "id",
-            "v",
             "op",
             "params"
           ],
@@ -6179,10 +5965,7 @@
             }
           },
           "required": [
-            "audio_path",
-            "vocabulary",
-            "word_timestamps",
-            "diarize"
+            "audio_path"
           ],
           "additionalProperties": false
         },
@@ -6227,7 +6010,6 @@
           },
           "required": [
             "id",
-            "v",
             "op",
             "params"
           ],
@@ -6247,9 +6029,7 @@
             }
           },
           "required": [
-            "path",
-            "threshold",
-            "min_shot_ms"
+            "path"
           ],
           "additionalProperties": false
         },
@@ -6292,7 +6072,6 @@
           },
           "required": [
             "id",
-            "v",
             "op",
             "params"
           ],
@@ -6313,8 +6092,7 @@
           },
           "required": [
             "path",
-            "timestamps_ms",
-            "label_vocabulary"
+            "timestamps_ms"
           ],
           "additionalProperties": false
         },
@@ -6355,7 +6133,6 @@
           },
           "required": [
             "id",
-            "v",
             "op",
             "params"
           ],
@@ -6378,10 +6155,7 @@
             }
           },
           "required": [
-            "audio_path",
-            "hop_ms",
-            "silence_threshold_db",
-            "classify_events"
+            "audio_path"
           ],
           "additionalProperties": false
         },
@@ -6422,7 +6196,6 @@
           },
           "required": [
             "id",
-            "v",
             "op",
             "params"
           ],
@@ -6439,6 +6212,9 @@
             },
             "language": {
               "$ref": "#/$defs/__schema33"
+            },
+            "frames_dir": {
+              "$ref": "#/$defs/__schema34"
             }
           },
           "required": [
@@ -6462,6 +6238,9 @@
           "type": "string"
         },
         "__schema34": {
+          "type": "string"
+        },
+        "__schema35": {
           "type": "object",
           "properties": {
             "id": {
@@ -6480,7 +6259,6 @@
           },
           "required": [
             "id",
-            "v",
             "op",
             "params"
           ],
@@ -6490,56 +6268,43 @@
           "type": "object",
           "properties": {
             "event_id": {
-              "$ref": "#/$defs/__schema35"
-            },
-            "frame_paths": {
               "$ref": "#/$defs/__schema36"
             },
-            "transcript": {
+            "frame_paths": {
               "$ref": "#/$defs/__schema37"
             },
-            "ocr": {
+            "transcript": {
               "$ref": "#/$defs/__schema38"
             },
-            "audio_tags": {
+            "ocr": {
               "$ref": "#/$defs/__schema39"
             },
-            "visual_labels": {
+            "audio_tags": {
               "$ref": "#/$defs/__schema40"
             },
-            "previous_summary": {
+            "visual_labels": {
               "$ref": "#/$defs/__schema41"
             },
-            "next_summary": {
+            "previous_summary": {
               "$ref": "#/$defs/__schema42"
             },
-            "user_context": {
+            "next_summary": {
               "$ref": "#/$defs/__schema43"
             },
-            "language": {
+            "user_context": {
               "$ref": "#/$defs/__schema44"
+            },
+            "language": {
+              "$ref": "#/$defs/__schema45"
             }
           },
           "required": [
-            "event_id",
-            "frame_paths",
-            "transcript",
-            "ocr",
-            "audio_tags",
-            "visual_labels",
-            "user_context"
+            "event_id"
           ],
           "additionalProperties": false
         },
-        "__schema35": {
-          "type": "string"
-        },
         "__schema36": {
-          "default": [],
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+          "type": "string"
         },
         "__schema37": {
           "default": [],
@@ -6570,12 +6335,19 @@
           }
         },
         "__schema41": {
-          "type": "string"
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "__schema42": {
           "type": "string"
         },
         "__schema43": {
+          "type": "string"
+        },
+        "__schema44": {
           "default": {},
           "type": "object",
           "propertyNames": {
@@ -6583,10 +6355,10 @@
           },
           "additionalProperties": {}
         },
-        "__schema44": {
+        "__schema45": {
           "type": "string"
         },
-        "__schema45": {
+        "__schema46": {
           "type": "object",
           "properties": {
             "id": {
@@ -6605,7 +6377,6 @@
           },
           "required": [
             "id",
-            "v",
             "op",
             "params"
           ],
@@ -6615,29 +6386,28 @@
           "type": "object",
           "properties": {
             "texts": {
-              "$ref": "#/$defs/__schema46"
+              "$ref": "#/$defs/__schema47"
             },
             "role": {
-              "$ref": "#/$defs/__schema48"
+              "$ref": "#/$defs/__schema49"
             }
           },
           "required": [
-            "texts",
-            "role"
+            "texts"
           ],
           "additionalProperties": false
         },
-        "__schema46": {
+        "__schema47": {
           "minItems": 1,
           "type": "array",
           "items": {
-            "$ref": "#/$defs/__schema47"
+            "$ref": "#/$defs/__schema48"
           }
         },
-        "__schema47": {
+        "__schema48": {
           "type": "string"
         },
-        "__schema48": {
+        "__schema49": {
           "default": "passage",
           "type": "string",
           "enum": [
@@ -6645,7 +6415,7 @@
             "passage"
           ]
         },
-        "__schema49": {
+        "__schema50": {
           "type": "object",
           "properties": {
             "id": {
@@ -6667,9 +6437,7 @@
           },
           "required": [
             "id",
-            "v",
-            "op",
-            "params"
+            "op"
           ],
           "additionalProperties": false
         }
@@ -6728,7 +6496,12 @@
               "type": "boolean",
               "const": false
             },
-            "op": {},
+            "op": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "error": {
               "type": "object",
               "properties": {
@@ -6738,12 +6511,24 @@
                 "message": {
                   "type": "string"
                 },
-                "details": {}
+                "details": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
               },
               "required": [
                 "code",
-                "message",
-                "details"
+                "message"
               ],
               "additionalProperties": false
             }
@@ -6752,7 +6537,6 @@
             "v",
             "id",
             "ok",
-            "op",
             "error"
           ],
           "additionalProperties": false
@@ -6799,10 +6583,7 @@
       "required": [
         "v",
         "id",
-        "event",
-        "progress",
-        "message",
-        "level"
+        "event"
       ],
       "additionalProperties": false,
       "$defs": {
@@ -6819,9 +6600,43 @@
             "log"
           ]
         },
-        "__schema3": {},
-        "__schema4": {},
-        "__schema5": {}
+        "__schema3": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UnitScore"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "UnitScore": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "__schema4": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "__schema5": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
       }
     },
     "HealthResult": {
@@ -6853,12 +6668,7 @@
       },
       "required": [
         "protocol_version",
-        "worker_version",
-        "python_version",
-        "capabilities",
-        "device",
-        "vram_total_mb",
-        "ffmpeg_available"
+        "worker_version"
       ],
       "additionalProperties": false,
       "$defs": {
@@ -6868,7 +6678,12 @@
         "__schema1": {
           "type": "string"
         },
-        "__schema2": {},
+        "__schema2": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "__schema3": {
           "default": {},
           "type": "object",
@@ -6883,7 +6698,18 @@
           "default": "cpu",
           "type": "string"
         },
-        "__schema5": {},
+        "__schema5": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "__schema6": {
           "default": false,
           "type": "boolean"
@@ -6939,20 +6765,7 @@
         }
       },
       "required": [
-        "duration_ms",
-        "width",
-        "height",
-        "fps_num",
-        "fps_den",
-        "video_codec",
-        "audio_codec",
-        "audio_channels",
-        "audio_sample_rate",
-        "container",
-        "bit_rate",
-        "rotation",
-        "creation_time",
-        "metadata"
+        "duration_ms"
       ],
       "additionalProperties": false,
       "$defs": {
@@ -6962,18 +6775,126 @@
           "maximum": 9007199254740991,
           "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
         },
-        "__schema0": {},
-        "__schema1": {},
-        "__schema2": {},
-        "__schema3": {},
-        "__schema4": {},
-        "__schema5": {},
-        "__schema6": {},
-        "__schema7": {},
-        "__schema8": {},
-        "__schema9": {},
-        "__schema10": {},
-        "__schema11": {},
+        "__schema0": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema1": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema2": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema3": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema4": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "__schema5": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "__schema6": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema7": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema8": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "__schema9": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema10": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema11": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "__schema12": {
           "default": {},
           "type": "object",
@@ -7002,17 +6923,26 @@
           "$ref": "#/$defs/__schema3"
         }
       },
-      "required": [
-        "proxy_path",
-        "audio_path",
-        "frames_dir",
-        "frame_timestamps_ms"
-      ],
       "additionalProperties": false,
       "$defs": {
-        "__schema0": {},
-        "__schema1": {},
-        "__schema2": {},
+        "__schema0": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "__schema1": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "__schema2": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "__schema3": {
           "default": [],
           "type": "array",
@@ -7043,17 +6973,21 @@
           "$ref": "#/$defs/__schema2"
         }
       },
-      "required": [
-        "language",
-        "model",
-        "utterances"
-      ],
       "additionalProperties": false,
       "$defs": {
-        "__schema0": {},
-        "__schema1": {},
+        "__schema0": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "__schema1": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "__schema2": {
-          "default": [],
           "type": "array",
           "items": {
             "type": "object",
@@ -7067,7 +7001,12 @@
               "text": {
                 "type": "string"
               },
-              "speaker_id": {},
+              "speaker_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "confidence": {
                 "default": 0.5,
                 "$ref": "#/$defs/Confidence"
@@ -7086,13 +7025,21 @@
                     "text": {
                       "type": "string"
                     },
-                    "confidence": {}
+                    "confidence": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/Confidence"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
                   },
                   "required": [
                     "start_ms",
                     "end_ms",
-                    "text",
-                    "confidence"
+                    "text"
                   ],
                   "additionalProperties": false
                 }
@@ -7101,9 +7048,7 @@
             "required": [
               "start_ms",
               "end_ms",
-              "text",
-              "speaker_id",
-              "confidence"
+              "text"
             ],
             "additionalProperties": false
           }
@@ -7134,15 +7079,15 @@
           "$ref": "#/$defs/__schema1"
         }
       },
-      "required": [
-        "model",
-        "shots"
-      ],
       "additionalProperties": false,
       "$defs": {
-        "__schema0": {},
+        "__schema0": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "__schema1": {
-          "default": [],
           "type": "array",
           "items": {
             "type": "object",
@@ -7156,13 +7101,23 @@
               "representative_frame_ms": {
                 "$ref": "#/$defs/Milliseconds"
               },
-              "change_score": {}
+              "change_score": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
             },
             "required": [
               "start_ms",
               "end_ms",
-              "representative_frame_ms",
-              "change_score"
+              "representative_frame_ms"
             ],
             "additionalProperties": false
           }
@@ -7191,20 +7146,22 @@
         }
       },
       "required": [
-        "model",
-        "dim",
-        "frames"
+        "dim"
       ],
       "additionalProperties": false,
       "$defs": {
-        "__schema0": {},
+        "__schema0": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "__schema1": {
           "type": "integer",
           "minimum": 1,
           "maximum": 9007199254740991
         },
         "__schema2": {
-          "default": [],
           "type": "array",
           "items": {
             "type": "object",
@@ -7225,17 +7182,40 @@
                   "type": "string"
                 }
               },
-              "sharpness": {},
-              "exposure": {},
-              "motion": {}
+              "sharpness": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/UnitScore"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "exposure": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/UnitScore"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "motion": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/UnitScore"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
             },
             "required": [
               "timestamp_ms",
-              "vector",
-              "labels",
-              "sharpness",
-              "exposure",
-              "motion"
+              "vector"
             ],
             "additionalProperties": false
           }
@@ -7245,6 +7225,11 @@
           "minimum": 0,
           "maximum": 9007199254740991,
           "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+        },
+        "UnitScore": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
         }
       }
     },
@@ -7270,15 +7255,16 @@
         }
       },
       "required": [
-        "model",
-        "hop_ms",
-        "rms_db",
-        "speech_prob",
-        "events"
+        "hop_ms"
       ],
       "additionalProperties": false,
       "$defs": {
-        "__schema0": {},
+        "__schema0": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "__schema1": {
           "type": "integer",
           "minimum": 1,
@@ -7291,9 +7277,25 @@
             "type": "number"
           }
         },
-        "__schema3": {},
+        "__schema3": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/UnitScore"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "UnitScore": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
         "__schema4": {
-          "default": [],
           "type": "array",
           "items": {
             "type": "object",
@@ -7307,7 +7309,12 @@
               "event_type": {
                 "$ref": "#/$defs/AudioEventType"
               },
-              "raw_label": {},
+              "raw_label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "confidence": {
                 "default": 0.5,
                 "$ref": "#/$defs/Confidence"
@@ -7316,9 +7323,7 @@
             "required": [
               "start_ms",
               "end_ms",
-              "event_type",
-              "raw_label",
-              "confidence"
+              "event_type"
             ],
             "additionalProperties": false
           }
@@ -7365,15 +7370,15 @@
           "$ref": "#/$defs/__schema1"
         }
       },
-      "required": [
-        "model",
-        "observations"
-      ],
       "additionalProperties": false,
       "$defs": {
-        "__schema0": {},
+        "__schema0": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "__schema1": {
-          "default": [],
           "type": "array",
           "items": {
             "type": "object",
@@ -7391,14 +7396,38 @@
                 "default": 0.5,
                 "$ref": "#/$defs/Confidence"
               },
-              "bbox": {}
+              "bbox": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "items": false,
+                    "minItems": 4,
+                    "maxItems": 4
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
             },
             "required": [
               "start_ms",
               "end_ms",
-              "text",
-              "confidence",
-              "bbox"
+              "text"
             ],
             "additionalProperties": false
           }
@@ -7451,19 +7480,16 @@
         }
       },
       "required": [
-        "model",
-        "description",
-        "event_type",
-        "title",
-        "entities",
-        "affect",
-        "confidence",
-        "input_tokens",
-        "output_tokens"
+        "description"
       ],
       "additionalProperties": false,
       "$defs": {
-        "__schema0": {},
+        "__schema0": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "__schema1": {
           "type": "string"
         },
@@ -7471,8 +7497,14 @@
           "default": "",
           "type": "string"
         },
-        "__schema3": {},
+        "__schema3": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "__schema4": {
+          "default": {},
           "type": "object",
           "properties": {
             "people": {
@@ -7504,12 +7536,6 @@
               }
             }
           },
-          "required": [
-            "people",
-            "places",
-            "objects",
-            "topics"
-          ],
           "additionalProperties": false
         },
         "__schema5": {
@@ -7544,8 +7570,30 @@
           "maximum": 1,
           "description": "Confidence in [0,1]. 1 means certain, 0 means no support at all."
         },
-        "__schema8": {},
-        "__schema9": {}
+        "__schema8": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema9": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
       }
     },
     "EmbedTextResult": {
@@ -7564,13 +7612,16 @@
         }
       },
       "required": [
-        "model",
-        "dim",
-        "vectors"
+        "dim"
       ],
       "additionalProperties": false,
       "$defs": {
-        "__schema0": {},
+        "__schema0": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "__schema1": {
           "type": "integer",
           "minimum": 1,
@@ -7626,8 +7677,7 @@
         "duration_ms",
         "relative_position",
         "observed",
-        "semantic",
-        "user_context"
+        "semantic"
       ],
       "additionalProperties": false,
       "title": "EventState",
@@ -7695,15 +7745,6 @@
               "$ref": "#/$defs/UnitScore"
             }
           },
-          "required": [
-            "speech",
-            "visual_labels",
-            "ocr",
-            "audio",
-            "shot_count",
-            "speech_ratio",
-            "silence_ratio"
-          ],
           "additionalProperties": false
         },
         "__schema2": {
@@ -7718,6 +7759,7 @@
               "type": "string"
             },
             "entities": {
+              "default": {},
               "type": "object",
               "properties": {
                 "people": {
@@ -7742,11 +7784,6 @@
                   }
                 }
               },
-              "required": [
-                "people",
-                "places",
-                "topics"
-              ],
               "additionalProperties": false
             },
             "affect": {
@@ -7754,12 +7791,6 @@
               "$ref": "#/$defs/Affect"
             }
           },
-          "required": [
-            "description",
-            "event_type",
-            "entities",
-            "affect"
-          ],
           "additionalProperties": false
         },
         "Affect": {
@@ -7808,6 +7839,7 @@
           "additionalProperties": false
         },
         "__schema6": {
+          "default": {},
           "type": "object",
           "properties": {
             "occasion": {
@@ -7856,11 +7888,6 @@
               "type": "boolean"
             }
           },
-          "required": [
-            "tone",
-            "notes",
-            "essential"
-          ],
           "additionalProperties": false
         },
         "__schema7": {
@@ -7914,8 +7941,7 @@
             }
           },
           "required": [
-            "value",
-            "description"
+            "value"
           ],
           "additionalProperties": false
         },
@@ -7941,8 +7967,7 @@
         }
       },
       "required": [
-        "selected",
-        "probabilities"
+        "selected"
       ],
       "additionalProperties": false,
       "$defs": {
@@ -8017,8 +8042,7 @@
           },
           "required": [
             "level",
-            "label",
-            "description"
+            "label"
           ],
           "additionalProperties": false
         },
@@ -8053,8 +8077,7 @@
       },
       "required": [
         "level",
-        "value",
-        "probabilities"
+        "value"
       ],
       "additionalProperties": false,
       "$defs": {
@@ -8275,8 +8298,7 @@
             }
           },
           "required": [
-            "selected",
-            "probabilities"
+            "selected"
           ],
           "additionalProperties": false
         },
@@ -8387,8 +8409,7 @@
         "kind",
         "sha256",
         "byte_size",
-        "duration_ms",
-        "metadata"
+        "duration_ms"
       ],
       "additionalProperties": false,
       "title": "MediaAsset",
@@ -8486,7 +8507,7 @@
         },
         "Iso8601": {
           "type": "string",
-          "minLength": 1,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
           "description": "ISO-8601 timestamp, always UTC with a trailing Z."
         },
         "__schema16": {
@@ -8616,7 +8637,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type"
           ],
@@ -8762,7 +8782,7 @@
         },
         "Iso8601": {
           "type": "string",
-          "minLength": 1,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
           "description": "ISO-8601 timestamp, always UTC with a trailing Z."
         },
         "__schema8": {
@@ -8791,7 +8811,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type"
           ],
@@ -8826,7 +8845,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "value"
@@ -8867,7 +8885,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "strength"
@@ -8904,7 +8921,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "title"
@@ -8944,7 +8960,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "labels"
@@ -8987,7 +9002,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "people"
@@ -9032,7 +9046,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "mood"
@@ -9068,7 +9081,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "role"
@@ -9127,7 +9139,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "action"
@@ -9164,7 +9175,6 @@
           "required": [
             "id",
             "target",
-            "priority",
             "created_at",
             "type",
             "text"
@@ -9236,7 +9246,6 @@
         "observed",
         "knowledge",
         "segmentation",
-        "embedding_refs",
         "confidence"
       ],
       "additionalProperties": false,
@@ -9398,13 +9407,6 @@
               "$ref": "#/$defs/__schema11"
             }
           },
-          "required": [
-            "people",
-            "places",
-            "objects",
-            "topics",
-            "organisations"
-          ],
           "additionalProperties": false
         },
         "__schema7": {
@@ -9543,16 +9545,6 @@
               "$ref": "#/$defs/__schema28"
             }
           },
-          "required": [
-            "speech",
-            "visual_labels",
-            "ocr",
-            "audio",
-            "shot_ids",
-            "shot_count",
-            "speech_ratio",
-            "silence_ratio"
-          ],
           "additionalProperties": false
         },
         "__schema19": {
@@ -9672,12 +9664,6 @@
               "$ref": "#/$defs/__schema35"
             }
           },
-          "required": [
-            "notes",
-            "essential",
-            "excluded",
-            "annotation_refs"
-          ],
           "additionalProperties": false
         },
         "__schema29": {
@@ -9800,7 +9786,6 @@
         "start_ms",
         "end_ms",
         "title",
-        "event_ids",
         "provenance"
       ],
       "additionalProperties": false,
@@ -10038,10 +10023,6 @@
         "id",
         "stage",
         "backend",
-        "locality",
-        "parameters",
-        "cost_usd",
-        "media_left_device",
         "created_at"
       ],
       "additionalProperties": false,
@@ -10127,7 +10108,7 @@
         },
         "Iso8601": {
           "type": "string",
-          "minLength": 1,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
           "description": "ISO-8601 timestamp, always UTC with a trailing Z."
         }
       }
@@ -10262,15 +10243,7 @@
         "base_score",
         "score",
         "min_duration_ms",
-        "max_duration_ms",
-        "dropped",
-        "required",
-        "locked",
-        "as_b_roll",
-        "preserve_reaction",
-        "prefer_higher_quality_only",
-        "tags",
-        "matched_rule_ids"
+        "max_duration_ms"
       ],
       "additionalProperties": false,
       "$defs": {
@@ -10353,8 +10326,7 @@
             }
           },
           "required": [
-            "type",
-            "duration_ms"
+            "type"
           ],
           "additionalProperties": false
         },

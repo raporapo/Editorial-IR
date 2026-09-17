@@ -5,6 +5,7 @@ import {
   EditorialError,
   PIPELINE_VERSION,
   seqId,
+  toIso8601,
   type AssetPlacement,
   type MediaAsset,
   type MediaKind,
@@ -135,6 +136,7 @@ export async function ingestPaths(
 
     const kind = mediaKindOf(file) ?? 'video';
     const stat = statSync(file);
+    const captured = toIso8601(probe.creation_time);
     const asset: MediaAsset = {
       id: seqId('asset', nextIndex++, 3),
       path: relativeToProject(file, options.projectRoot),
@@ -158,7 +160,10 @@ export async function ingestPaths(
       ...(probe.container === undefined ? {} : { container: probe.container }),
       ...(probe.bit_rate === undefined ? {} : { bit_rate: probe.bit_rate }),
       ...(probe.rotation === undefined ? {} : { rotation: probe.rotation }),
-      ...(probe.creation_time === undefined ? {} : { creation_time: probe.creation_time }),
+      // Whatever the container said, as an instant or not at all. A date the
+      // contract cannot hold is worse than none: assets are laid on the capture
+      // timeline in this order, and a misread one invents continuity.
+      ...(captured === undefined ? {} : { creation_time: captured }),
       metadata: probe.metadata,
     };
 
@@ -207,8 +212,11 @@ export function placeAssets(assets: readonly MediaAsset[]): AssetPlacement[] {
   const everyAssetHasTime = assets.every((asset) => asset.creation_time);
   const ordered = [...assets].sort((a, b) => {
     if (everyAssetHasTime) {
-      const byTime = (a.creation_time ?? '').localeCompare(b.creation_time ?? '');
-      if (byTime !== 0) return byTime;
+      // By the instant, not by how the string sorts. The two agree only while
+      // every timestamp is in the one canonical form, which is a property of
+      // what `ingest` writes rather than of what a camera produces.
+      const byTime = Date.parse(a.creation_time!) - Date.parse(b.creation_time!);
+      if (byTime !== 0 && Number.isFinite(byTime)) return byTime;
     }
     return a.file_name.localeCompare(b.file_name) || a.id.localeCompare(b.id);
   });

@@ -48,8 +48,7 @@
       },
       "required": [
         "level",
-        "label",
-        "description"
+        "label"
       ],
       "additionalProperties": false
     },

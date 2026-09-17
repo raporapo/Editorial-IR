@@ -18,7 +18,6 @@
   },
   "required": [
     "ok",
-    "issues",
     "checked_at"
   ],
   "additionalProperties": false,

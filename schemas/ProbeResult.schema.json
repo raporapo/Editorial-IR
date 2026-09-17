@@ -47,20 +47,7 @@
     }
   },
   "required": [
-    "duration_ms",
-    "width",
-    "height",
-    "fps_num",
-    "fps_den",
-    "video_codec",
-    "audio_codec",
-    "audio_channels",
-    "audio_sample_rate",
-    "container",
-    "bit_rate",
-    "rotation",
-    "creation_time",
-    "metadata"
+    "duration_ms"
   ],
   "additionalProperties": false,
   "$defs": {
@@ -70,18 +57,126 @@
       "maximum": 9007199254740991,
       "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
     },
-    "__schema0": {},
-    "__schema1": {},
-    "__schema2": {},
-    "__schema3": {},
-    "__schema4": {},
-    "__schema5": {},
-    "__schema6": {},
-    "__schema7": {},
-    "__schema8": {},
-    "__schema9": {},
-    "__schema10": {},
-    "__schema11": {},
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema1": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema2": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema3": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema4": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "__schema5": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "__schema6": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema7": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema8": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "__schema9": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema10": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema11": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "__schema12": {
       "default": {},
       "type": "object",

@@ -25,10 +25,7 @@
   "required": [
     "v",
     "id",
-    "event",
-    "progress",
-    "message",
-    "level"
+    "event"
   ],
   "additionalProperties": false,
   "$defs": {
@@ -45,8 +42,42 @@
         "log"
       ]
     },
-    "__schema3": {},
-    "__schema4": {},
-    "__schema5": {}
+    "__schema3": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UnitScore"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "UnitScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "__schema4": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "__schema5": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
   }
 }

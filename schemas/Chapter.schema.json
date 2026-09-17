@@ -33,7 +33,6 @@
     "start_ms",
     "end_ms",
     "title",
-    "event_ids",
     "provenance"
   ],
   "additionalProperties": false,

@@ -7,6 +7,11 @@ TypeScript owns the contract; Python implements it. The schemas in
 and checked in CI — a cross-language contract that exists in only one language is
 how two runtimes quietly diverge.
 
+They describe what a producer has to write, not what a reader ends up with: a
+field with a default is optional there, because leaving it out is allowed and
+the default fills it in. An optional field is `T | null`, because a producer may
+send either a missing key or an explicit null.
+
 ## The transport is not the architecture
 
 Today it is JSON Lines over a subprocess. One request per line on stdin, one

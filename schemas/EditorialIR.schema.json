@@ -53,21 +53,11 @@
     }
   },
   "required": [
-    "ir_version",
     "pipeline_version",
     "generated_at",
     "fingerprint",
     "project",
     "context",
-    "assets",
-    "placements",
-    "chapters",
-    "events",
-    "editorial",
-    "relations",
-    "annotations",
-    "conflicts",
-    "model_runs",
     "stats"
   ],
   "additionalProperties": false,
@@ -82,7 +72,7 @@
     },
     "Iso8601": {
       "type": "string",
-      "minLength": 1,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
       "description": "ISO-8601 timestamp, always UTC with a trailing Z."
     },
     "__schema2": {
@@ -119,7 +109,6 @@
       "required": [
         "id",
         "title",
-        "status",
         "ir_version",
         "created_at",
         "updated_at"
@@ -178,15 +167,13 @@
       },
       "required": [
         "project_id",
-        "background",
-        "editing_goal",
-        "constraints",
         "updated_at"
       ],
       "additionalProperties": false,
       "title": "ProjectContext"
     },
     "__schema8": {
+      "default": {},
       "$ref": "#/$defs/ProjectBackground"
     },
     "ProjectBackground": {
@@ -211,12 +198,6 @@
           "$ref": "#/$defs/__schema23"
         }
       },
-      "required": [
-        "people",
-        "places",
-        "vocabulary",
-        "notes"
-      ],
       "additionalProperties": false
     },
     "__schema9": {
@@ -252,8 +233,7 @@
         }
       },
       "required": [
-        "id",
-        "aliases"
+        "id"
       ],
       "additionalProperties": false
     },
@@ -301,8 +281,7 @@
         }
       },
       "required": [
-        "id",
-        "aliases"
+        "id"
       ],
       "additionalProperties": false
     },
@@ -338,6 +317,7 @@
       }
     },
     "__schema24": {
+      "default": {},
       "$ref": "#/$defs/EditingGoal"
     },
     "EditingGoal": {
@@ -371,12 +351,6 @@
           "$ref": "#/$defs/__schema33"
         }
       },
-      "required": [
-        "tone",
-        "opening",
-        "middle",
-        "ending"
-      ],
       "additionalProperties": false
     },
     "__schema25": {
@@ -429,6 +403,7 @@
       "type": "string"
     },
     "__schema34": {
+      "default": {},
       "$ref": "#/$defs/ProjectConstraints"
     },
     "ProjectConstraints": {
@@ -459,14 +434,6 @@
           "$ref": "#/$defs/__schema42"
         }
       },
-      "required": [
-        "forbidden",
-        "required_assets",
-        "excluded_assets",
-        "allow_speed_change",
-        "allowed_music",
-        "forbidden_music"
-      ],
       "additionalProperties": false
     },
     "__schema35": {
@@ -599,8 +566,7 @@
         "kind",
         "sha256",
         "byte_size",
-        "duration_ms",
-        "metadata"
+        "duration_ms"
       ],
       "additionalProperties": false,
       "title": "MediaAsset"
@@ -778,7 +744,6 @@
         "start_ms",
         "end_ms",
         "title",
-        "event_ids",
         "provenance"
       ],
       "additionalProperties": false,
@@ -934,7 +899,6 @@
         "observed",
         "knowledge",
         "segmentation",
-        "embedding_refs",
         "confidence"
       ],
       "additionalProperties": false,
@@ -1017,13 +981,6 @@
           "$ref": "#/$defs/__schema80"
         }
       },
-      "required": [
-        "people",
-        "places",
-        "objects",
-        "topics",
-        "organisations"
-      ],
       "additionalProperties": false
     },
     "__schema76": {
@@ -1162,16 +1119,6 @@
           "$ref": "#/$defs/__schema97"
         }
       },
-      "required": [
-        "speech",
-        "visual_labels",
-        "ocr",
-        "audio",
-        "shot_ids",
-        "shot_count",
-        "speech_ratio",
-        "silence_ratio"
-      ],
       "additionalProperties": false
     },
     "__schema88": {
@@ -1291,12 +1238,6 @@
           "$ref": "#/$defs/__schema104"
         }
       },
-      "required": [
-        "notes",
-        "essential",
-        "excluded",
-        "annotation_refs"
-      ],
       "additionalProperties": false
     },
     "__schema98": {
@@ -1404,8 +1345,7 @@
       },
       "required": [
         "event_id",
-        "current",
-        "history"
+        "current"
       ],
       "additionalProperties": false
     },
@@ -1541,8 +1481,7 @@
         }
       },
       "required": [
-        "selected",
-        "probabilities"
+        "selected"
       ],
       "additionalProperties": false
     },
@@ -1709,7 +1648,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type"
       ],
@@ -1861,7 +1799,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type"
       ],
@@ -1896,7 +1833,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "value"
@@ -1932,7 +1868,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "strength"
@@ -1969,7 +1904,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "title"
@@ -2009,7 +1943,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "labels"
@@ -2052,7 +1985,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "people"
@@ -2097,7 +2029,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "mood"
@@ -2133,7 +2064,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "role"
@@ -2176,7 +2106,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "action"
@@ -2213,7 +2142,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "text"
@@ -2334,10 +2262,6 @@
         "id",
         "stage",
         "backend",
-        "locality",
-        "parameters",
-        "cost_usd",
-        "media_left_device",
         "created_at"
       ],
       "additionalProperties": false
@@ -2458,8 +2382,7 @@
         "shot_count",
         "mean_event_duration_ms",
         "total_cost_usd",
-        "compile_ms",
-        "embedding_kinds"
+        "compile_ms"
       ],
       "additionalProperties": false
     },

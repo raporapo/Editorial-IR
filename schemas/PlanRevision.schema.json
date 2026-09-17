@@ -27,7 +27,6 @@
     "plan_id",
     "revision_number",
     "reason",
-    "observations",
     "created_at"
   ],
   "additionalProperties": false,
@@ -126,7 +125,7 @@
     },
     "Iso8601": {
       "type": "string",
-      "minLength": 1,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
       "description": "ISO-8601 timestamp, always UTC with a trailing Z."
     }
   }

@@ -145,6 +145,16 @@ export function buildAviUtlJob(
             },
           }
         : {}),
+      // The plan carries both sides and only one was written, so a skill asking
+      // for the last shot to fade out got a hard cut to black.
+      ...(operation.transition_out && operation.transition_out.type !== 'hard_cut'
+        ? {
+            transition_out: {
+              type: operation.transition_out.type,
+              frames: frames(operation.transition_out.duration_ms),
+            },
+          }
+        : {}),
       role: operation.role ?? null,
       description: event?.description.value ?? null,
     };

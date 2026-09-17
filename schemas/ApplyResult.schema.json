@@ -20,10 +20,7 @@
     }
   },
   "required": [
-    "adapter",
-    "artifacts",
-    "downgrades",
-    "warnings"
+    "adapter"
   ],
   "additionalProperties": false,
   "title": "ApplyResult",
@@ -56,8 +53,7 @@
       },
       "required": [
         "path",
-        "kind",
-        "description"
+        "kind"
       ],
       "additionalProperties": false
     },

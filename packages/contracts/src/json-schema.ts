@@ -96,9 +96,17 @@ export const CONTRACT_VERSIONS = {
 
 export function toJsonSchema(name: SchemaName): Record<string, unknown> {
   const schema = SCHEMA_REGISTRY[name] as z.ZodType;
+  // The input side, because these files tell a producer what to write, and the
+  // producer this exists for is the Python worker. On the output side a field
+  // with a default is "required" (it will be there once Zod has filled it in),
+  // and `jsonOptional` — which every optional field in the perception protocol
+  // uses — became the empty schema `{}` and was listed as required: the
+  // published contract said `width` was mandatory and could be anything, when
+  // the truth is that it is optional and an integer. `unrepresentable: 'any'`
+  // is what turned that into silence instead of an error.
   const json = z.toJSONSchema(schema, {
     target: 'draft-2020-12',
-    io: 'output',
+    io: 'input',
     unrepresentable: 'any',
     reused: 'ref',
   }) as Record<string, unknown>;

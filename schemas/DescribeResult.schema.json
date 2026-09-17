@@ -32,19 +32,16 @@
     }
   },
   "required": [
-    "model",
-    "description",
-    "event_type",
-    "title",
-    "entities",
-    "affect",
-    "confidence",
-    "input_tokens",
-    "output_tokens"
+    "description"
   ],
   "additionalProperties": false,
   "$defs": {
-    "__schema0": {},
+    "__schema0": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "__schema1": {
       "type": "string"
     },
@@ -52,8 +49,14 @@
       "default": "",
       "type": "string"
     },
-    "__schema3": {},
+    "__schema3": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "__schema4": {
+      "default": {},
       "type": "object",
       "properties": {
         "people": {
@@ -85,12 +88,6 @@
           }
         }
       },
-      "required": [
-        "people",
-        "places",
-        "objects",
-        "topics"
-      ],
       "additionalProperties": false
     },
     "__schema5": {
@@ -125,7 +122,29 @@
       "maximum": 1,
       "description": "Confidence in [0,1]. 1 means certain, 0 means no support at all."
     },
-    "__schema8": {},
-    "__schema9": {}
+    "__schema8": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema9": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
   }
 }

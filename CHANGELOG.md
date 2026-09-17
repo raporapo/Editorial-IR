@@ -75,6 +75,45 @@ is compatible with.
 
 ### Fixed
 
+- **Premiere got hard cuts where a skill asked for dissolves.** All three
+  adapters advertise `basic_transition` and name the types they support, so
+  negotiation passes transitions through untouched and records no downgrade —
+  and the Premiere writer wrote none of them. The worked example has always
+  carried eleven cross dissolves at its chapter changes and the sequence has
+  always imported with none. They are written now, cut to the handles the
+  footage actually has either side of the cut, because a dissolve is made of
+  frames neither clip is using and inventing them is how an XML imports with
+  clips in the wrong places. OTIO and AviUtl2 also read `transition_out`, which
+  names the same join from the other side and was being dropped.
+- **The published schemas said optional fields were required, and described them
+  as anything at all.** `schemas/` is the cross-language contract and it was
+  exported from the output side, where a field with a default is "required"
+  because Zod will have filled it in. Worse, `jsonOptional` — which every
+  optional field in the perception protocol uses — is a transform, so it was
+  exported as the empty schema `{}` and listed as required: the contract said a
+  probe's `width` was mandatory and could be a string. They are exported from the
+  input side now, which is what a producer has to write.
+- **`Iso8601` accepted "yesterday".** It documents "always UTC with a trailing Z"
+  and checked only that the string was not empty, while the `Sha256` beside it
+  has a regex. It matters because assets are laid on the capture timeline in the
+  order these strings sort in: a camera writing `2026-05-17 09:00:00`, or a local
+  offset instead of `Z`, ordered the footage wrongly and invented continuity that
+  was never there. The format is validated, a container's date is normalised on
+  the way in or dropped if it cannot be read, and the ordering compares instants
+  rather than strings.
+- **A filename with a `?` in it imported as a missing file.** `encodeURI` leaves
+  the characters that delimit a URL alone, which is right for a URL and wrong for
+  a path becoming one: `what? really.mp4` became a path of `/media/what` with a
+  query string after it. `#` had been handled; `?`, `[` and `]` had not. A UNC
+  path now puts its server in the authority (`file://server/share/…`) instead of
+  producing four slashes and an empty one.
+- **Reading on-screen text wrote frames into the user's footage directory.** The
+  worker guessed "beside the file", which for an asset with no proxy is wherever
+  the original media lives — the ingest promise that the original is never
+  modified or moved, broken one `_frames` directory at a time. The caller says
+  where they go, inside the project, and a caller that says nothing gets a
+  scratch directory that is cleaned up.
+
 - **One index held vectors from two different spaces.** An event a vision model
   reached got a frame vector under the `visual` aspect; an event it missed got
   an embedding of the words attached to the picture, under the same name. The

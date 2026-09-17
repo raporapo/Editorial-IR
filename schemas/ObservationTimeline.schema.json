@@ -40,15 +40,7 @@
   "required": [
     "project_id",
     "pipeline_version",
-    "generated_at",
-    "fingerprint",
-    "utterances",
-    "shots",
-    "audio_events",
-    "ocr",
-    "frame_features",
-    "audio_profiles",
-    "model_runs"
+    "generated_at"
   ],
   "additionalProperties": false,
   "title": "ObservationTimeline",
@@ -420,8 +412,7 @@
       "required": [
         "id",
         "asset_id",
-        "timestamp_ms",
-        "labels"
+        "timestamp_ms"
       ],
       "additionalProperties": false
     },
@@ -566,10 +557,6 @@
         "id",
         "stage",
         "backend",
-        "locality",
-        "parameters",
-        "cost_usd",
-        "media_left_device",
         "created_at"
       ],
       "additionalProperties": false
@@ -645,7 +632,7 @@
     },
     "Iso8601": {
       "type": "string",
-      "minLength": 1,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
       "description": "ISO-8601 timestamp, always UTC with a trailing Z."
     }
   }

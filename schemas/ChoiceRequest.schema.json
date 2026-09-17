@@ -44,8 +44,7 @@
         }
       },
       "required": [
-        "value",
-        "description"
+        "value"
       ],
       "additionalProperties": false
     },

@@ -580,3 +580,113 @@ describe('toFileUrl', () => {
     expect(toFileUrl('C:\\footage\\a.mov')).toBe('file:///C:/footage/a.mov');
   });
 });
+
+/**
+ * The dissolves a skill asked for.
+ *
+ * All three adapters advertise `basic_transition` and name the types they
+ * support, so negotiation lets every transition through untouched and records
+ * no downgrade. Premiere then wrote none of them: a skill asking for a dissolve
+ * at each chapter change produced a sequence of hard cuts, and nothing said so.
+ */
+describe('the dissolves', () => {
+  async function withDissolves() {
+    const { ir, plan, request } = await prepared();
+    const dissolve = { type: 'cross_dissolve' as const, duration_ms: 800 };
+    // Every other clip, so both the transition and the plain cut are exercised.
+    const video = plan.tracks.video.map((operation, index) =>
+      index > 0 && index % 2 === 0 ? { ...operation, transition_in: dissolve } : operation,
+    );
+    const withThem = { ...plan, tracks: { ...plan.tracks, video } };
+    return { ir, plan: withThem, request: { ...request, plan: withThem } };
+  }
+
+  it('writes one into the Premiere sequence for each one asked for', async () => {
+    const { plan, request } = await withDissolves();
+    const warnings: string[] = [];
+    const root = parseXml(buildFcpXml(plan, request, warnings));
+
+    const asked = plan.tracks.video.filter(
+      (o) => o.transition_in?.type === 'cross_dissolve',
+    ).length;
+    const written = findAll(root, 'transitionitem');
+    expect(asked).toBeGreaterThan(0);
+    expect(written.length + warnings.length).toBe(asked);
+    for (const item of written) {
+      expect(childText(item, 'alignment')).toBe('center');
+      expect(Number(childText(item, 'end'))).toBeGreaterThan(Number(childText(item, 'start')));
+    }
+  }, 60_000);
+
+  it('leaves a plain cut alone', async () => {
+    const { plan, request } = await prepared();
+    const video = plan.tracks.video.map(({ transition_in: _in, ...rest }) => rest);
+    const cuts = { ...plan, tracks: { ...plan.tracks, video } };
+    expect(
+      findAll(parseXml(buildFcpXml(cuts, { ...request, plan: cuts })), 'transitionitem'),
+    ).toHaveLength(0);
+  }, 60_000);
+
+  it('writes the ones the worked example already asks for', async () => {
+    // travel-vlog declares a 400ms cross dissolve at each chapter change, so
+    // the flagship cut has always carried eleven of them, and the Premiere
+    // sequence has always arrived with none.
+    const { plan, request } = await prepared();
+    const asked = plan.tracks.video.filter(
+      (operation) => operation.transition_in && operation.transition_in.type !== 'hard_cut',
+    ).length;
+    expect(asked).toBeGreaterThan(0);
+    expect(findAll(parseXml(buildFcpXml(plan, request)), 'transitionitem')).toHaveLength(asked);
+  }, 60_000);
+
+  it('puts each one between the two clips it joins', async () => {
+    // An FCP7 transition lives in the track, between the clipitems it belongs
+    // to; anywhere else and the importer either ignores it or misplaces it.
+    const { plan, request } = await withDissolves();
+    const root = parseXml(buildFcpXml(plan, request));
+
+    for (const track of findAll(root, 'track')) {
+      const kinds = track.children.map((child) => child.tag);
+      for (const [index, kind] of kinds.entries()) {
+        if (kind !== 'transitionitem') continue;
+        expect(kinds[index - 1]).toBe('clipitem');
+        expect(kinds[index + 1]).toBe('clipitem');
+      }
+    }
+  }, 60_000);
+
+  it('does not write one the footage cannot supply', async () => {
+    // A dissolve is made of frames neither clip is using, taken from past the
+    // outgoing clip's out point and from before the incoming clip's in point.
+    // Writing one that is not there is how an XML imports with clips in the
+    // wrong places.
+    const { plan, request } = await prepared();
+    const video = plan.tracks.video.map((operation, index) =>
+      index === 1
+        ? {
+            ...operation,
+            source_in_ms: 0,
+            transition_in: { type: 'cross_dissolve' as const, duration_ms: 4000 },
+          }
+        : operation,
+    );
+    const withIt = { ...plan, tracks: { ...plan.tracks, video } };
+    const warnings: string[] = [];
+    buildFcpXml(withIt, { ...request, plan: withIt }, warnings);
+    expect(warnings.some((w) => /hard cut/.test(w))).toBe(true);
+  }, 60_000);
+
+  it('reads the outgoing clip’s transition_out as the same join', async () => {
+    // A transition sits between two clips, so the outgoing clip's
+    // `transition_out` and the incoming clip's `transition_in` name one object.
+    const { plan, request } = await prepared();
+    const video = plan.tracks.video.map(({ transition_in: _in, ...rest }, index) =>
+      index === 0
+        ? { ...rest, transition_out: { type: 'cross_dissolve' as const, duration_ms: 600 } }
+        : rest,
+    );
+    const withIt = { ...plan, tracks: { ...plan.tracks, video } };
+    const root = parseXml(buildFcpXml(withIt, { ...request, plan: withIt }));
+    expect(findAll(root, 'transitionitem').length).toBe(1);
+  }, 60_000);
+});

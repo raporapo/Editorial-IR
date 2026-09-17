@@ -44,17 +44,7 @@
     }
   },
   "required": [
-    "manifest_version",
-    "name",
-    "version",
-    "description",
-    "extends",
-    "defaults",
-    "scoring",
-    "arc",
-    "constraints",
-    "rules",
-    "intent"
+    "name"
   ],
   "additionalProperties": false,
   "title": "SkillManifest",
@@ -89,6 +79,7 @@
       }
     },
     "__schema7": {
+      "default": {},
       "$ref": "#/$defs/SkillDefaults"
     },
     "SkillDefaults": {
@@ -119,15 +110,6 @@
           "$ref": "#/$defs/__schema16"
         }
       },
-      "required": [
-        "min_clip_duration_ms",
-        "max_clip_duration_ms",
-        "pad_in_ms",
-        "pad_out_ms",
-        "snap_to_silence",
-        "snap_window_ms",
-        "default_transition"
-      ],
       "additionalProperties": false
     },
     "__schema8": {
@@ -178,8 +160,7 @@
         }
       },
       "required": [
-        "type",
-        "duration_ms"
+        "type"
       ],
       "additionalProperties": false
     },
@@ -202,6 +183,7 @@
       "$ref": "#/$defs/Transition"
     },
     "__schema17": {
+      "default": {},
       "$ref": "#/$defs/SkillScoring"
     },
     "SkillScoring": {
@@ -220,12 +202,6 @@
           "$ref": "#/$defs/__schema21"
         }
       },
-      "required": [
-        "weights",
-        "flag_weights",
-        "duplicate_penalty",
-        "continuity_bonus"
-      ],
       "additionalProperties": false
     },
     "__schema18": {
@@ -259,6 +235,7 @@
       "minimum": 0
     },
     "__schema22": {
+      "default": {},
       "$ref": "#/$defs/SkillArc"
     },
     "SkillArc": {
@@ -271,10 +248,6 @@
           "$ref": "#/$defs/__schema24"
         }
       },
-      "required": [
-        "ordering",
-        "segments"
-      ],
       "additionalProperties": false
     },
     "__schema23": {
@@ -310,9 +283,7 @@
       },
       "required": [
         "name",
-        "budget",
-        "prefer_roles",
-        "require_roles"
+        "budget"
       ],
       "additionalProperties": false
     },
@@ -356,6 +327,7 @@
       }
     },
     "__schema28": {
+      "default": {},
       "$ref": "#/$defs/SkillConstraints"
     },
     "SkillConstraints": {
@@ -377,11 +349,6 @@
           "$ref": "#/$defs/__schema33"
         }
       },
-      "required": [
-        "preserve_user_essential_events",
-        "max_consecutive_same_role",
-        "forbid_roles"
-      ],
       "additionalProperties": false
     },
     "__schema29": {
@@ -437,8 +404,7 @@
       },
       "required": [
         "when",
-        "action",
-        "priority"
+        "action"
       ],
       "additionalProperties": false
     },
@@ -915,6 +881,7 @@
       "maximum": 9007199254740991
     },
     "__schema102": {
+      "default": {},
       "type": "object",
       "properties": {
         "opening": {
@@ -934,9 +901,6 @@
           }
         }
       },
-      "required": [
-        "tone"
-      ],
       "additionalProperties": false
     }
   }

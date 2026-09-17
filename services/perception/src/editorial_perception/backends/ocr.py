@@ -7,6 +7,7 @@ exactly the thing a user searches for later.
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -32,10 +33,22 @@ def read_frames(
     frames_dir: str | None = None,
     progress=None,
 ) -> dict[str, Any]:
-    from ..media import extract_frame, image_size  # noqa: PLC0415
+    # Never beside the media. The caller normally says where, and when it does
+    # not, a scratch directory is the answer — writing a `_frames` folder into
+    # somebody's footage directory is the ingest promise ("the original is never
+    # modified and never moved") broken one directory at a time, and the files
+    # outlive the run.
+    if frames_dir:
+        work = Path(frames_dir)
+        work.mkdir(parents=True, exist_ok=True)
+        return _read(engine, path, timestamps_ms, work, progress)
 
-    work = Path(frames_dir) if frames_dir else Path(path).parent / "_frames"
-    work.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="oea-ocr-") as scratch:
+        return _read(engine, path, timestamps_ms, Path(scratch), progress)
+
+
+def _read(engine, path: str, timestamps_ms: list[int], work: Path, progress) -> dict[str, Any]:
+    from ..media import extract_frame, image_size  # noqa: PLC0415
 
     observations: list[dict[str, Any]] = []
     for index, timestamp in enumerate(timestamps_ms):

@@ -20,15 +20,16 @@
     }
   },
   "required": [
-    "model",
-    "hop_ms",
-    "rms_db",
-    "speech_prob",
-    "events"
+    "hop_ms"
   ],
   "additionalProperties": false,
   "$defs": {
-    "__schema0": {},
+    "__schema0": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "__schema1": {
       "type": "integer",
       "minimum": 1,
@@ -41,9 +42,25 @@
         "type": "number"
       }
     },
-    "__schema3": {},
+    "__schema3": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UnitScore"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "UnitScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
     "__schema4": {
-      "default": [],
       "type": "array",
       "items": {
         "type": "object",
@@ -57,7 +74,12 @@
           "event_type": {
             "$ref": "#/$defs/AudioEventType"
           },
-          "raw_label": {},
+          "raw_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "confidence": {
             "default": 0.5,
             "$ref": "#/$defs/Confidence"
@@ -66,9 +88,7 @@
         "required": [
           "start_ms",
           "end_ms",
-          "event_type",
-          "raw_label",
-          "confidence"
+          "event_type"
         ],
         "additionalProperties": false
       }

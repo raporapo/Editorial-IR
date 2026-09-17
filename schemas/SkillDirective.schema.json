@@ -60,15 +60,7 @@
     "base_score",
     "score",
     "min_duration_ms",
-    "max_duration_ms",
-    "dropped",
-    "required",
-    "locked",
-    "as_b_roll",
-    "preserve_reaction",
-    "prefer_higher_quality_only",
-    "tags",
-    "matched_rule_ids"
+    "max_duration_ms"
   ],
   "additionalProperties": false,
   "$defs": {
@@ -151,8 +143,7 @@
         }
       },
       "required": [
-        "type",
-        "duration_ms"
+        "type"
       ],
       "additionalProperties": false
     },

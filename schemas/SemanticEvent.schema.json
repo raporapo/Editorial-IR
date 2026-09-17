@@ -61,7 +61,6 @@
     "observed",
     "knowledge",
     "segmentation",
-    "embedding_refs",
     "confidence"
   ],
   "additionalProperties": false,
@@ -223,13 +222,6 @@
           "$ref": "#/$defs/__schema11"
         }
       },
-      "required": [
-        "people",
-        "places",
-        "objects",
-        "topics",
-        "organisations"
-      ],
       "additionalProperties": false
     },
     "__schema7": {
@@ -368,16 +360,6 @@
           "$ref": "#/$defs/__schema28"
         }
       },
-      "required": [
-        "speech",
-        "visual_labels",
-        "ocr",
-        "audio",
-        "shot_ids",
-        "shot_count",
-        "speech_ratio",
-        "silence_ratio"
-      ],
       "additionalProperties": false
     },
     "__schema19": {
@@ -497,12 +479,6 @@
           "$ref": "#/$defs/__schema35"
         }
       },
-      "required": [
-        "notes",
-        "essential",
-        "excluded",
-        "annotation_refs"
-      ],
       "additionalProperties": false
     },
     "__schema29": {

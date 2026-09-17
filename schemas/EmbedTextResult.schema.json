@@ -14,13 +14,16 @@
     }
   },
   "required": [
-    "model",
-    "dim",
-    "vectors"
+    "dim"
   ],
   "additionalProperties": false,
   "$defs": {
-    "__schema0": {},
+    "__schema0": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "__schema1": {
       "type": "integer",
       "minimum": 1,

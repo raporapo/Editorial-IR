@@ -64,7 +64,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type"
       ],
@@ -210,7 +209,7 @@
     },
     "Iso8601": {
       "type": "string",
-      "minLength": 1,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
       "description": "ISO-8601 timestamp, always UTC with a trailing Z."
     },
     "__schema8": {
@@ -239,7 +238,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type"
       ],
@@ -274,7 +272,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "value"
@@ -315,7 +312,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "strength"
@@ -352,7 +348,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "title"
@@ -392,7 +387,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "labels"
@@ -435,7 +429,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "people"
@@ -480,7 +473,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "mood"
@@ -516,7 +508,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "role"
@@ -575,7 +566,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "action"
@@ -612,7 +602,6 @@
       "required": [
         "id",
         "target",
-        "priority",
         "created_at",
         "type",
         "text"

@@ -107,7 +107,7 @@ export function buildOtioTimeline(
       const children: Record<string, unknown>[] = [];
       let cursor = 0;
 
-      for (const operation of operations) {
+      for (const [position, operation] of operations.entries()) {
         // A gap keeps the timeline honest: a clip that starts late starts late,
         // rather than being silently slid earlier.
         if (operation.timeline_start_ms > cursor) {
@@ -120,7 +120,11 @@ export function buildOtioTimeline(
           cursor = operation.timeline_start_ms;
         }
 
-        const transition = operation.transition_in;
+        // A Transition sits between two clips, so the outgoing clip's
+        // `transition_out` and the incoming clip's `transition_in` name the same
+        // object. Reading only one of them dropped a skill's request to fade out
+        // of a shot, silently, with no downgrade recorded.
+        const transition = operation.transition_in ?? operations[position - 1]?.transition_out;
         if (transition && transition.type !== 'hard_cut' && transition.duration_ms > 0) {
           children.push({
             OTIO_SCHEMA: 'Transition.1',

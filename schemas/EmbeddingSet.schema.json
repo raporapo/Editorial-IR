@@ -15,8 +15,7 @@
   },
   "required": [
     "project_id",
-    "generated_at",
-    "records"
+    "generated_at"
   ],
   "additionalProperties": false,
   "$defs": {

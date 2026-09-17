@@ -201,6 +201,23 @@ export function buildFcpXml(
       }
 
       lines.push('          </clipitem>');
+
+      // The transition into the *next* clip, written between the two clipitems
+      // it joins, which is where this format expects it.
+      const next = trackOperations[index + 1];
+      if (next) {
+        const item = transitionItem(
+          operation,
+          next,
+          span,
+          request,
+          timebase,
+          ntsc,
+          frames,
+          warnings,
+        );
+        if (item) lines.push(...item);
+      }
     }
     lines.push('        </track>');
   }
@@ -307,6 +324,90 @@ function spanOf(
     nextStart !== undefined && nextStart > start ? Math.min(wanted, nextStart - start) : wanted;
   const sourceIn = frames(operation.source_in_ms);
   return { start, end: start + length, in: sourceIn, out: sourceIn + length };
+}
+
+/** What each transition type is called inside an FCP7 XML. */
+const TRANSITION_EFFECTS: Record<string, { name: string; category: string }> = {
+  cross_dissolve: { name: 'Cross Dissolve', category: 'Dissolve' },
+  dip_to_black: { name: 'Dip to Black Dissolve', category: 'Dissolve' },
+  dip_to_white: { name: 'Dip to White Dissolve', category: 'Dissolve' },
+  fade_in: { name: 'Cross Dissolve', category: 'Dissolve' },
+  fade_out: { name: 'Cross Dissolve', category: 'Dissolve' },
+};
+
+/**
+ * The dissolve between two clips.
+ *
+ * The capabilities advertised `basic_transition` and three dissolve types, so
+ * negotiation let every transition through untouched — and nothing wrote one.
+ * A skill asking for a dissolve at a chapter change produced a sequence of hard
+ * cuts, with no downgrade recorded to say the request had been dropped.
+ *
+ * A dissolve is not free: it is made of frames neither clip is using, taken
+ * from beyond the outgoing clip's out point and from before the incoming
+ * clip's in point. Writing one the media cannot supply is how an FCP7 XML
+ * imports with clips in the wrong places, so the length is cut to the handles
+ * that exist, and a cut with no handles at all stays a cut and says so.
+ */
+function transitionItem(
+  outgoing: VideoOperation,
+  incoming: VideoOperation,
+  span: { start: number; end: number; in: number; out: number },
+  request: ApplyRequest,
+  timebase: number,
+  ntsc: boolean,
+  frames: (ms: number) => number,
+  warnings: string[],
+): string[] | undefined {
+  const transition = incoming.transition_in ?? outgoing.transition_out;
+  if (!transition || transition.type === 'hard_cut') return undefined;
+  const effect = TRANSITION_EFFECTS[transition.type];
+  if (!effect) return undefined;
+
+  const wanted = frames(transition.duration_ms);
+  if (wanted < 1) return undefined;
+
+  // Handles: what the outgoing clip has left after its out point, and what the
+  // incoming clip has before its in point.
+  const outgoingAsset = request.ir.assets.find((a) => a.id === outgoing.source_asset_id);
+  const incomingAsset = request.ir.assets.find((a) => a.id === incoming.source_asset_id);
+  const after = outgoingAsset ? Math.max(0, frames(outgoingAsset.duration_ms) - span.out) : 0;
+  const before = incomingAsset ? Math.max(0, frames(incoming.source_in_ms)) : 0;
+
+  // Centred, so each side gives half. The shorter handle decides.
+  const half = Math.min(Math.floor(wanted / 2), after, before);
+  if (half < 1) {
+    warnings.push(
+      `${incoming.operation_id} asked for a ${transition.type}, and there is not enough footage ` +
+        'either side of the cut to make one; it stays a hard cut',
+    );
+    return undefined;
+  }
+
+  const cut = span.end;
+  const start = cut - half;
+  const end = cut + half;
+
+  return [
+    '          <transitionitem>',
+    `            <start>${start}</start>`,
+    `            <end>${end}</end>`,
+    '            <alignment>center</alignment>',
+    rateElement(timebase, ntsc, 12),
+    '            <effect>',
+    `              <name>${escapeXml(effect.name)}</name>`,
+    `              <effectid>${escapeXml(effect.name)}</effectid>`,
+    `              <effectcategory>${escapeXml(effect.category)}</effectcategory>`,
+    '              <effecttype>transition</effecttype>',
+    '              <mediatype>video</mediatype>',
+    '              <wipecode>0</wipecode>',
+    '              <wipeaccuracy>100</wipeaccuracy>',
+    '              <startratio>0</startratio>',
+    '              <endratio>1</endratio>',
+    '              <reverse>FALSE</reverse>',
+    '            </effect>',
+    '          </transitionitem>',
+  ];
 }
 
 function rateElement(timebase: number, ntsc: boolean, indent: number): string {
