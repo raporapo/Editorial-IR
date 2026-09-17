@@ -75,6 +75,27 @@ is compatible with.
 
 ### Fixed
 
+- **A remote embedding endpoint appeared nowhere in the record.** Every event's
+  transcript, its labels and the user's own `context.yaml` background were
+  posted to a configured endpoint as plain text, and the run was not recorded:
+  `ir.model_runs` had no embedding entry, all 381 vectors carried no
+  `model_run_id`, and the privacy block said "media left this machine: no".
+  Nothing written to the project said a third party had received any of it —
+  against what `privacy.md` promises. The stage records itself now, whether it
+  ran locally or not, the fallback records the encoder that actually answered,
+  and each vector names the model that made it: the visual ones name the vision
+  model rather than the text encoder.
+- **`oea doctor` reported a configuration the compiler would not use.** It read
+  the environment a second time by hand, so `OEA_VLM_MODEL` without its base URL
+  was reported as a configured closer look that `oea analyze` then did not wire,
+  and `OEA_DECISION=model` with no base URL got "everything checks out" from the
+  command whose whole job is to find that first. It now asks the thing that
+  decides, and reports its refusal as the problem it is.
+- **`--plan <unknown id>` said there were no plans.** It could not tell a
+  misspelt id from an empty project, so it reported "there is no plan yet, run
+  oea plan first" at a project full of plans — and running `oea plan` again did
+  not help, because the id was still wrong. It now names the ids there are.
+
 - **`split` and `merge` on an event or a whole recording did nothing.** Both are
   target forms `oea annotate`'s own help advertises. The annotation was written,
   reported as applied and listed in the event's `annotation_refs`, and the

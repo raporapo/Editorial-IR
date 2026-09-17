@@ -36,7 +36,7 @@ privacy
 | on-screen text                | nothing                                                                     | local model                                                                       |
 | **closer look**               | **video frames, as images**                                                 | you set `OEA_VLM_BASE_URL`                                                        |
 | judgement                     | the structured event: transcript, labels, tags, your background             | you set `OEA_DECISION_BASE_URL`                                                   |
-| embeddings                    | event text                                                                  | you set `OEA_EMBED_BASE_URL`                                                      |
+| embeddings                    | every event's text: transcript, labels, your background                     | you set `OEA_EMBED_BASE_URL`                                                      |
 | **`oea agent`**               | **your whole `context.yaml`, and the transcript of any moment it inspects** | you set `OEA_AGENT_BASE_URL` (or `OEA_DECISION_BASE_URL`, which it falls back to) |
 
 Only one stage can send frames, and it is the only one that reports
