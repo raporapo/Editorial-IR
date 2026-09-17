@@ -306,4 +306,122 @@ describe('segmentAssets', () => {
     expect(segments.length).toBeGreaterThan(0);
     expect(segments.at(-1)!.end_ms).toBe(60_000);
   });
+
+  describe('a boundary the user demanded', () => {
+    const second: MediaAsset = {
+      ...asset,
+      id: 'asset_002',
+      file_name: 'b.mov',
+      sha256: 'b'.repeat(64),
+    };
+    // Laid end to end, the way placeAssets does it.
+    const placements = [
+      { asset_id: 'asset_001', offset_ms: 0, order: 0, ordered_by: 'creation_time' as const },
+      { asset_id: 'asset_002', offset_ms: 61_000, order: 1, ordered_by: 'creation_time' as const },
+    ];
+    const shots = observations({
+      shots: [
+        shot('shot_1', 0, 30_000),
+        shot('shot_2', 30_000, 60_000),
+        { ...shot('shot_3', 0, 30_000), asset_id: 'asset_002' },
+        { ...shot('shot_4', 30_000, 60_000), asset_id: 'asset_002' },
+      ],
+    });
+    const split = (atMs: number) => [
+      {
+        id: 'ann_1',
+        type: 'boundary' as const,
+        action: 'split' as const,
+        target: { kind: 'time_range' as const, start_ms: atMs, end_ms: atMs + 1000 },
+        priority: 0,
+        created_at: '2026-05-17T09:00:00.000Z',
+      },
+    ];
+
+    it('is read in capture time, which is the only time the user can write', () => {
+      // `oea annotate` offers no syntax for an asset-local time, and its own help
+      // calls a bare range "a stretch of the capture timeline". This value was
+      // passed through unconverted, so a split at 00:10:00 was compared against
+      // ten minutes into every file rather than ten minutes into the recording.
+      const segments = segmentAssets(
+        [asset, second],
+        shots,
+        split(76_000),
+        {},
+        undefined,
+        placements,
+      );
+      const forced = segments.filter((s) => s.method === 'user');
+
+      expect(forced).toHaveLength(1);
+      // 76s capture is 15s into the second recording.
+      expect(forced[0]!.asset_id).toBe('asset_002');
+      expect(forced[0]!.start_ms).toBe(15_000);
+    });
+
+    it('applies to the one recording it lands in, not to every recording', () => {
+      const segments = segmentAssets(
+        [asset, second],
+        shots,
+        split(15_000),
+        {},
+        undefined,
+        placements,
+      );
+      const forced = segments.filter((s) => s.method === 'user');
+
+      expect(forced).toHaveLength(1);
+      expect(forced[0]!.asset_id).toBe('asset_001');
+    });
+
+    it('cuts the shot rather than looking for a nearby one', () => {
+      // A forced split used to be honoured only at an existing atom edge, so
+      // "split here" quietly meant "split here if a shot change happens to be
+      // within six hundred milliseconds". The user saw two moments where the
+      // camera saw one take; that is the correction this exists to accept.
+      const single = observations({ shots: [shot('shot_1', 0, 60_000)] });
+      const segments = segmentAssets([asset], single, split(20_000), {}, undefined, [
+        placements[0]!,
+      ]);
+
+      expect(segments.length).toBeGreaterThan(1);
+      expect(segments.some((s) => s.start_ms === 20_000 && s.method === 'user')).toBe(true);
+    });
+
+    it('ignores a time that falls outside every recording', () => {
+      const segments = segmentAssets(
+        [asset, second],
+        shots,
+        split(999_000),
+        {},
+        undefined,
+        placements,
+      );
+      expect(segments.some((s) => s.method === 'user')).toBe(false);
+    });
+
+    it('keeps an asset-scoped time in that asset’s own frame', () => {
+      const scoped = [
+        {
+          id: 'ann_1',
+          type: 'boundary' as const,
+          action: 'split' as const,
+          target: {
+            kind: 'time_range' as const,
+            asset_id: 'asset_002',
+            start_ms: 15_000,
+            end_ms: 16_000,
+          },
+          priority: 0,
+          created_at: '2026-05-17T09:00:00.000Z',
+        },
+      ];
+      const segments = segmentAssets([asset, second], shots, scoped, {}, undefined, placements);
+      const forced = segments.filter((s) => s.method === 'user');
+
+      expect(forced).toHaveLength(1);
+      expect(forced[0]!.asset_id).toBe('asset_002');
+      expect(forced[0]!.start_ms).toBe(15_000);
+    });
+  });
 });

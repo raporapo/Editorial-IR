@@ -2,6 +2,7 @@ import {
   coverage,
   overlapMs,
   rangesOverlap,
+  type AssetPlacement,
   type AudioEvent,
   type MediaAsset,
   type ObservationTimeline,
@@ -84,6 +85,7 @@ export function buildAtoms(
   asset: MediaAsset,
   shots: readonly Shot[],
   options: SegmentationOptions = {},
+  forcedSplits: readonly number[] = [],
 ): Atom[] {
   const settings = { ...DEFAULTS, ...options };
   const own = shots
@@ -91,14 +93,17 @@ export function buildAtoms(
     .sort((a, b) => a.start_ms - b.start_ms);
 
   if (own.length > 0) {
-    return own.map((shot) => ({
-      asset_id: asset.id,
-      start_ms: shot.start_ms,
-      end_ms: shot.end_ms,
-      shot_ids: [shot.id],
-      representative_frame_ms: shot.representative_frame_ms,
-      ...(shot.change_score === undefined ? {} : { change_score: shot.change_score }),
-    }));
+    return cutAt(
+      own.map((shot) => ({
+        asset_id: asset.id,
+        start_ms: shot.start_ms,
+        end_ms: shot.end_ms,
+        shot_ids: [shot.id],
+        representative_frame_ms: shot.representative_frame_ms,
+        ...(shot.change_score === undefined ? {} : { change_score: shot.change_score }),
+      })),
+      forcedSplits,
+    );
   }
 
   const duration = asset.duration_ms;
@@ -117,8 +122,52 @@ export function buildAtoms(
       representative_frame_ms: start + Math.floor((end - start) / 3),
     });
   }
-  return atoms;
+  return cutAt(atoms, forcedSplits);
 }
+
+/**
+ * Cuts atoms where the user demanded a boundary.
+ *
+ * A forced split can only be honoured at an atom edge, because that is where
+ * boundaries are evaluated. Without this, "split here" quietly meant "split here
+ * if a shot change happens to be within six hundred milliseconds" — and when it
+ * was not, the annotation was accepted, reported, and discarded.
+ *
+ * The user saw two moments where the camera saw one take. That is exactly the
+ * correction this exists to accept, so the atom gives way.
+ */
+function cutAt(atoms: Atom[], splits: readonly number[]): Atom[] {
+  if (splits.length === 0) return atoms;
+
+  const out: Atom[] = [];
+  for (const atom of atoms) {
+    const inside = [...new Set(splits)]
+      .filter((at) => at > atom.start_ms + MIN_ATOM_MS && at < atom.end_ms - MIN_ATOM_MS)
+      .sort((a, b) => a - b);
+    if (inside.length === 0) {
+      out.push(atom);
+      continue;
+    }
+
+    let from = atom.start_ms;
+    for (const [index, at] of [...inside, atom.end_ms].entries()) {
+      out.push({
+        ...atom,
+        start_ms: from,
+        end_ms: at,
+        representative_frame_ms: from + Math.floor((at - from) / 3),
+        // The opening boundary of every piece after the first is the user's, not
+        // a camera change, so the camera's score does not describe it.
+        ...(index === 0 ? {} : { change_score: undefined }),
+      });
+      from = at;
+    }
+  }
+  return out;
+}
+
+/** The shortest piece worth making; below this a split produces nothing usable. */
+const MIN_ATOM_MS = 200;
 
 interface BoundarySignals {
   /** Set only when a signal was actually available. */
@@ -357,19 +406,27 @@ export function segmentAssets(
   annotations: readonly UserAnnotation[],
   options: SegmentationOptions = {},
   frameSimilarity?: SegmentContext['frameSimilarity'],
+  placements: readonly AssetPlacement[] = [],
 ): SegmentDraft[] {
   const drafts: SegmentDraft[] = [];
+  const offsets = new Map(placements.map((placement) => [placement.asset_id, placement.offset_ms]));
 
   for (const asset of [...assets].sort((a, b) => a.id.localeCompare(b.id))) {
-    const atoms = buildAtoms(asset, observations.shots, options);
+    const where = {
+      assetId: asset.id,
+      offsetMs: offsets.get(asset.id) ?? 0,
+      durationMs: asset.duration_ms,
+    };
+    const forcedSplits = forcedBoundaries(annotations, where, 'split');
+    const atoms = buildAtoms(asset, observations.shots, options, forcedSplits);
     if (atoms.length === 0) continue;
 
     const context: SegmentContext = {
       utterances: observations.utterances,
       audioEvents: observations.audio_events,
       ...(frameSimilarity ? { frameSimilarity } : {}),
-      forcedSplits: forcedBoundaries(annotations, asset.id, 'split'),
-      forcedMerges: forcedBoundaries(annotations, asset.id, 'merge_with_next'),
+      forcedSplits,
+      forcedMerges: forcedBoundaries(annotations, where, 'merge_with_next'),
     };
 
     drafts.push(...segmentAtoms(atoms, context, options));
@@ -378,19 +435,44 @@ export function segmentAssets(
   return drafts;
 }
 
+/**
+ * Where the user asked for a cut, in the time this asset is measured in.
+ *
+ * Two coordinate systems meet here and they used to be confused. A `time_range`
+ * annotation that names no asset is capture time — every other consumer reads it
+ * that way, `oea annotate`'s own help calls it "a stretch of the capture
+ * timeline", and the CLI provides no syntax for anything else — while atoms,
+ * and everything else in this file, are measured from the start of one asset.
+ *
+ * The value was passed through unconverted, so "split at 00:10:00" was compared
+ * against a position ten minutes into *every* file rather than ten minutes into
+ * the recording. On the worked example that annotation was accepted, reported,
+ * and then did nothing at all: 73 events before, 73 after, none marked `user`.
+ * Silently discarding what the user told it is the one thing this project must
+ * never do.
+ */
 function forcedBoundaries(
   annotations: readonly UserAnnotation[],
-  assetId: string,
+  where: { assetId: string; offsetMs: number; durationMs: number },
   action: 'split' | 'merge_with_next',
 ): number[] {
   return annotations
     .filter((a) => a.type === 'boundary' && a.action === action)
     .flatMap((a) => {
-      if (a.type !== 'boundary') return [];
-      if (a.target.kind === 'time_range' && (a.target.asset_id ?? assetId) === assetId) {
+      if (a.type !== 'boundary' || a.target.kind !== 'time_range') return [];
+
+      // Named an asset: the time is already that asset's, and it applies to no
+      // other. Named none: capture time, which belongs to whichever asset it
+      // lands in — and to no other, which is what the old `?? assetId` broke.
+      if (a.target.asset_id !== undefined) {
+        if (a.target.asset_id !== where.assetId) return [];
         return [a.at_ms ?? a.target.start_ms];
       }
-      return [];
+
+      const captureMs = a.at_ms ?? a.target.start_ms;
+      const local = captureMs - where.offsetMs;
+      if (local < 0 || local > where.durationMs) return [];
+      return [local];
     })
     .sort((a, b) => a - b);
 }

@@ -106,6 +106,7 @@ export function planEdit(options: PlanOptions): EditPlan {
 
   const runtime = new SkillRuntime(skill);
   const directives = runtime.evaluate(ir);
+  const excludedAssets = new Set(ir.context.constraints.excluded_assets);
   const ordered = eventsInOrder(ir);
   const rationale: PlanRationale[] = [];
 
@@ -127,6 +128,23 @@ export function planEdit(options: PlanOptions): EditPlan {
         event_id: event.id,
         decision: 'excluded',
         reason: 'the user excluded this',
+        skill_rule_ids: directive.matched_rule_ids,
+      });
+      continue;
+    }
+
+    // A recording the user banned in `constraints.excluded_assets`. The
+    // validator refuses to export a plan containing one, and the planner did not
+    // know about them at all — so excluding a recording produced a cut full of
+    // it that then would not export, with nothing to say what to remove.
+    const bannedAsset = event.source_ranges
+      .map((range) => range.asset_id)
+      .find((assetId) => excludedAssets.has(assetId));
+    if (bannedAsset !== undefined) {
+      rationale.push({
+        event_id: event.id,
+        decision: 'excluded',
+        reason: `the user excluded ${bannedAsset}`,
         skill_rule_ids: directive.matched_rule_ids,
       });
       continue;

@@ -213,6 +213,37 @@ describe('the user outranks the planner', () => {
     expect(report.ok).toBe(true);
   });
 
+  it('never includes a recording the user banned in the project constraints', async () => {
+    // The validator refuses to export a plan containing one, and the planner did
+    // not know about them at all — so excluding a recording produced a cut full
+    // of it that then would not export, with nothing to say what to remove.
+    const { store, ir } = await compiled();
+    const banned = ir.assets[1]!.id;
+    const context = store.readContext();
+    store.writeContext({
+      ...context,
+      constraints: { ...context.constraints, excluded_assets: [banned] },
+    });
+
+    const recompiled = await compileProject({
+      store,
+      suite: exampleSuite(),
+      decision: new HeuristicDecisionBackend(),
+    });
+    const plan = planEdit({
+      ir: recompiled.ir,
+      skill: registry.resolve('travel-vlog'),
+      targetDurationMs: 180_000,
+      observations: recompiled.observations,
+    });
+
+    expect(plan.tracks.video.some((o) => o.source_asset_id === banned)).toBe(false);
+    expect(plan.tracks.video.length).toBeGreaterThan(0);
+    // And it validates, which is the point: before, it could not.
+    expect(validatePlan(plan, { ir: recompiled.ir }).ok).toBe(true);
+    expect(plan.rationale.some((r) => r.reason.includes(banned))).toBe(true);
+  }, 60_000);
+
   it('never includes an event the user excluded', async () => {
     const { store } = await compiled();
     const first = (await compiled()).ir.events[5]!;

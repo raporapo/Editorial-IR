@@ -83,12 +83,18 @@ export async function assessEvents(
   });
 
   const drafts = new Map<string, Awaited<ReturnType<typeof assessEvent>>>();
+  // Which run actually produced each answer. Recording the cheap model's run id
+  // on an answer the expensive one gave is a falsified provenance: it tells a
+  // reader, and the escalation policy on the next pass, that a rule-based judge
+  // at confidence 0.4 said what a hosted model said.
+  const producedBy = new Map<string, string>();
   for (const [index, event] of ordered.entries()) {
     options.onProgress?.('assess', index, ordered.length);
     drafts.set(
       event.id,
       await assessCached(options.baseModel, states.get(event.id)!, options.cache),
     );
+    producedBy.set(event.id, baseRun);
   }
 
   const escalated: string[] = [];
@@ -124,9 +130,26 @@ export async function assessEvents(
     let done = 0;
     for (const eventId of decision.selected) {
       options.onProgress?.('reassess', done++, decision.selected.length);
+      const state = states.get(eventId)!;
+
+      // Cached like the cheap pass, which it was not: the escalation loop called
+      // the model directly, so every re-analysis asked the hosted backend the
+      // same nineteen questions about the same unchanged events and was charged
+      // for them again. This is the expensive half of the run.
+      const key = assessKey(model, state);
+      const cached = options.cache?.get<Awaited<ReturnType<typeof assessEvent>>>(key);
+      if (cached) {
+        drafts.set(eventId, cached);
+        producedBy.set(eventId, escalationRun);
+        escalated.push(eventId);
+        continue;
+      }
+
       options.budget?.spend(costPerEvent, `a second opinion on ${eventId}`);
-      const draft = await assessEvent(model, states.get(eventId)!);
+      const draft = await assessEvent(model, state);
+      options.cache?.set(key, draft);
       drafts.set(eventId, draft);
+      producedBy.set(eventId, escalationRun);
       escalated.push(eventId);
       options.runs.addCost(
         escalationRun,
@@ -139,12 +162,11 @@ export async function assessEvents(
 
   const editorial: EventEditorial[] = ordered.map((event, index) => {
     const draft = drafts.get(event.id)!;
-    const wasEscalated = escalated.includes(event.id);
 
     const assessment: EditorialAssessment = {
       id: seqId('asm', index + 1),
       event_id: event.id,
-      model_run_id: baseRun,
+      model_run_id: producedBy.get(event.id) ?? baseRun,
       metrics: { ...draft.metrics },
       flags: { ...draft.flags },
       narrative_role: draft.narrative_role,
@@ -178,7 +200,6 @@ export async function assessEvents(
       return { event_id: event.id, current: assessment, history: [original] };
     }
 
-    void wasEscalated;
     return { event_id: event.id, current: assessment, history: [] };
   });
 

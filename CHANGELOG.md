@@ -75,6 +75,32 @@ is compatible with.
 
 ### Fixed
 
+- **"Cut here" landed in the wrong asset, or nowhere at all.** A `split` or
+  `merge` boundary annotation carries a position on the capture timeline, and the
+  segmenter compared it against asset-local offsets — so a cut asked for once was
+  applied at that same offset inside every asset, and the asset the user meant got
+  a boundary only by coincidence. Worse, a boundary that did land was honoured
+  only where it fell on an atom edge the detectors had already found, which is
+  exactly where the user has no reason to ask. Boundaries now resolve to the asset
+  that contains that moment, and an atom is split at the point requested.
+- **`excluded_assets` excluded nothing.** `context.yaml` documents it as the way
+  to say "do not use this footage", the contract carries it and the compiler
+  passes it through; the planner read `knowledge.excluded` on the event and never
+  the project-level list. A whole camera the user had ruled out could be selected,
+  and the plan's rationale would not mention it. Excluded footage is now dropped
+  at selection with a rationale that names the exclusion.
+- **An escalated judgement was attributed to the cheap model.** Every assessment
+  recorded the base run's id, including the ones a hosted model was paid to
+  answer — so the IR told a reader, and the next run's escalation policy, that a
+  rule-based judge at confidence 0.4 had said what the expensive model said. The
+  run that produced an answer is now the run recorded against it.
+- **The expensive half of the run was never cached.** The cheap pass went through
+  the assessment cache and the escalation loop called the model directly, so
+  re-analysing an unchanged project asked the hosted backend the same questions
+  about the same events and was charged for them again. Escalated assessments are
+  cached on the same key as the base ones, and a cached answer keeps the
+  attribution of the model that originally gave it.
+
 - **Every export was silent.** The EditPlan names which clips carry their own
   sound and declares the tracks to lay it on; both adapters read neither. A
   Premiere sequence arrived with no audio track and an OpenTimelineIO timeline

@@ -162,6 +162,9 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     annotations,
     options.segmentation ?? {},
     frameVectors.size > 0 ? frameSimilarityFrom(frameVectors) : undefined,
+    // A boundary the user asked for is written in capture time; segmentation
+    // works in each asset's own time. Without the placements it cannot convert.
+    placements,
   );
 
   // ---- meaning -------------------------------------------------------------
