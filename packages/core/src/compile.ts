@@ -133,6 +133,12 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
 
   if (reusable && stored) {
     observations = stored;
+    // Frame vectors come back with them. Without this the second compile of an
+    // unchanged project produced a different IR under the same fingerprint:
+    // every event's boundary confidence moved, because segmentation lost the
+    // visual signal, and the visual index changed out of the vision model's
+    // space into hashed text — 73 records at cosine 0 to the ones they replaced.
+    frameVectors = store.readFrameVectors(expectedFingerprint) ?? new Map<string, number[]>();
     // The runs that produced these observations came back with them, so the
     // model_run_id on every utterance, shot and frame still resolves, and the
     // privacy report still names every model that touched the media. They were
@@ -140,23 +146,19 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     // normal path, and the one `oea annotate` tells you to take — left the whole
     // perception half of the provenance trail pointing at nothing.
     runs.adopt(stored.model_runs);
-    // Frame vectors are not persisted, so a reused observation set has none.
-    // Segmentation falls back to the signals it does have, which is why the
-    // scorer renormalises rather than assuming a missing signal means "same".
-    //
-    // It said so only when no vision model was configured at all, which is the
-    // case where nothing was lost. With one configured, a reuse quietly dropped
-    // the frame vectors — visual search fell back to the words attached to the
-    // picture, boundaries were found without it, and the report said everything
-    // was available. Saying nothing is what makes a silent downgrade silent.
-    unavailable = [
-      availableCapabilities(options.suite).includes('visual')
-        ? {
-            stage: 'visual',
-            reason: 'this run reused an earlier analysis, which does not keep frame vectors',
-          }
-        : { stage: 'visual', reason: 'no model is configured for it' },
-    ];
+    // A project analysed before this sidecar existed has observations and no
+    // vectors, and there is nothing to be done about that but say so — the
+    // alternative was saying nothing, which is what made the downgrade silent.
+    unavailable = !availableCapabilities(options.suite).includes('visual')
+      ? [{ stage: 'visual', reason: 'no model is configured for it' }]
+      : frameVectors.size > 0
+        ? []
+        : [
+            {
+              stage: 'visual',
+              reason: 'the analysis it reused was made before frame vectors were kept',
+            },
+          ];
   } else {
     const observed = await observeAssets(assets, {
       projectRoot: store.paths.root,
@@ -186,6 +188,13 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       })),
     };
     frameVectors = observed.frameVectors;
+    // Written here rather than left to the caller, because they mean something
+    // only beside the observations of this exact fingerprint: the two are
+    // stored together or not at all. Held in memory and thrown away, they made
+    // the second compile of an unchanged project produce a different IR under
+    // an identical fingerprint — 70 of 73 events' boundary confidence moved,
+    // and the visual index left the vision model's space for hashed text.
+    store.writeFrameVectors(expectedFingerprint, frameVectors);
     derived = observed.derived;
     unavailable = observed.unavailable;
     failures = observed.failures;

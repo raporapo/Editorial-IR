@@ -73,6 +73,7 @@ from the originals.
   annotations.json    your overrides
   assets.json         paths, hashes, metadata — not the media
   observations.json   transcript, shots, silences
+  frame-vectors.json  what a vision model saw, as numbers
   ir.json             the Editorial IR
   embeddings.json     vectors
   plans/              cuts

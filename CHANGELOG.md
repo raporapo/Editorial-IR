@@ -75,6 +75,19 @@ is compatible with.
 
 ### Fixed
 
+- **Compiling an unchanged project twice produced two different analyses.**
+  Frame vectors were held in memory and thrown away, and reusing an observation
+  set is the normal path — so the second compile segmented without the visual
+  signal and indexed the visual aspect out of the vision model's space and into
+  hashed text. On the worked example 70 of 73 events came back with a different
+  boundary confidence and all 73 visual records changed from 64 dimensions to
+  256, at cosine 0 to the vectors they replaced. Both analyses carried the
+  identical fingerprint, which is computed over the media and the models rather
+  than over what was produced, so nothing downstream could tell them apart. The
+  vectors are now kept beside the observations they belong to, tagged with that
+  fingerprint so a sidecar from some other analysis is never mistaken for a hit,
+  and the second compile matches the first exactly.
+
 - **One unreadable file abandoned the ingest of thirty.** Hashing is the first
   thing that touches a file and it was the one step outside the per-file failure
   handling, so a clip with no read permission — or a dropped network share, a

@@ -187,18 +187,67 @@ describe('what survives reusing an analysis', () => {
     }
   }, 60_000);
 
-  it('says why it went without a stage, rather than guessing one reason for all', async () => {
+  it('does not lose the visual stage to a reuse', async () => {
+    // A reuse used to throw the frame vectors away, and the report said "no
+    // model configured", which was a true sentence about a different situation.
+    // The vectors are kept now, so there is nothing to report — and the reason,
+    // where there is one, belongs to the entry rather than to whoever prints it.
     const { store, compile } = await project();
     const first = await compile();
     store.writeObservations(first.observations);
     const second = await compile();
 
-    // Nothing here is missing for want of a model: the fixture suite provides
-    // the visual stage, and it is this run that threw the frame vectors away by
-    // reusing what was on disk. The report said "no model configured" for both
-    // cases, which is a true sentence about one of them.
-    const visual = second.report.unavailable.find((entry) => entry.stage === 'visual');
-    expect(visual?.reason).toMatch(/reused an earlier analysis/);
     expect(first.report.unavailable.map((entry) => entry.stage)).not.toContain('visual');
+    expect(second.report.unavailable.map((entry) => entry.stage)).not.toContain('visual');
+  }, 60_000);
+});
+
+/**
+ * The same project, compiled twice.
+ *
+ * Reusing an observation set is the normal path, and it produced a materially
+ * different analysis: frame vectors were held in memory and thrown away, so the
+ * second compile segmented without the visual signal and indexed the visual
+ * aspect out of the vision model's space and into hashed text. Both carried the
+ * identical fingerprint — it is computed over the media and the models, not
+ * over what was produced — so nothing downstream could tell them apart.
+ */
+describe('compiling an unchanged project again', () => {
+  it('produces the same events and the same index', async () => {
+    const { store, compile } = await project();
+    const first = await compile();
+    store.writeObservations(first.observations);
+
+    const second = await compile();
+    expect(second.report.reusedObservations).toBe(true);
+    expect(second.ir.fingerprint).toBe(first.ir.fingerprint);
+
+    expect(second.ir.events).toEqual(first.ir.events);
+    expect(second.ir.relations).toEqual(first.ir.relations);
+    expect(second.embeddings.records).toEqual(first.embeddings.records);
+  }, 60_000);
+
+  it('keeps the frame vectors, and only for the analysis they belong to', async () => {
+    const { store, compile } = await project();
+    const first = await compile();
+    store.writeObservations(first.observations);
+
+    const kept = store.readFrameVectors(first.observations.fingerprint);
+    expect(kept?.size).toBeGreaterThan(0);
+    // Vectors from some other analysis are not a cache hit, they are the wrong
+    // answer, so they are only handed back for the fingerprint that made them.
+    expect(store.readFrameVectors('some other analysis')).toBeUndefined();
+  }, 60_000);
+
+  it('says so when it reused an analysis that has none', async () => {
+    const { store, compile } = await project();
+    const first = await compile();
+    store.writeObservations(first.observations);
+    // A project analysed before the sidecar existed.
+    store.writeFrameVectors(first.observations.fingerprint, new Map());
+
+    const second = await compile();
+    const visual = second.report.unavailable.find((entry) => entry.stage === 'visual');
+    expect(visual?.reason).toMatch(/before frame vectors were kept/);
   }, 60_000);
 });

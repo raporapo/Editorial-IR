@@ -5,6 +5,7 @@ import {
   readdirSync,
   renameSync,
   writeFileSync,
+  rmSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
@@ -59,6 +60,10 @@ export interface ProjectStore {
 
   readObservations(): ObservationTimeline | undefined;
   writeObservations(observations: ObservationTimeline): void;
+
+  /** Frame vectors from the compile that produced the observations of this fingerprint. */
+  readFrameVectors(fingerprint: string): Map<string, number[]> | undefined;
+  writeFrameVectors(fingerprint: string, vectors: ReadonlyMap<string, number[]>): void;
 
   readIr(): EditorialIR | undefined;
   writeIr(ir: EditorialIR): void;
@@ -172,6 +177,44 @@ export class FileProjectStore implements ProjectStore {
 
   writeObservations(observations: ObservationTimeline): void {
     writeJson(this.paths.observations, observations);
+  }
+
+  /**
+   * The frame vectors a compile produced, keyed `<asset_id>:<timestamp_ms>`.
+   *
+   * They were held in memory and thrown away, so the second compile of an
+   * unchanged project produced a materially different IR — every event's
+   * boundary confidence moved, and the visual index changed from the vision
+   * model's space to hashed text — under the identical fingerprint, which is
+   * computed over the media and the models and so could not tell the two
+   * apart. Nothing downstream could either.
+   */
+  readFrameVectors(fingerprint: string): Map<string, number[]> | undefined {
+    if (!existsSync(this.paths.frameVectors)) return undefined;
+    const raw = readJson(this.paths.frameVectors);
+    if (raw === null || typeof raw !== 'object') return undefined;
+    const stored = raw as { fingerprint?: unknown; vectors?: unknown };
+    // The fingerprint travels with them, because these are only the right
+    // vectors for the observations they were computed alongside. A sidecar left
+    // behind by an earlier analysis is not a cache hit, it is the wrong answer.
+    if (stored.fingerprint !== fingerprint) return undefined;
+    if (stored.vectors === null || typeof stored.vectors !== 'object') return undefined;
+    const out = new Map<string, number[]>();
+    for (const [key, value] of Object.entries(stored.vectors as Record<string, unknown>)) {
+      if (!Array.isArray(value)) continue;
+      const numbers: number[] = [];
+      for (const item of value) if (typeof item === 'number') numbers.push(item);
+      if (numbers.length === value.length) out.set(key, numbers);
+    }
+    return out;
+  }
+
+  writeFrameVectors(fingerprint: string, vectors: ReadonlyMap<string, number[]>): void {
+    if (vectors.size === 0) {
+      rmSync(this.paths.frameVectors, { force: true });
+      return;
+    }
+    writeJson(this.paths.frameVectors, { fingerprint, vectors: Object.fromEntries(vectors) });
   }
 
   readIr(): EditorialIR | undefined {
