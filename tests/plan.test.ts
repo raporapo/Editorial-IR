@@ -927,3 +927,38 @@ describe('a clip that only makes sense after another', () => {
     expect(kept).toEqual(['evt_question', 'evt_answer']);
   });
 });
+
+describe('the tags a skill attaches', () => {
+  it('reaches the plan, which is where they are documented to go', () => {
+    // `tag` has been in the format since it was written, described as "free
+    // tags, carried into the plan's rationale". The rule runtime collected them
+    // onto the directive and nothing read that field, and the rationale had
+    // nowhere to put them: an author could write a tag and never see it again.
+    const base = registry.resolve('base-editor');
+    const skill: SkillManifest = {
+      ...base,
+      rules: [
+        ...base.rules,
+        {
+          id: 'mark-the-sponsor-read',
+          when: { narrative_role: 'context' },
+          action: { tag: ['sponsor', 'needs-music'] },
+          priority: 10,
+        },
+      ],
+    };
+
+    const ir = makeIR({
+      events: [
+        { id: 'evt_read', description: '提供の読み上げ', role: 'context' },
+        { id: 'evt_other', description: '別の場面', role: 'payoff' },
+      ],
+    });
+
+    const plan = planEdit({ ir, skill, targetDurationMs: 30_000 });
+    const read = plan.rationale.find((entry) => entry.event_id === 'evt_read');
+    const other = plan.rationale.find((entry) => entry.event_id === 'evt_other');
+    expect(read?.tags).toEqual(['sponsor', 'needs-music']);
+    expect(other?.tags).toEqual([]);
+  });
+});

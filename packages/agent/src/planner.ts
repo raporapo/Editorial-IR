@@ -129,6 +129,7 @@ export function planEdit(options: PlanOptions): EditPlan {
         decision: 'excluded',
         reason: 'the user excluded this',
         skill_rule_ids: directive.matched_rule_ids,
+        tags: directive.tags,
       });
       continue;
     }
@@ -146,6 +147,7 @@ export function planEdit(options: PlanOptions): EditPlan {
         decision: 'excluded',
         reason: `the user excluded ${bannedAsset}`,
         skill_rule_ids: directive.matched_rule_ids,
+        tags: directive.tags,
       });
       continue;
     }
@@ -175,6 +177,7 @@ export function planEdit(options: PlanOptions): EditPlan {
         reason: `dropped by ${describeRules(directive)}`,
         score: directive.score,
         skill_rule_ids: directive.matched_rule_ids,
+        tags: directive.tags,
       });
       setAside.set(event.id, candidate);
       continue;
@@ -291,6 +294,7 @@ export function planEdit(options: PlanOptions): EditPlan {
       reason: selectionReason(candidate, trim.reason),
       score: candidate.value,
       skill_rule_ids: candidate.directive.matched_rule_ids,
+      tags: candidate.directive.tags,
     });
   }
 
@@ -479,6 +483,7 @@ function select(
       reason: 'there was no room for it inside the target duration',
       score: candidate.value,
       skill_rule_ids: candidate.directive.matched_rule_ids,
+      tags: candidate.directive.tags,
     });
   }
 
@@ -555,6 +560,7 @@ function applyOverrides(
         reason: overrides.reasons?.[id] ?? 'left out at the caller\u2019s request',
         score: candidate.value,
         skill_rule_ids: candidate.directive.matched_rule_ids,
+        tags: candidate.directive.tags,
       });
       candidates.splice(i, 1);
       continue;
@@ -762,6 +768,7 @@ function suppressDuplicates(
         decision: 'dropped',
         reason: `another take of the same thing was kept instead (${best?.event.id})`,
         skill_rule_ids: candidate.directive.matched_rule_ids,
+        tags: candidate.directive.tags,
       });
     }
   }
@@ -820,6 +827,7 @@ function enforceContextDependencies(
       reason: 'it only makes sense after the event before it, which is not in the cut',
       score: candidate.value,
       skill_rule_ids: candidate.directive.matched_rule_ids,
+      tags: candidate.directive.tags,
     });
   }
 }
@@ -908,6 +916,7 @@ function capConsecutiveRoles(
       reason: `${cap} in a row of the same kind is the limit this style sets`,
       score: candidate.value,
       skill_rule_ids: candidate.directive.matched_rule_ids,
+      tags: candidate.directive.tags,
     });
   }
 }

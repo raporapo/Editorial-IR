@@ -3049,6 +3049,9 @@
             },
             "skill_rule_ids": {
               "$ref": "#/$defs/__schema42"
+            },
+            "tags": {
+              "$ref": "#/$defs/__schema43"
             }
           },
           "required": [
@@ -3084,26 +3087,33 @@
             "type": "string"
           }
         },
+        "__schema43": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "PlanStats": {
           "type": "object",
           "properties": {
             "operation_count": {
-              "$ref": "#/$defs/__schema43"
+              "$ref": "#/$defs/__schema44"
             },
             "total_duration_ms": {
               "$ref": "#/$defs/Milliseconds"
             },
             "duration_error_ms": {
-              "$ref": "#/$defs/__schema44"
+              "$ref": "#/$defs/__schema45"
             },
             "compression_ratio": {
               "$ref": "#/$defs/UnitScore"
             },
             "events_selected": {
-              "$ref": "#/$defs/__schema45"
+              "$ref": "#/$defs/__schema46"
             },
             "events_available": {
-              "$ref": "#/$defs/__schema46"
+              "$ref": "#/$defs/__schema47"
             },
             "mean_importance": {
               "$ref": "#/$defs/UnitScore"
@@ -3124,12 +3134,12 @@
           ],
           "additionalProperties": false
         },
-        "__schema43": {
+        "__schema44": {
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
         },
-        "__schema44": {
+        "__schema45": {
           "type": "integer",
           "minimum": -9007199254740991,
           "maximum": 9007199254740991
@@ -3139,12 +3149,12 @@
           "minimum": 0,
           "maximum": 1
         },
-        "__schema45": {
+        "__schema46": {
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
         },
-        "__schema46": {
+        "__schema47": {
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991

@@ -75,6 +75,13 @@ is compatible with.
 
 ### Fixed
 
+- **A skill's `tag` went nowhere.** The format has described it since it was
+  written as "free tags, carried into the plan's rationale", the rule runtime
+  collected them onto the directive, and nothing read that field — nor did the
+  rationale have anywhere to put them. An author could mark a group of clips in
+  their own vocabulary and never see the mark again. `PlanRationale` carries
+  `tags`, and `oea explain` prints them.
+
 - **Premiere got hard cuts where a skill asked for dissolves.** All three
   adapters advertise `basic_transition` and name the types they support, so
   negotiation passes transitions through untouched and records no downgrade —

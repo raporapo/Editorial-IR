@@ -138,6 +138,17 @@ export const PlanRationale = obj({
   score: z.number().optional(),
   /** Which Skill rules fired on this event. */
   skill_rule_ids: z.array(z.string()).default([]),
+  /**
+   * Free tags the Skill's rules attached.
+   *
+   * Documented as "carried into the plan's rationale" since the format was
+   * written, and there was nowhere for them to be carried to: the rule runtime
+   * collected them and the planner read a directive that had no reader for the
+   * field. A tag is how an author marks a group of clips in their own
+   * vocabulary — `sponsor`, `needs-music`, `b-roll-only` — and finds them again
+   * in the plan.
+   */
+  tags: z.array(z.string()).default([]),
 }).meta({ id: 'PlanRationale' });
 export type PlanRationale = z.infer<typeof PlanRationale>;
 

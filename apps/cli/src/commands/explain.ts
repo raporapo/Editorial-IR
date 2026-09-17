@@ -123,6 +123,9 @@ export function runExplain(args: ExplainArgs): number {
             : colour.green(entry.decision);
         note(`  ${label}: ${entry.reason}`);
         if (entry.skill_rule_ids.length > 0) note(`    rules: ${entry.skill_rule_ids.join(', ')}`);
+        // The author's own vocabulary for this clip. A skill can write `tag:
+        // [sponsor]` and this is where it comes back.
+        if (entry.tags.length > 0) note(`    tags: ${entry.tags.join(', ')}`);
       }
     }
   }
