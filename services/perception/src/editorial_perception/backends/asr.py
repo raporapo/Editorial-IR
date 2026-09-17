@@ -12,7 +12,25 @@ from typing import Any
 
 from ..errors import MissingDependency, ModelError
 
-DEFAULT_MODEL = os.environ.get("OEA_ASR_MODEL", "small")
+# `base`, measured rather than assumed. On a 4-core CPU with int8:
+#
+#   tiny   3.9x realtime   base  2.25x realtime   small  0.74x realtime
+#
+# `small` was the default and is slower than the audio it is transcribing — a
+# 20-minute video costs 27 minutes of ASR alone, on the machine most people will
+# run this on. That is the kind of default that gets the whole project abandoned
+# at the first real file.
+#
+# It is not only faster. On the one Japanese sample available here, `base`
+# transcribed 弁当制 and 持っていけない correctly while `small` produced 弁当性 and
+# dropped the potential form — so the usual "bigger is more accurate" intuition
+# did not hold, and there was no accuracy being bought with that time. One
+# sample is not a benchmark; the speed figures are solid and the quality claim is
+# only that `small` is not obviously better.
+#
+# GPUs change this completely. Anyone with one should set OEA_ASR_MODEL=small or
+# large-v3, which is why this is an environment variable and not a constant.
+DEFAULT_MODEL = os.environ.get("OEA_ASR_MODEL", "base")
 DEFAULT_COMPUTE = os.environ.get("OEA_ASR_COMPUTE", "int8")
 
 

@@ -70,6 +70,19 @@ def handle_health(params: dict[str, Any], session: Session) -> dict[str, Any]:
 _LOOPBACK = re.compile(r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:|/|$)")
 
 
+def _model_name(reference: str) -> str:
+    """The identity of a model, given either its name or where it was unpacked."""
+    if "/" not in reference and "\\" not in reference:
+        return reference
+    from pathlib import Path  # noqa: PLC0415
+
+    # A repo id like "google/siglip-base-patch16-224" is a name and keeps both
+    # halves; a filesystem path keeps only its last component.
+    if not Path(reference).exists():
+        return reference
+    return Path(reference).resolve().name
+
+
 def _stage_models() -> dict[str, str]:
     """What each stage would load, without loading any of it."""
     from .backends.asr import DEFAULT_COMPUTE  # noqa: PLC0415
@@ -80,7 +93,12 @@ def _stage_models() -> dict[str, str]:
     models = {
         # The compute type changes the numbers that come out, so it is part of
         # what identifies the model rather than a detail of how it was run.
-        "transcribe": f"{ASR_MODEL}/{DEFAULT_COMPUTE}",
+        # The name, never the path. A locally-provisioned model is pointed at
+        # with an absolute directory, and that directory was going into the
+        # cache key and into every ModelRun record in the IR — which put
+        # somebody's home directory inside a document meant to be shared, and
+        # made the cache miss on the same model moved elsewhere.
+        "transcribe": f"{_model_name(ASR_MODEL)}/{DEFAULT_COMPUTE}",
         "embed_frames": VISUAL_MODEL,
     }
     if TEXT_MODEL:
