@@ -1,0 +1,81 @@
+name: tech-youtube
+version: 0.1.0
+extends: [talking-head]
+description: >-
+  An explanation with something on screen. Keeps the demonstration, keeps the
+  words, and gets to the point quickly enough that a viewer stays.
+license: Apache-2.0
+
+defaults:
+  min_clip_duration_ms: 2000
+  max_clip_duration_ms: 20000
+
+scoring:
+  weights:
+    information_density: 1.0
+    context_relevance: 0.6
+    uniqueness: 0.3
+
+arc:
+  ordering: chronological
+  segments:
+    - name: opening
+      budget: 0.12
+      prefer_roles: [setup]
+      require_roles: [setup]
+    - name: middle
+      budget: 0.73
+      prefer_roles: [context, build_up, payoff]
+    - name: ending
+      budget: 0.15
+      prefer_roles: [resolution, ending]
+
+intent:
+  opening: direct
+  middle: informative
+  ending: practical
+
+rules:
+  - id: keep-what-is-on-screen
+    description: A demonstration is the part a written article cannot replace.
+    when:
+      has_text_on_screen: true
+    action:
+      prefer: 0.25
+
+  # Overrides the rule of the same name in talking-head, which drops anything
+  # wordless and unremarkable. In a piece about one person explaining something
+  # that is right; here a silent screen recording of the thing working is the
+  # demonstration, and dropping is sticky, so the b-roll rule below could never
+  # reach the material it was written for.
+  - id: drop-silence
+    description: Quiet is only dead air when there is nothing to look at either.
+    when:
+      has_speech: false
+      has_text_on_screen: false
+      story_importance: '<0.6'
+    action:
+      drop: true
+
+  - id: screen-without-speech-is-b-roll
+    when:
+      has_text_on_screen: true
+      has_speech: false
+    action:
+      as_b_roll: true
+      maximum_duration_sec: 6.0
+
+  - id: open-with-the-point
+    description: The first thing said should be what the piece is about.
+    when:
+      project_position: first
+      information_density: '>0.5'
+    action:
+      prefer: 0.3
+      place_at: opening
+
+  - id: drop-preamble
+    when:
+      narrative_role: filler
+    action:
+      drop: true

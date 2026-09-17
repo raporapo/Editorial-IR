@@ -1,0 +1,108 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/HealthResult.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "worker_version": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "python_version": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "capabilities": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "stage_locality": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "stage_models": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "device": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "vram_total_mb": {
+      "$ref": "#/$defs/__schema7"
+    },
+    "ffmpeg_available": {
+      "$ref": "#/$defs/__schema8"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "worker_version"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": "string"
+    },
+    "__schema1": {
+      "type": "string"
+    },
+    "__schema2": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "__schema3": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "__schema4": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "enum": [
+          "local",
+          "remote_api",
+          "unknown"
+        ]
+      }
+    },
+    "__schema5": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "__schema6": {
+      "default": "cpu",
+      "type": "string"
+    },
+    "__schema7": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema8": {
+      "default": false,
+      "type": "boolean"
+    }
+  }
+}

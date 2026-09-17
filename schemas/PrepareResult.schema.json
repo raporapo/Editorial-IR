@@ -1,0 +1,53 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/PrepareResult.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "proxy_path": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "audio_path": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "frames_dir": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "frame_timestamps_ms": {
+      "$ref": "#/$defs/__schema3"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "__schema1": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "__schema2": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "__schema3": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Milliseconds"
+      }
+    },
+    "Milliseconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+    }
+  }
+}

@@ -1,0 +1,52 @@
+[project]
+name = "editorial-perception"
+version = "0.1.0"
+description = "The perception runtime for Editorial IR: speech, vision and audio analysis behind one JSON Lines protocol."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = []
+
+# Everything heavy is optional, and the worker reports what it has rather than
+# refusing to start. A machine with no GPU still answers probe and prepare, and
+# the compiler degrades around what is missing instead of failing.
+[project.optional-dependencies]
+asr = ["faster-whisper>=1.0"]
+visual = ["torch>=2.2", "transformers>=4.44", "pillow>=10.0"]
+audio = ["numpy>=1.26"]
+ocr = ["rapidocr-onnxruntime>=1.3"]
+vlm = ["pillow>=10.0"]
+text = ["sentence-transformers>=3.0"]
+validate = ["jsonschema>=4.21"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+all = [
+  "faster-whisper>=1.0",
+  "torch>=2.2",
+  "transformers>=4.44",
+  "pillow>=10.0",
+  "numpy>=1.26",
+  "rapidocr-onnxruntime>=1.3",
+  "sentence-transformers>=3.0",
+  "jsonschema>=4.21",
+]
+
+[project.scripts]
+editorial-perception = "editorial_perception.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/editorial_perception"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@editorial-ir/contracts": ["./packages/contracts/src/index.ts"],
+      "@editorial-ir/perception": ["./packages/perception/src/index.ts"],
+      "@editorial-ir/decision": ["./packages/decision/src/index.ts"],
+      "@editorial-ir/index": ["./packages/index/src/index.ts"],
+      "@editorial-ir/skills": ["./packages/skills/src/index.ts"],
+      "@editorial-ir/core": ["./packages/core/src/index.ts"],
+      "@editorial-ir/agent": ["./packages/agent/src/index.ts"],
+      "@editorial-ir/adapters": ["./packages/adapters/src/index.ts"],
+      "@editorial-ir/cli": ["./apps/cli/src/index.ts"]
+    }
+  },
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "apps/*/src/**/*.ts",
+    "apps/*/test/**/*.ts",
+    "tests/**/*.ts",
+    "scripts/**/*.ts"
+  ]
+}

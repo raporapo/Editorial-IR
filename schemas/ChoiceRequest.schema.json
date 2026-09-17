@@ -1,0 +1,59 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/ChoiceRequest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "question_id": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "question": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "options": {
+      "$ref": "#/$defs/__schema2"
+    }
+  },
+  "required": [
+    "question_id",
+    "question",
+    "options"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": "string"
+    },
+    "__schema1": {
+      "type": "string"
+    },
+    "__schema2": {
+      "minItems": 2,
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ChoiceOption"
+      }
+    },
+    "ChoiceOption": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "description": {
+          "$ref": "#/$defs/__schema4"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "__schema3": {
+      "type": "string"
+    },
+    "__schema4": {
+      "default": "",
+      "type": "string"
+    }
+  }
+}

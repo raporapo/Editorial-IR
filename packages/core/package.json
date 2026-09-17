@@ -1,0 +1,48 @@
+{
+  "name": "@editorial-ir/core",
+  "version": "0.1.0",
+  "description": "The compiler: ingestion, observation, segmentation, context, decision and Editorial IR.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@editorial-ir/contracts": "workspace:*",
+    "@editorial-ir/perception": "workspace:*",
+    "@editorial-ir/decision": "workspace:*",
+    "@editorial-ir/index": "workspace:*",
+    "zod": "^4.6.5",
+    "yaml": "^2.9.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raporapo/Editorial-IR.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/raporapo/Editorial-IR#readme",
+  "bugs": {
+    "url": "https://github.com/raporapo/Editorial-IR/issues"
+  },
+  "keywords": [
+    "video",
+    "editing",
+    "editorial",
+    "opentimelineio",
+    "premiere",
+    "aviutl",
+    "ffmpeg"
+  ]
+}

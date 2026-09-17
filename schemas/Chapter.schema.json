@@ -1,0 +1,130 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/Chapter.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/chpId"
+    },
+    "start_ms": {
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "end_ms": {
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "title": {
+      "$ref": "#/$defs/ProvenancedString"
+    },
+    "summary": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "event_ids": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "place": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    }
+  },
+  "required": [
+    "id",
+    "start_ms",
+    "end_ms",
+    "title",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "title": "Chapter",
+  "$defs": {
+    "chpId": {
+      "type": "string",
+      "description": "A group of consecutive events."
+    },
+    "Milliseconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+    },
+    "ProvenancedString": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "confidence": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "model_run_id": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/__schema3"
+        }
+      },
+      "required": [
+        "value",
+        "provenance"
+      ],
+      "additionalProperties": false
+    },
+    "__schema0": {
+      "type": "string"
+    },
+    "Provenance": {
+      "type": "string",
+      "enum": [
+        "observed",
+        "inferred",
+        "user_provided",
+        "skill_derived",
+        "agent_derived",
+        "nle_observed"
+      ]
+    },
+    "__schema1": {
+      "$ref": "#/$defs/Confidence"
+    },
+    "Confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence in [0,1]. 1 means certain, 0 means no support at all."
+    },
+    "__schema2": {
+      "$ref": "#/$defs/runId"
+    },
+    "runId": {
+      "type": "string",
+      "description": "One execution of a model or rule-based stage."
+    },
+    "__schema3": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema4": {
+      "$ref": "#/$defs/ProvenancedString"
+    },
+    "__schema5": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evtId"
+      }
+    },
+    "evtId": {
+      "type": "string",
+      "description": "A semantic event: one thing that happened."
+    },
+    "__schema6": {
+      "type": "string"
+    }
+  }
+}

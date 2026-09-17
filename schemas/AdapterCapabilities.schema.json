@@ -1,0 +1,176 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/AdapterCapabilities.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "name": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "mode": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "output_extensions": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "text": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "captions": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "basic_transition": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "transition_types": {
+      "$ref": "#/$defs/__schema7"
+    },
+    "keyframes": {
+      "$ref": "#/$defs/__schema8"
+    },
+    "masking": {
+      "$ref": "#/$defs/__schema9"
+    },
+    "nested_sequence": {
+      "$ref": "#/$defs/__schema10"
+    },
+    "speed_change": {
+      "$ref": "#/$defs/__schema11"
+    },
+    "still_images": {
+      "$ref": "#/$defs/__schema12"
+    },
+    "color_adjustment": {
+      "$ref": "#/$defs/__schema13"
+    },
+    "audio_tracks": {
+      "$ref": "#/$defs/__schema14"
+    },
+    "max_video_tracks": {
+      "$ref": "#/$defs/__schema15"
+    },
+    "reads_back_timeline": {
+      "$ref": "#/$defs/__schema16"
+    },
+    "renders_preview": {
+      "$ref": "#/$defs/__schema17"
+    },
+    "notes": {
+      "$ref": "#/$defs/__schema18"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "mode"
+  ],
+  "additionalProperties": false,
+  "title": "AdapterCapabilities",
+  "$defs": {
+    "__schema0": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema1": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema2": {
+      "type": "string",
+      "enum": [
+        "file",
+        "live"
+      ]
+    },
+    "__schema3": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema4": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema5": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema6": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema7": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/TransitionType"
+      }
+    },
+    "TransitionType": {
+      "type": "string",
+      "enum": [
+        "hard_cut",
+        "cross_dissolve",
+        "dip_to_black",
+        "dip_to_white",
+        "fade_in",
+        "fade_out"
+      ]
+    },
+    "__schema8": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema9": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema10": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema11": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema12": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema13": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema14": {
+      "default": 1,
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema15": {
+      "default": 1,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "__schema16": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema17": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema18": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

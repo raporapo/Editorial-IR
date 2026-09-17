@@ -1,0 +1,711 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/PerceptionRequest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/__schema0"
+    },
+    {
+      "$ref": "#/$defs/__schema3"
+    },
+    {
+      "$ref": "#/$defs/__schema5"
+    },
+    {
+      "$ref": "#/$defs/__schema11"
+    },
+    {
+      "$ref": "#/$defs/__schema17"
+    },
+    {
+      "$ref": "#/$defs/__schema21"
+    },
+    {
+      "$ref": "#/$defs/__schema25"
+    },
+    {
+      "$ref": "#/$defs/__schema30"
+    },
+    {
+      "$ref": "#/$defs/__schema35"
+    },
+    {
+      "$ref": "#/$defs/__schema46"
+    },
+    {
+      "$ref": "#/$defs/__schema50"
+    }
+  ],
+  "title": "PerceptionRequest",
+  "$defs": {
+    "__schema0": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "v": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "op": {
+          "type": "string",
+          "const": "health"
+        },
+        "params": {
+          "default": {},
+          "$ref": "#/$defs/HealthParams"
+        }
+      },
+      "required": [
+        "id",
+        "op"
+      ],
+      "additionalProperties": false
+    },
+    "__schema1": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema2": {
+      "default": "0.1.0",
+      "type": "string"
+    },
+    "HealthParams": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "__schema3": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "v": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "op": {
+          "type": "string",
+          "const": "probe"
+        },
+        "params": {
+          "$ref": "#/$defs/ProbeParams"
+        }
+      },
+      "required": [
+        "id",
+        "op",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "ProbeParams": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/__schema4"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "__schema4": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema5": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "v": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "op": {
+          "type": "string",
+          "const": "prepare"
+        },
+        "params": {
+          "$ref": "#/$defs/PrepareParams"
+        }
+      },
+      "required": [
+        "id",
+        "op",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "PrepareParams": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "work_dir": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "proxy_height": {
+          "$ref": "#/$defs/__schema8"
+        },
+        "extract_audio": {
+          "$ref": "#/$defs/__schema9"
+        },
+        "frame_fps": {
+          "$ref": "#/$defs/__schema10"
+        }
+      },
+      "required": [
+        "path",
+        "work_dir"
+      ],
+      "additionalProperties": false
+    },
+    "__schema6": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema7": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema8": {
+      "default": 480,
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema9": {
+      "default": true,
+      "type": "boolean"
+    },
+    "__schema10": {
+      "default": 1,
+      "type": "number",
+      "minimum": 0
+    },
+    "__schema11": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "v": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "op": {
+          "type": "string",
+          "const": "transcribe"
+        },
+        "params": {
+          "$ref": "#/$defs/TranscribeParams"
+        }
+      },
+      "required": [
+        "id",
+        "op",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "TranscribeParams": {
+      "type": "object",
+      "properties": {
+        "audio_path": {
+          "$ref": "#/$defs/__schema12"
+        },
+        "language": {
+          "$ref": "#/$defs/__schema13"
+        },
+        "vocabulary": {
+          "$ref": "#/$defs/__schema14"
+        },
+        "word_timestamps": {
+          "$ref": "#/$defs/__schema15"
+        },
+        "diarize": {
+          "$ref": "#/$defs/__schema16"
+        }
+      },
+      "required": [
+        "audio_path"
+      ],
+      "additionalProperties": false
+    },
+    "__schema12": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema13": {
+      "type": "string"
+    },
+    "__schema14": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema15": {
+      "default": true,
+      "type": "boolean"
+    },
+    "__schema16": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema17": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "v": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "op": {
+          "type": "string",
+          "const": "detect_shots"
+        },
+        "params": {
+          "$ref": "#/$defs/DetectShotsParams"
+        }
+      },
+      "required": [
+        "id",
+        "op",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "DetectShotsParams": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/__schema18"
+        },
+        "threshold": {
+          "$ref": "#/$defs/__schema19"
+        },
+        "min_shot_ms": {
+          "$ref": "#/$defs/__schema20"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "__schema18": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema19": {
+      "default": 0.3,
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "__schema20": {
+      "default": 800,
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "Milliseconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+    },
+    "__schema21": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "v": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "op": {
+          "type": "string",
+          "const": "embed_frames"
+        },
+        "params": {
+          "$ref": "#/$defs/EmbedFramesParams"
+        }
+      },
+      "required": [
+        "id",
+        "op",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "EmbedFramesParams": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/__schema22"
+        },
+        "timestamps_ms": {
+          "$ref": "#/$defs/__schema23"
+        },
+        "label_vocabulary": {
+          "$ref": "#/$defs/__schema24"
+        }
+      },
+      "required": [
+        "path",
+        "timestamps_ms"
+      ],
+      "additionalProperties": false
+    },
+    "__schema22": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema23": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Milliseconds"
+      }
+    },
+    "__schema24": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema25": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "v": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "op": {
+          "type": "string",
+          "const": "analyze_audio"
+        },
+        "params": {
+          "$ref": "#/$defs/AnalyzeAudioParams"
+        }
+      },
+      "required": [
+        "id",
+        "op",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "AnalyzeAudioParams": {
+      "type": "object",
+      "properties": {
+        "audio_path": {
+          "$ref": "#/$defs/__schema26"
+        },
+        "hop_ms": {
+          "$ref": "#/$defs/__schema27"
+        },
+        "silence_threshold_db": {
+          "$ref": "#/$defs/__schema28"
+        },
+        "classify_events": {
+          "$ref": "#/$defs/__schema29"
+        }
+      },
+      "required": [
+        "audio_path"
+      ],
+      "additionalProperties": false
+    },
+    "__schema26": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema27": {
+      "default": 100,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "__schema28": {
+      "default": -40,
+      "type": "number"
+    },
+    "__schema29": {
+      "default": true,
+      "type": "boolean"
+    },
+    "__schema30": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "v": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "op": {
+          "type": "string",
+          "const": "ocr"
+        },
+        "params": {
+          "$ref": "#/$defs/OcrParams"
+        }
+      },
+      "required": [
+        "id",
+        "op",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "OcrParams": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/__schema31"
+        },
+        "timestamps_ms": {
+          "$ref": "#/$defs/__schema32"
+        },
+        "language": {
+          "$ref": "#/$defs/__schema33"
+        },
+        "frames_dir": {
+          "$ref": "#/$defs/__schema34"
+        }
+      },
+      "required": [
+        "path",
+        "timestamps_ms"
+      ],
+      "additionalProperties": false
+    },
+    "__schema31": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema32": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Milliseconds"
+      }
+    },
+    "__schema33": {
+      "type": "string"
+    },
+    "__schema34": {
+      "type": "string"
+    },
+    "__schema35": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "v": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "op": {
+          "type": "string",
+          "const": "describe"
+        },
+        "params": {
+          "$ref": "#/$defs/DescribeParams"
+        }
+      },
+      "required": [
+        "id",
+        "op",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "DescribeParams": {
+      "type": "object",
+      "properties": {
+        "event_id": {
+          "$ref": "#/$defs/__schema36"
+        },
+        "frame_paths": {
+          "$ref": "#/$defs/__schema37"
+        },
+        "transcript": {
+          "$ref": "#/$defs/__schema38"
+        },
+        "ocr": {
+          "$ref": "#/$defs/__schema39"
+        },
+        "audio_tags": {
+          "$ref": "#/$defs/__schema40"
+        },
+        "visual_labels": {
+          "$ref": "#/$defs/__schema41"
+        },
+        "previous_summary": {
+          "$ref": "#/$defs/__schema42"
+        },
+        "next_summary": {
+          "$ref": "#/$defs/__schema43"
+        },
+        "user_context": {
+          "$ref": "#/$defs/__schema44"
+        },
+        "language": {
+          "$ref": "#/$defs/__schema45"
+        }
+      },
+      "required": [
+        "event_id"
+      ],
+      "additionalProperties": false
+    },
+    "__schema36": {
+      "type": "string"
+    },
+    "__schema37": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema38": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema39": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema40": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema41": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema42": {
+      "type": "string"
+    },
+    "__schema43": {
+      "type": "string"
+    },
+    "__schema44": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    },
+    "__schema45": {
+      "type": "string"
+    },
+    "__schema46": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "v": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "op": {
+          "type": "string",
+          "const": "embed_text"
+        },
+        "params": {
+          "$ref": "#/$defs/EmbedTextParams"
+        }
+      },
+      "required": [
+        "id",
+        "op",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "EmbedTextParams": {
+      "type": "object",
+      "properties": {
+        "texts": {
+          "$ref": "#/$defs/__schema47"
+        },
+        "role": {
+          "$ref": "#/$defs/__schema49"
+        }
+      },
+      "required": [
+        "texts"
+      ],
+      "additionalProperties": false
+    },
+    "__schema47": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/__schema48"
+      }
+    },
+    "__schema48": {
+      "type": "string"
+    },
+    "__schema49": {
+      "default": "passage",
+      "type": "string",
+      "enum": [
+        "query",
+        "passage"
+      ]
+    },
+    "__schema50": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "v": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "op": {
+          "type": "string",
+          "const": "shutdown"
+        },
+        "params": {
+          "default": {},
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "op"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

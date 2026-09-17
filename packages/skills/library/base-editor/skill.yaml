@@ -1,0 +1,121 @@
+name: base-editor
+version: 0.1.0
+description: >-
+  The judgement every other skill starts from: keep what matters, drop what
+  repeats, do not use material that is technically unusable, and never overrule
+  the person who made the footage.
+license: Apache-2.0
+
+defaults:
+  min_clip_duration_ms: 1200
+  max_clip_duration_ms: 12000
+  pad_in_ms: 150
+  pad_out_ms: 250
+  snap_to_silence: true
+  snap_window_ms: 600
+  default_transition:
+    type: hard_cut
+    duration_ms: 0
+
+# How editorial metrics become the one number the planner ranks by. Importance
+# dominates; redundancy is the only strongly negative term, because the most
+# common failure of an automatic cut is showing the same thing three times.
+scoring:
+  weights:
+    story_importance: 1.0
+    context_relevance: 0.5
+    emotional_intensity: 0.4
+    uniqueness: 0.35
+    information_density: 0.3
+    visual_quality: 0.25
+    audio_quality: 0.25
+    redundancy: -0.8
+  flag_weights:
+    preserve: 0.5
+    redundant: -0.4
+    contains_dead_air: -0.2
+  duplicate_penalty: 0.5
+  continuity_bonus: 0.2
+
+arc:
+  ordering: chronological
+  segments:
+    - name: opening
+      budget: 0.15
+      prefer_roles: [setup, context]
+    - name: middle
+      budget: 0.65
+      prefer_roles: [build_up, payoff, reaction, climax]
+    - name: ending
+      budget: 0.2
+      prefer_roles: [resolution, ending]
+
+constraints:
+  preserve_user_essential_events: true
+  max_consecutive_same_role: 3
+  forbid_roles: []
+
+rules:
+  - id: drop-unusable-picture
+    description: Material nobody could watch is not worth ranking.
+    priority: 90
+    when:
+      visual_quality: '<0.15'
+    action:
+      drop: true
+
+  - id: drop-empty-filler
+    description: Nothing said, nothing felt, nothing shown.
+    priority: 50
+    when:
+      narrative_role: filler
+      story_importance: '<0.3'
+    action:
+      drop: true
+
+  - id: suppress-duplicates
+    description: Keep the best take, not every take.
+    when:
+      redundancy: '>0.8'
+    action:
+      prefer_higher_quality_only: true
+      avoid: 0.2
+
+  - id: trim-dead-air
+    description: A long silent stretch can be shortened without losing anything.
+    when:
+      contains_dead_air_probability: '>0.6'
+      has_speech: false
+    action:
+      maximum_duration_sec: 4.0
+
+  - id: keep-what-matters
+    when:
+      story_importance: '>0.75'
+    action:
+      prefer: 0.2
+      minimum_duration_sec: 2.0
+
+  - id: protect-strong-feeling
+    description: Cutting a laugh in half is worse than running four seconds long.
+    when:
+      emotional_intensity: '>0.8'
+    action:
+      minimum_duration_sec: 2.5
+      avoid_aggressive_cutting: true
+
+  - id: use-quiet-picture-as-b-roll
+    when:
+      b_roll_candidate_probability: '>0.7'
+      has_speech: false
+    action:
+      as_b_roll: true
+      maximum_duration_sec: 4.0
+
+  - id: prefer-a-real-ending
+    when:
+      ending_candidate_probability: '>0.6'
+      project_position: last
+    action:
+      prefer: 0.25
+      place_at: ending

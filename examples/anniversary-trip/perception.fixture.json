@@ -1,0 +1,2589 @@
+{
+  "assets": {
+    "IMG_1001.MOV": {
+      "probe": {
+        "duration_ms": 540000,
+        "width": 3840,
+        "height": 2160,
+        "fps_num": 30000,
+        "fps_den": 1001,
+        "video_codec": "hevc",
+        "audio_codec": "aac",
+        "audio_channels": 2,
+        "audio_sample_rate": 48000,
+        "container": "mov,mp4,m4a",
+        "creation_time": "2026-05-16T08:12:04.000Z",
+        "metadata": {}
+      },
+      "detect_shots": {
+        "model": "example-fixture",
+        "shots": [
+          {
+            "start_ms": 0,
+            "end_ms": 11000,
+            "representative_frame_ms": 3666,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 11000,
+            "end_ms": 22000,
+            "representative_frame_ms": 14666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 22000,
+            "end_ms": 24000,
+            "representative_frame_ms": 23000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 24000,
+            "end_ms": 39500,
+            "representative_frame_ms": 29166,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 39500,
+            "end_ms": 55000,
+            "representative_frame_ms": 44666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 55000,
+            "end_ms": 58000,
+            "representative_frame_ms": 56500,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 58000,
+            "end_ms": 73333,
+            "representative_frame_ms": 63111,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 73333,
+            "end_ms": 88666,
+            "representative_frame_ms": 78444,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 88666,
+            "end_ms": 104000,
+            "representative_frame_ms": 93777,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 104000,
+            "end_ms": 108000,
+            "representative_frame_ms": 106000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 108000,
+            "end_ms": 137000,
+            "representative_frame_ms": 117666,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 137000,
+            "end_ms": 166000,
+            "representative_frame_ms": 146666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 166000,
+            "end_ms": 170000,
+            "representative_frame_ms": 168000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 170000,
+            "end_ms": 188500,
+            "representative_frame_ms": 176166,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 188500,
+            "end_ms": 207000,
+            "representative_frame_ms": 194666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 207000,
+            "end_ms": 225500,
+            "representative_frame_ms": 213166,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 225500,
+            "end_ms": 244000,
+            "representative_frame_ms": 231666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 244000,
+            "end_ms": 248000,
+            "representative_frame_ms": 246000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 248000,
+            "end_ms": 257500,
+            "representative_frame_ms": 251166,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 257500,
+            "end_ms": 267000,
+            "representative_frame_ms": 260666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 267000,
+            "end_ms": 276500,
+            "representative_frame_ms": 270166,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 276500,
+            "end_ms": 286000,
+            "representative_frame_ms": 279666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 286000,
+            "end_ms": 290000,
+            "representative_frame_ms": 288000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 290000,
+            "end_ms": 303000,
+            "representative_frame_ms": 294333,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 303000,
+            "end_ms": 316000,
+            "representative_frame_ms": 307333,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 316000,
+            "end_ms": 329000,
+            "representative_frame_ms": 320333,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 329000,
+            "end_ms": 342000,
+            "representative_frame_ms": 333333,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 342000,
+            "end_ms": 346000,
+            "representative_frame_ms": 344000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 346000,
+            "end_ms": 367333,
+            "representative_frame_ms": 353111,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 367333,
+            "end_ms": 388666,
+            "representative_frame_ms": 374444,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 388666,
+            "end_ms": 410000,
+            "representative_frame_ms": 395777,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 410000,
+            "end_ms": 414000,
+            "representative_frame_ms": 412000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 414000,
+            "end_ms": 447000,
+            "representative_frame_ms": 425000,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 447000,
+            "end_ms": 480000,
+            "representative_frame_ms": 458000,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 480000,
+            "end_ms": 484000,
+            "representative_frame_ms": 482000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 484000,
+            "end_ms": 502666,
+            "representative_frame_ms": 490222,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 502666,
+            "end_ms": 521332,
+            "representative_frame_ms": 508888,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 521332,
+            "end_ms": 540000,
+            "representative_frame_ms": 527554,
+            "change_score": 0.28
+          }
+        ]
+      },
+      "embed_frames": {
+        "model": "example-fixture",
+        "dim": 64,
+        "frames": [
+          {
+            "timestamp_ms": 3666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["hotel_room", "suitcase"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 14666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["hotel_room", "suitcase"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 23000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5345, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.8018, 0, 0.2673, 0, 0, 0, 0, 0
+            ],
+            "labels": ["hotel_room", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 29166,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["hotel_lobby", "two_people"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 44666,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["hotel_lobby", "two_people"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 56500,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["hotel_lobby", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 63111,
+            "vector": [
+              0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0
+            ],
+            "labels": ["street", "morning_light"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 78444,
+            "vector": [
+              0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0
+            ],
+            "labels": ["street", "morning_light"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 93777,
+            "vector": [
+              0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0
+            ],
+            "labels": ["street", "morning_light"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 106000,
+            "vector": [
+              0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.6325, 0, 0.3162, 0, 0, 0, 0.6325, 0
+            ],
+            "labels": ["street", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 117666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_platform", "crowd"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 146666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_platform", "crowd"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 168000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.6325, 0.6325, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_platform", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 176166,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_interior", "window"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 194666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_interior", "window"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 213166,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_interior", "window"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 231666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_interior", "window"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 246000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_interior", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 251166,
+            "vector": [
+              0, 0.3162, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_window", "city"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.6
+          },
+          {
+            "timestamp_ms": 260666,
+            "vector": [
+              0, 0.3162, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_window", "city"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.6
+          },
+          {
+            "timestamp_ms": 270166,
+            "vector": [
+              0, 0.3162, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_window", "city"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.6
+          },
+          {
+            "timestamp_ms": 279666,
+            "vector": [
+              0, 0.3162, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_window", "city"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.6
+          },
+          {
+            "timestamp_ms": 288000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_window", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 294333,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0,
+              0.6325, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["station_exit", "signage"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 307333,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0,
+              0.6325, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["station_exit", "signage"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 320333,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0,
+              0.6325, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["station_exit", "signage"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 333333,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0,
+              0.6325, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["station_exit", "signage"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 344000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["station_exit", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 353111,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["walkway", "two_people"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 374444,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["walkway", "two_people"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 395777,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["walkway", "two_people"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 412000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["walkway", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 425000,
+            "vector": [
+              0, 0.5164, 0.2582, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.5164, 0, 0, 0, 0, 0, 0.2582, 0, 0, 0.2582, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0.5164, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["theme_park_gate", "two_people", "smiling"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 458000,
+            "vector": [
+              0, 0.5164, 0.2582, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.5164, 0, 0, 0, 0, 0, 0.2582, 0, 0, 0.2582, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0.5164, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["theme_park_gate", "two_people", "smiling"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 482000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["theme_park_gate", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 490222,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.3162, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["entrance", "ticket_gate"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 508888,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.3162, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["entrance", "ticket_gate"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 527554,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.3162, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["entrance", "ticket_gate"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          }
+        ]
+      },
+      "transcribe": {
+        "language": "ja",
+        "model": "example-fixture",
+        "utterances": [
+          {
+            "start_ms": 2000,
+            "end_ms": 5240,
+            "text": "そろそろ出発しよう",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 26000,
+            "end_ms": 28980,
+            "text": "今日はUSJだね",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 32000,
+            "end_ms": 34460,
+            "text": "楽しみすぎる",
+            "speaker_id": "speaker_02",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 110000,
+            "end_ms": 112720,
+            "text": "電車混んでるね",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 172000,
+            "end_ms": 174980,
+            "text": "あと10分くらい",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 292000,
+            "end_ms": 294460,
+            "text": "こっちだって",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 348000,
+            "end_ms": 350720,
+            "text": "もう見えてきた",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 416000,
+            "end_ms": 418720,
+            "text": "やっと着いた！",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 422000,
+            "end_ms": 425240,
+            "text": "ここまで長かったね",
+            "speaker_id": "speaker_02",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 486000,
+            "end_ms": 488720,
+            "text": "チケット出して",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          }
+        ]
+      },
+      "analyze_audio": {
+        "model": "example-fixture",
+        "hop_ms": 100,
+        "rms_db": [],
+        "events": [
+          {
+            "start_ms": 1200,
+            "end_ms": 20000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 21100,
+            "end_ms": 22600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 25200,
+            "end_ms": 53000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 54100,
+            "end_ms": 55600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 103100,
+            "end_ms": 104600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 109200,
+            "end_ms": 164000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 109500,
+            "end_ms": 164500,
+            "event_type": "crowd",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 165100,
+            "end_ms": 166600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 171200,
+            "end_ms": 242000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 171500,
+            "end_ms": 242500,
+            "event_type": "crowd",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 243100,
+            "end_ms": 244600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 285100,
+            "end_ms": 286600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 291200,
+            "end_ms": 340000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 341100,
+            "end_ms": 342600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 347200,
+            "end_ms": 408000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 347500,
+            "end_ms": 408500,
+            "event_type": "crowd",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 409100,
+            "end_ms": 410600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 415200,
+            "end_ms": 478000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 415500,
+            "end_ms": 478500,
+            "event_type": "crowd",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 415500,
+            "end_ms": 478500,
+            "event_type": "laughter",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 479100,
+            "end_ms": 480600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 485200,
+            "end_ms": 538000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 539100,
+            "end_ms": 540600,
+            "event_type": "silence",
+            "confidence": 0.82
+          }
+        ]
+      },
+      "ocr": {
+        "model": "example-fixture",
+        "observations": [
+          {
+            "start_ms": 293000,
+            "end_ms": 299000,
+            "text": "ユニバーサルシティ駅",
+            "confidence": 0.88
+          },
+          {
+            "start_ms": 417000,
+            "end_ms": 423000,
+            "text": "UNIVERSAL STUDIOS JAPAN",
+            "confidence": 0.88
+          }
+        ]
+      }
+    },
+    "IMG_1002.MOV": {
+      "probe": {
+        "duration_ms": 660000,
+        "width": 3840,
+        "height": 2160,
+        "fps_num": 30000,
+        "fps_den": 1001,
+        "video_codec": "hevc",
+        "audio_codec": "aac",
+        "audio_channels": 2,
+        "audio_sample_rate": 48000,
+        "container": "mov,mp4,m4a",
+        "creation_time": "2026-05-16T11:41:22.000Z",
+        "metadata": {}
+      },
+      "detect_shots": {
+        "model": "example-fixture",
+        "shots": [
+          {
+            "start_ms": 0,
+            "end_ms": 22000,
+            "representative_frame_ms": 7333,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 22000,
+            "end_ms": 44000,
+            "representative_frame_ms": 29333,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 44000,
+            "end_ms": 48000,
+            "representative_frame_ms": 46000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 48000,
+            "end_ms": 79000,
+            "representative_frame_ms": 58333,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 79000,
+            "end_ms": 110000,
+            "representative_frame_ms": 89333,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 110000,
+            "end_ms": 114000,
+            "representative_frame_ms": 112000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 114000,
+            "end_ms": 133000,
+            "representative_frame_ms": 120333,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 133000,
+            "end_ms": 152000,
+            "representative_frame_ms": 139333,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 152000,
+            "end_ms": 156000,
+            "representative_frame_ms": 154000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 156000,
+            "end_ms": 191500,
+            "representative_frame_ms": 167833,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 191500,
+            "end_ms": 227000,
+            "representative_frame_ms": 203333,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 227000,
+            "end_ms": 231000,
+            "representative_frame_ms": 229000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 231000,
+            "end_ms": 272500,
+            "representative_frame_ms": 244833,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 272500,
+            "end_ms": 314000,
+            "representative_frame_ms": 286333,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 314000,
+            "end_ms": 318000,
+            "representative_frame_ms": 316000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 318000,
+            "end_ms": 338000,
+            "representative_frame_ms": 324666,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 338000,
+            "end_ms": 358000,
+            "representative_frame_ms": 344666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 358000,
+            "end_ms": 362000,
+            "representative_frame_ms": 360000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 362000,
+            "end_ms": 376250,
+            "representative_frame_ms": 366750,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 376250,
+            "end_ms": 390500,
+            "representative_frame_ms": 381000,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 390500,
+            "end_ms": 404750,
+            "representative_frame_ms": 395250,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 404750,
+            "end_ms": 419000,
+            "representative_frame_ms": 409500,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 419000,
+            "end_ms": 423000,
+            "representative_frame_ms": 421000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 423000,
+            "end_ms": 447500,
+            "representative_frame_ms": 431166,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 447500,
+            "end_ms": 472000,
+            "representative_frame_ms": 455666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 472000,
+            "end_ms": 476000,
+            "representative_frame_ms": 474000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 476000,
+            "end_ms": 493000,
+            "representative_frame_ms": 481666,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 493000,
+            "end_ms": 510000,
+            "representative_frame_ms": 498666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 510000,
+            "end_ms": 527000,
+            "representative_frame_ms": 515666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 527000,
+            "end_ms": 544000,
+            "representative_frame_ms": 532666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 544000,
+            "end_ms": 548000,
+            "representative_frame_ms": 546000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 548000,
+            "end_ms": 559250,
+            "representative_frame_ms": 551750,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 559250,
+            "end_ms": 570500,
+            "representative_frame_ms": 563000,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 570500,
+            "end_ms": 581750,
+            "representative_frame_ms": 574250,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 581750,
+            "end_ms": 593000,
+            "representative_frame_ms": 585500,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 593000,
+            "end_ms": 597000,
+            "representative_frame_ms": 595000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 597000,
+            "end_ms": 628500,
+            "representative_frame_ms": 607500,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 628500,
+            "end_ms": 660000,
+            "representative_frame_ms": 639000,
+            "change_score": 0.28
+          }
+        ]
+      },
+      "embed_frames": {
+        "model": "example-fixture",
+        "dim": 64,
+        "frames": [
+          {
+            "timestamp_ms": 7333,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["ride_queue", "crowd"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 29333,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["ride_queue", "crowd"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 46000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["ride_queue", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 58333,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["ride", "two_people"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 89333,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["ride", "two_people"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 112000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.6325, 0.3162, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["ride", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 120333,
+            "vector": [
+              0.6325, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["ride_exit", "smiling"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 139333,
+            "vector": [
+              0.6325, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["ride_exit", "smiling"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 154000,
+            "vector": [
+              0.5774, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.5774, 0, 0.5774, 0, 0, 0, 0, 0
+            ],
+            "labels": ["ride_exit", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 167833,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.6325, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0
+            ],
+            "labels": ["food_stall", "street_food"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 203333,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.6325, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0
+            ],
+            "labels": ["food_stall", "street_food"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 229000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["food_stall", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 244833,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.2582, 0.5164, 0, 0, 0, 0,
+              0, 0, 0.2582, 0, 0, 0, 0.5164, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.2582, 0, 0, 0, 0.5164, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["restaurant", "ramen", "table"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 286333,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.2582, 0.5164, 0, 0, 0, 0,
+              0, 0, 0.2582, 0, 0, 0, 0.5164, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.2582, 0, 0, 0, 0.5164, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["restaurant", "ramen", "table"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 316000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0,
+              0.6325, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["restaurant", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 324666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0.6325, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0,
+              0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["restaurant", "ramen"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 344666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0.6325, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0,
+              0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["restaurant", "ramen"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 360000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0,
+              0.6325, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["restaurant", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 366750,
+            "vector": [
+              0.3162, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["park_street", "shops"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 381000,
+            "vector": [
+              0.3162, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["park_street", "shops"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 395250,
+            "vector": [
+              0.3162, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["park_street", "shops"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 409500,
+            "vector": [
+              0.3162, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["park_street", "shops"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 421000,
+            "vector": [
+              0.3162, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["park_street", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 431166,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.3162, 0.6325, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["souvenir_shop", "shelves"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 455666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.3162, 0.6325, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["souvenir_shop", "shelves"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 474000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.3162, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["souvenir_shop", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 481666,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["show_stage", "crowd"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 498666,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["show_stage", "crowd"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 515666,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["show_stage", "crowd"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 532666,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["show_stage", "crowd"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 546000,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["show_stage", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 551750,
+            "vector": [
+              0, 0.8341, 0.2085, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.2085, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.417, 0, 0, 0, 0, 0, 0.2085, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["show_stage", "two_people", "smiling"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 563000,
+            "vector": [
+              0, 0.8341, 0.2085, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.2085, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.417, 0, 0, 0, 0, 0, 0.2085, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["show_stage", "two_people", "smiling"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 574250,
+            "vector": [
+              0, 0.8341, 0.2085, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.2085, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.417, 0, 0, 0, 0, 0, 0.2085, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["show_stage", "two_people", "smiling"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 585500,
+            "vector": [
+              0, 0.8341, 0.2085, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.2085, 0, 0, 0, 0, 0, 0, 0, 0,
+              0.417, 0, 0, 0, 0, 0, 0.2085, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["show_stage", "two_people", "smiling"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 595000,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["show_stage", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 607500,
+            "vector": [
+              0.3162, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["park_street", "evening_light"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 639000,
+            "vector": [
+              0.3162, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["park_street", "evening_light"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          }
+        ]
+      },
+      "transcribe": {
+        "language": "ja",
+        "model": "example-fixture",
+        "utterances": [
+          {
+            "start_ms": 2000,
+            "end_ms": 5500,
+            "text": "待ち時間90分だって",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 50000,
+            "end_ms": 52720,
+            "text": "うわ、すごい！",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 116000,
+            "end_ms": 118980,
+            "text": "もう一回乗りたい",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 158000,
+            "end_ms": 160200,
+            "text": "お腹すいた",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 164000,
+            "end_ms": 166460,
+            "text": "これ食べよう",
+            "speaker_id": "speaker_02",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 233000,
+            "end_ms": 236500,
+            "text": "このラーメン美味しい",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 239000,
+            "end_ms": 242500,
+            "text": "大阪に来た感じするね",
+            "speaker_id": "speaker_02",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 364000,
+            "end_ms": 366980,
+            "text": "お土産見ていこう",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 425000,
+            "end_ms": 427460,
+            "text": "これかわいい",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 550000,
+            "end_ms": 552200,
+            "text": "最高だった",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 599000,
+            "end_ms": 603020,
+            "text": "そろそろ暗くなってきたね",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          }
+        ]
+      },
+      "analyze_audio": {
+        "model": "example-fixture",
+        "hop_ms": 100,
+        "rms_db": [],
+        "events": [
+          {
+            "start_ms": 1200,
+            "end_ms": 42000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 1500,
+            "end_ms": 42500,
+            "event_type": "crowd",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 43100,
+            "end_ms": 44600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 49200,
+            "end_ms": 108000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 49500,
+            "end_ms": 108500,
+            "event_type": "cheering",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 109100,
+            "end_ms": 110600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 115200,
+            "end_ms": 150000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 115500,
+            "end_ms": 150500,
+            "event_type": "laughter",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 151100,
+            "end_ms": 152600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 157200,
+            "end_ms": 225000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 226100,
+            "end_ms": 227600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 232200,
+            "end_ms": 312000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 313100,
+            "end_ms": 314600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 357100,
+            "end_ms": 358600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 363200,
+            "end_ms": 417000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 363500,
+            "end_ms": 417500,
+            "event_type": "crowd",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 418100,
+            "end_ms": 419600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 424200,
+            "end_ms": 470000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 471100,
+            "end_ms": 472600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 477500,
+            "end_ms": 542500,
+            "event_type": "music",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 477500,
+            "end_ms": 542500,
+            "event_type": "applause",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 543100,
+            "end_ms": 544600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 549200,
+            "end_ms": 591000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 549500,
+            "end_ms": 591500,
+            "event_type": "applause",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 549500,
+            "end_ms": 591500,
+            "event_type": "laughter",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 592100,
+            "end_ms": 593600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 598200,
+            "end_ms": 658000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 659100,
+            "end_ms": 660600,
+            "event_type": "silence",
+            "confidence": 0.82
+          }
+        ]
+      },
+      "ocr": {
+        "model": "example-fixture",
+        "observations": [
+          {
+            "start_ms": 426000,
+            "end_ms": 432000,
+            "text": "SHOP",
+            "confidence": 0.88
+          }
+        ]
+      }
+    },
+    "IMG_1003.MOV": {
+      "probe": {
+        "duration_ms": 420000,
+        "width": 3840,
+        "height": 2160,
+        "fps_num": 30000,
+        "fps_den": 1001,
+        "video_codec": "hevc",
+        "audio_codec": "aac",
+        "audio_channels": 2,
+        "audio_sample_rate": 48000,
+        "container": "mov,mp4,m4a",
+        "creation_time": "2026-05-16T18:52:10.000Z",
+        "metadata": {}
+      },
+      "detect_shots": {
+        "model": "example-fixture",
+        "shots": [
+          {
+            "start_ms": 0,
+            "end_ms": 26000,
+            "representative_frame_ms": 8666,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 26000,
+            "end_ms": 52000,
+            "representative_frame_ms": 34666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 52000,
+            "end_ms": 56000,
+            "representative_frame_ms": 54000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 56000,
+            "end_ms": 74500,
+            "representative_frame_ms": 62166,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 74500,
+            "end_ms": 93000,
+            "representative_frame_ms": 80666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 93000,
+            "end_ms": 111500,
+            "representative_frame_ms": 99166,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 111500,
+            "end_ms": 130000,
+            "representative_frame_ms": 117666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 130000,
+            "end_ms": 134000,
+            "representative_frame_ms": 132000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 134000,
+            "end_ms": 145500,
+            "representative_frame_ms": 137833,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 145500,
+            "end_ms": 157000,
+            "representative_frame_ms": 149333,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 157000,
+            "end_ms": 168500,
+            "representative_frame_ms": 160833,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 168500,
+            "end_ms": 180000,
+            "representative_frame_ms": 172333,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 180000,
+            "end_ms": 184000,
+            "representative_frame_ms": 182000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 184000,
+            "end_ms": 213333,
+            "representative_frame_ms": 193777,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 213333,
+            "end_ms": 242666,
+            "representative_frame_ms": 223110,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 242666,
+            "end_ms": 272000,
+            "representative_frame_ms": 252444,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 272000,
+            "end_ms": 276000,
+            "representative_frame_ms": 274000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 276000,
+            "end_ms": 301500,
+            "representative_frame_ms": 284500,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 301500,
+            "end_ms": 327000,
+            "representative_frame_ms": 310000,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 327000,
+            "end_ms": 331000,
+            "representative_frame_ms": 329000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 331000,
+            "end_ms": 345000,
+            "representative_frame_ms": 335666,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 345000,
+            "end_ms": 359000,
+            "representative_frame_ms": 349666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 359000,
+            "end_ms": 373000,
+            "representative_frame_ms": 363666,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 373000,
+            "end_ms": 377000,
+            "representative_frame_ms": 375000,
+            "change_score": 0.44
+          },
+          {
+            "start_ms": 377000,
+            "end_ms": 387750,
+            "representative_frame_ms": 380583,
+            "change_score": 0.72
+          },
+          {
+            "start_ms": 387750,
+            "end_ms": 398500,
+            "representative_frame_ms": 391333,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 398500,
+            "end_ms": 409250,
+            "representative_frame_ms": 402083,
+            "change_score": 0.28
+          },
+          {
+            "start_ms": 409250,
+            "end_ms": 420000,
+            "representative_frame_ms": 412833,
+            "change_score": 0.28
+          }
+        ]
+      },
+      "embed_frames": {
+        "model": "example-fixture",
+        "dim": 64,
+        "frames": [
+          {
+            "timestamp_ms": 8666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0.2582, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5164, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.2582, 0, 0.2582, 0, 0, 0, 0, 0, 0.5164, 0,
+              0, 0, 0, 0, 0, 0.5164, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["observation_deck", "night_view", "city_lights"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 34666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0.2582, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5164, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.2582, 0, 0.2582, 0, 0, 0, 0, 0, 0.5164, 0,
+              0, 0, 0, 0, 0, 0.5164, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["observation_deck", "night_view", "city_lights"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 54000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["observation_deck", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 62166,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["night_view", "two_people"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 80666,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["night_view", "two_people"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 99166,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["night_view", "two_people"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 117666,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["night_view", "two_people"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 132000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["night_view", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 137833,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["night_view", "city_lights"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 149333,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["night_view", "city_lights"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 160833,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["night_view", "city_lights"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 172333,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["night_view", "city_lights"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 182000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["night_view", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 193777,
+            "vector": [
+              0, 0.5164, 0.2582, 0, 0, 0, 0.2582, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5164, 0, 0,
+              0, 0, 0.5164, 0, 0, 0, 0, 0, 0.2582, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["two_people", "night_view", "smiling"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 223110,
+            "vector": [
+              0, 0.5164, 0.2582, 0, 0, 0, 0.2582, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5164, 0, 0,
+              0, 0, 0.5164, 0, 0, 0, 0, 0, 0.2582, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["two_people", "night_view", "smiling"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 252444,
+            "vector": [
+              0, 0.5164, 0.2582, 0, 0, 0, 0.2582, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5164, 0, 0,
+              0, 0, 0.5164, 0, 0, 0, 0, 0, 0.2582, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["two_people", "night_view", "smiling"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 274000,
+            "vector": [
+              0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["two_people", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 284500,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["night_view", "city_lights"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 310000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["night_view", "city_lights"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 329000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["night_view", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 335666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.3162, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["station", "night"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 349666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.3162, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["station", "night"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 363666,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.3162, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["station", "night"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 375000,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6325, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0.6325, 0, 0.3162, 0, 0, 0, 0, 0
+            ],
+            "labels": ["station", "walking"],
+            "sharpness": 0.55,
+            "exposure": 0.6,
+            "motion": 0.65
+          },
+          {
+            "timestamp_ms": 380583,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.3162, 0, 0.6325, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_interior", "night"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 391333,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.3162, 0, 0.6325, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_interior", "night"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 402083,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.3162, 0, 0.6325, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_interior", "night"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          },
+          {
+            "timestamp_ms": 412833,
+            "vector": [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0.3162, 0, 0.6325, 0.6325, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+            "labels": ["train_interior", "night"],
+            "sharpness": 0.72,
+            "exposure": 0.68,
+            "motion": 0.2
+          }
+        ]
+      },
+      "transcribe": {
+        "language": "ja",
+        "model": "example-fixture",
+        "utterances": [
+          {
+            "start_ms": 58000,
+            "end_ms": 60200,
+            "text": "きれいだね",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 64000,
+            "end_ms": 66460,
+            "text": "来てよかった",
+            "speaker_id": "speaker_02",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 186000,
+            "end_ms": 188980,
+            "text": "一年、早かったね",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 192000,
+            "end_ms": 194460,
+            "text": "また来ようね",
+            "speaker_id": "speaker_02",
+            "confidence": 0.93
+          },
+          {
+            "start_ms": 333000,
+            "end_ms": 334940,
+            "text": "帰ろうか",
+            "speaker_id": "speaker_01",
+            "confidence": 0.93
+          }
+        ]
+      },
+      "analyze_audio": {
+        "model": "example-fixture",
+        "hop_ms": 100,
+        "rms_db": [],
+        "events": [
+          {
+            "start_ms": 51100,
+            "end_ms": 52600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 57200,
+            "end_ms": 128000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 57500,
+            "end_ms": 128500,
+            "event_type": "nature",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 129100,
+            "end_ms": 130600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 179100,
+            "end_ms": 180600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 185200,
+            "end_ms": 270000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 185500,
+            "end_ms": 270500,
+            "event_type": "laughter",
+            "confidence": 0.76
+          },
+          {
+            "start_ms": 271100,
+            "end_ms": 272600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 326100,
+            "end_ms": 327600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 332200,
+            "end_ms": 371000,
+            "event_type": "speech",
+            "confidence": 0.7
+          },
+          {
+            "start_ms": 372100,
+            "end_ms": 373600,
+            "event_type": "silence",
+            "confidence": 0.82
+          },
+          {
+            "start_ms": 419100,
+            "end_ms": 420600,
+            "event_type": "silence",
+            "confidence": 0.82
+          }
+        ]
+      },
+      "ocr": {
+        "model": "example-fixture",
+        "observations": []
+      }
+    }
+  },
+  "describe": {}
+}

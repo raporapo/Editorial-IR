@@ -1,0 +1,22 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/BooleanResult.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "probability": {
+      "$ref": "#/$defs/Probability"
+    }
+  },
+  "required": [
+    "probability"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "Probability": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Probability in [0,1]. Unlike Confidence this is a belief about the world, not about the model."
+    }
+  }
+}

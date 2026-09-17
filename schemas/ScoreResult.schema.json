@@ -1,0 +1,46 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/ScoreResult.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "level": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "value": {
+      "$ref": "#/$defs/UnitScore"
+    },
+    "probabilities": {
+      "$ref": "#/$defs/__schema1"
+    }
+  },
+  "required": [
+    "level",
+    "value"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "UnitScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "__schema1": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Probability"
+      }
+    },
+    "Probability": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Probability in [0,1]. Unlike Confidence this is a belief about the world, not about the model."
+    }
+  }
+}

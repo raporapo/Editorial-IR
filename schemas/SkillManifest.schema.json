@@ -1,0 +1,907 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/SkillManifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "manifest_version": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "name": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "version": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "description": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "license": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "author": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "extends": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "defaults": {
+      "$ref": "#/$defs/__schema7"
+    },
+    "scoring": {
+      "$ref": "#/$defs/__schema17"
+    },
+    "arc": {
+      "$ref": "#/$defs/__schema22"
+    },
+    "constraints": {
+      "$ref": "#/$defs/__schema28"
+    },
+    "rules": {
+      "$ref": "#/$defs/__schema34"
+    },
+    "intent": {
+      "$ref": "#/$defs/__schema102"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "additionalProperties": false,
+  "title": "SkillManifest",
+  "$defs": {
+    "__schema0": {
+      "default": "0.1.0",
+      "type": "string"
+    },
+    "__schema1": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "__schema2": {
+      "default": "0.1.0",
+      "type": "string"
+    },
+    "__schema3": {
+      "default": "",
+      "type": "string"
+    },
+    "__schema4": {
+      "type": "string"
+    },
+    "__schema5": {
+      "type": "string"
+    },
+    "__schema6": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema7": {
+      "default": {},
+      "$ref": "#/$defs/SkillDefaults"
+    },
+    "SkillDefaults": {
+      "type": "object",
+      "properties": {
+        "min_clip_duration_ms": {
+          "$ref": "#/$defs/__schema8"
+        },
+        "max_clip_duration_ms": {
+          "$ref": "#/$defs/__schema9"
+        },
+        "pad_in_ms": {
+          "$ref": "#/$defs/__schema10"
+        },
+        "pad_out_ms": {
+          "$ref": "#/$defs/__schema11"
+        },
+        "snap_to_silence": {
+          "$ref": "#/$defs/__schema12"
+        },
+        "snap_window_ms": {
+          "$ref": "#/$defs/__schema13"
+        },
+        "default_transition": {
+          "$ref": "#/$defs/__schema14"
+        },
+        "chapter_transition": {
+          "$ref": "#/$defs/__schema16"
+        }
+      },
+      "additionalProperties": false
+    },
+    "__schema8": {
+      "default": 1200,
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "Milliseconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+    },
+    "__schema9": {
+      "default": 12000,
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "__schema10": {
+      "default": 150,
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "__schema11": {
+      "default": 250,
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "__schema12": {
+      "default": true,
+      "type": "boolean"
+    },
+    "__schema13": {
+      "default": 600,
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "__schema14": {
+      "default": {
+        "type": "hard_cut",
+        "duration_ms": 0
+      },
+      "$ref": "#/$defs/Transition"
+    },
+    "Transition": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/TransitionType"
+        },
+        "duration_ms": {
+          "$ref": "#/$defs/__schema15"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "TransitionType": {
+      "type": "string",
+      "enum": [
+        "hard_cut",
+        "cross_dissolve",
+        "dip_to_black",
+        "dip_to_white",
+        "fade_in",
+        "fade_out"
+      ]
+    },
+    "__schema15": {
+      "default": 0,
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "__schema16": {
+      "$ref": "#/$defs/Transition"
+    },
+    "__schema17": {
+      "default": {},
+      "$ref": "#/$defs/SkillScoring"
+    },
+    "SkillScoring": {
+      "type": "object",
+      "properties": {
+        "weights": {
+          "$ref": "#/$defs/__schema18"
+        },
+        "flag_weights": {
+          "$ref": "#/$defs/__schema19"
+        },
+        "duplicate_penalty": {
+          "$ref": "#/$defs/__schema20"
+        },
+        "continuity_bonus": {
+          "$ref": "#/$defs/__schema21"
+        }
+      },
+      "additionalProperties": false
+    },
+    "__schema18": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "__schema19": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "__schema20": {
+      "default": 0.5,
+      "type": "number",
+      "minimum": 0
+    },
+    "__schema21": {
+      "default": 0.2,
+      "type": "number",
+      "minimum": 0
+    },
+    "__schema22": {
+      "default": {},
+      "$ref": "#/$defs/SkillArc"
+    },
+    "SkillArc": {
+      "type": "object",
+      "properties": {
+        "ordering": {
+          "$ref": "#/$defs/__schema23"
+        },
+        "segments": {
+          "$ref": "#/$defs/__schema24"
+        }
+      },
+      "additionalProperties": false
+    },
+    "__schema23": {
+      "default": "chronological",
+      "type": "string",
+      "enum": [
+        "chronological",
+        "hook_first"
+      ]
+    },
+    "__schema24": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ArcSegment"
+      }
+    },
+    "ArcSegment": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/__schema25"
+        },
+        "budget": {
+          "$ref": "#/$defs/UnitScore"
+        },
+        "prefer_roles": {
+          "$ref": "#/$defs/__schema26"
+        },
+        "require_roles": {
+          "$ref": "#/$defs/__schema27"
+        }
+      },
+      "required": [
+        "name",
+        "budget"
+      ],
+      "additionalProperties": false
+    },
+    "__schema25": {
+      "type": "string",
+      "minLength": 1
+    },
+    "UnitScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "__schema26": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/NarrativeRole"
+      }
+    },
+    "NarrativeRole": {
+      "type": "string",
+      "enum": [
+        "setup",
+        "context",
+        "build_up",
+        "transition",
+        "payoff",
+        "climax",
+        "reaction",
+        "resolution",
+        "ending",
+        "filler"
+      ],
+      "description": "The structural job an event does in the finished piece."
+    },
+    "__schema27": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/NarrativeRole"
+      }
+    },
+    "__schema28": {
+      "default": {},
+      "$ref": "#/$defs/SkillConstraints"
+    },
+    "SkillConstraints": {
+      "type": "object",
+      "properties": {
+        "preserve_user_essential_events": {
+          "$ref": "#/$defs/__schema29"
+        },
+        "max_consecutive_same_role": {
+          "$ref": "#/$defs/__schema30"
+        },
+        "forbid_roles": {
+          "$ref": "#/$defs/__schema31"
+        },
+        "min_speech_share": {
+          "$ref": "#/$defs/__schema32"
+        },
+        "max_operations": {
+          "$ref": "#/$defs/__schema33"
+        }
+      },
+      "additionalProperties": false
+    },
+    "__schema29": {
+      "default": true,
+      "type": "boolean"
+    },
+    "__schema30": {
+      "default": 3,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "__schema31": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/NarrativeRole"
+      }
+    },
+    "__schema32": {
+      "$ref": "#/$defs/UnitScore"
+    },
+    "__schema33": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "__schema34": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/SkillRule"
+      }
+    },
+    "SkillRule": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/__schema35"
+        },
+        "description": {
+          "$ref": "#/$defs/__schema36"
+        },
+        "when": {
+          "$ref": "#/$defs/__schema37"
+        },
+        "action": {
+          "$ref": "#/$defs/SkillAction"
+        },
+        "priority": {
+          "$ref": "#/$defs/__schema101"
+        }
+      },
+      "required": [
+        "when",
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "__schema35": {
+      "type": "string"
+    },
+    "__schema36": {
+      "type": "string"
+    },
+    "__schema37": {
+      "$ref": "#/$defs/SkillCondition"
+    },
+    "SkillCondition": {
+      "type": "object",
+      "properties": {
+        "story_importance": {
+          "$ref": "#/$defs/__schema38"
+        },
+        "emotional_intensity": {
+          "$ref": "#/$defs/__schema42"
+        },
+        "context_relevance": {
+          "$ref": "#/$defs/__schema43"
+        },
+        "visual_quality": {
+          "$ref": "#/$defs/__schema44"
+        },
+        "audio_quality": {
+          "$ref": "#/$defs/__schema45"
+        },
+        "uniqueness": {
+          "$ref": "#/$defs/__schema46"
+        },
+        "redundancy": {
+          "$ref": "#/$defs/__schema47"
+        },
+        "continuity_previous": {
+          "$ref": "#/$defs/__schema48"
+        },
+        "continuity_next": {
+          "$ref": "#/$defs/__schema49"
+        },
+        "information_density": {
+          "$ref": "#/$defs/__schema50"
+        },
+        "preserve_probability": {
+          "$ref": "#/$defs/__schema51"
+        },
+        "redundant_probability": {
+          "$ref": "#/$defs/__schema52"
+        },
+        "establishing_shot_probability": {
+          "$ref": "#/$defs/__schema53"
+        },
+        "b_roll_candidate_probability": {
+          "$ref": "#/$defs/__schema54"
+        },
+        "opening_candidate_probability": {
+          "$ref": "#/$defs/__schema55"
+        },
+        "ending_candidate_probability": {
+          "$ref": "#/$defs/__schema56"
+        },
+        "requires_previous_context_probability": {
+          "$ref": "#/$defs/__schema57"
+        },
+        "contains_dead_air_probability": {
+          "$ref": "#/$defs/__schema58"
+        },
+        "narrative_role": {
+          "$ref": "#/$defs/__schema59"
+        },
+        "event_type": {
+          "$ref": "#/$defs/__schema62"
+        },
+        "affect": {
+          "$ref": "#/$defs/__schema63"
+        },
+        "duration_ms": {
+          "$ref": "#/$defs/__schema64"
+        },
+        "speech_ratio": {
+          "$ref": "#/$defs/__schema65"
+        },
+        "silence_ratio": {
+          "$ref": "#/$defs/__schema66"
+        },
+        "shot_count": {
+          "$ref": "#/$defs/__schema67"
+        },
+        "motion": {
+          "$ref": "#/$defs/__schema68"
+        },
+        "new_location": {
+          "$ref": "#/$defs/__schema69"
+        },
+        "new_person": {
+          "$ref": "#/$defs/__schema70"
+        },
+        "has_speech": {
+          "$ref": "#/$defs/__schema71"
+        },
+        "has_music": {
+          "$ref": "#/$defs/__schema72"
+        },
+        "has_laughter": {
+          "$ref": "#/$defs/__schema73"
+        },
+        "has_text_on_screen": {
+          "$ref": "#/$defs/__schema74"
+        },
+        "is_user_essential": {
+          "$ref": "#/$defs/__schema75"
+        },
+        "is_user_excluded": {
+          "$ref": "#/$defs/__schema76"
+        },
+        "chapter_position": {
+          "$ref": "#/$defs/__schema77"
+        },
+        "project_position": {
+          "$ref": "#/$defs/__schema78"
+        },
+        "mentions": {
+          "$ref": "#/$defs/__schema79"
+        },
+        "involves_person": {
+          "$ref": "#/$defs/__schema80"
+        },
+        "at_place": {
+          "$ref": "#/$defs/__schema81"
+        },
+        "all_of": {
+          "$ref": "#/$defs/__schema82"
+        },
+        "any_of": {
+          "$ref": "#/$defs/__schema83"
+        },
+        "not": {
+          "$ref": "#/$defs/__schema84"
+        }
+      },
+      "additionalProperties": false
+    },
+    "__schema38": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "NumericCondition": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/__schema39"
+        },
+        {
+          "$ref": "#/$defs/__schema40"
+        },
+        {
+          "$ref": "#/$defs/__schema41"
+        }
+      ]
+    },
+    "__schema39": {
+      "type": "number"
+    },
+    "__schema40": {
+      "type": "string",
+      "pattern": "^\\s*(?:(?:>=|<=|==|!=|>|<)\\s*-?\\d+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?\\s*\\.\\.\\s*-?\\d+(?:\\.\\d+)?)\\s*$"
+    },
+    "__schema41": {
+      "type": "object",
+      "properties": {
+        "gt": {
+          "type": "number"
+        },
+        "gte": {
+          "type": "number"
+        },
+        "lt": {
+          "type": "number"
+        },
+        "lte": {
+          "type": "number"
+        },
+        "eq": {
+          "type": "number"
+        },
+        "ne": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "__schema42": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema43": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema44": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema45": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema46": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema47": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema48": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema49": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema50": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema51": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema52": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema53": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema54": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema55": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema56": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema57": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema58": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema59": {
+      "$ref": "#/$defs/__schema60"
+    },
+    "__schema60": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema61"
+          }
+        }
+      ]
+    },
+    "__schema61": {
+      "type": "string"
+    },
+    "__schema62": {
+      "$ref": "#/$defs/__schema60"
+    },
+    "__schema63": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/NumericCondition"
+      }
+    },
+    "__schema64": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema65": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema66": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema67": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema68": {
+      "$ref": "#/$defs/NumericCondition"
+    },
+    "__schema69": {
+      "type": "boolean"
+    },
+    "__schema70": {
+      "type": "boolean"
+    },
+    "__schema71": {
+      "type": "boolean"
+    },
+    "__schema72": {
+      "type": "boolean"
+    },
+    "__schema73": {
+      "type": "boolean"
+    },
+    "__schema74": {
+      "type": "boolean"
+    },
+    "__schema75": {
+      "type": "boolean"
+    },
+    "__schema76": {
+      "type": "boolean"
+    },
+    "__schema77": {
+      "$ref": "#/$defs/PositionalScope"
+    },
+    "PositionalScope": {
+      "type": "string",
+      "enum": [
+        "first",
+        "middle",
+        "last"
+      ]
+    },
+    "__schema78": {
+      "$ref": "#/$defs/PositionalScope"
+    },
+    "__schema79": {
+      "$ref": "#/$defs/__schema60"
+    },
+    "__schema80": {
+      "$ref": "#/$defs/__schema60"
+    },
+    "__schema81": {
+      "$ref": "#/$defs/__schema60"
+    },
+    "__schema82": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/__schema37"
+      }
+    },
+    "__schema83": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/__schema37"
+      }
+    },
+    "__schema84": {
+      "$ref": "#/$defs/__schema37"
+    },
+    "SkillAction": {
+      "type": "object",
+      "properties": {
+        "prefer": {
+          "$ref": "#/$defs/__schema85"
+        },
+        "avoid": {
+          "$ref": "#/$defs/__schema86"
+        },
+        "weight_multiplier": {
+          "$ref": "#/$defs/__schema87"
+        },
+        "drop": {
+          "$ref": "#/$defs/__schema88"
+        },
+        "require": {
+          "$ref": "#/$defs/__schema89"
+        },
+        "minimum_duration_sec": {
+          "$ref": "#/$defs/__schema90"
+        },
+        "maximum_duration_sec": {
+          "$ref": "#/$defs/__schema91"
+        },
+        "preserve_reaction": {
+          "$ref": "#/$defs/__schema92"
+        },
+        "avoid_aggressive_cutting": {
+          "$ref": "#/$defs/__schema93"
+        },
+        "prefer_higher_quality_only": {
+          "$ref": "#/$defs/__schema94"
+        },
+        "transition_in": {
+          "$ref": "#/$defs/__schema95"
+        },
+        "transition_out": {
+          "$ref": "#/$defs/__schema96"
+        },
+        "role_override": {
+          "$ref": "#/$defs/__schema97"
+        },
+        "place_at": {
+          "$ref": "#/$defs/__schema98"
+        },
+        "as_b_roll": {
+          "$ref": "#/$defs/__schema99"
+        },
+        "tag": {
+          "$ref": "#/$defs/__schema100"
+        }
+      },
+      "additionalProperties": false
+    },
+    "__schema85": {
+      "type": [
+        "boolean",
+        "number"
+      ]
+    },
+    "__schema86": {
+      "type": [
+        "boolean",
+        "number"
+      ]
+    },
+    "__schema87": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "__schema88": {
+      "type": "boolean"
+    },
+    "__schema89": {
+      "type": "boolean"
+    },
+    "__schema90": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "__schema91": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "__schema92": {
+      "type": "boolean"
+    },
+    "__schema93": {
+      "type": "boolean"
+    },
+    "__schema94": {
+      "type": "boolean"
+    },
+    "__schema95": {
+      "$ref": "#/$defs/Transition"
+    },
+    "__schema96": {
+      "$ref": "#/$defs/Transition"
+    },
+    "__schema97": {
+      "$ref": "#/$defs/NarrativeRole"
+    },
+    "__schema98": {
+      "type": "string",
+      "enum": [
+        "opening",
+        "ending"
+      ]
+    },
+    "__schema99": {
+      "type": "boolean"
+    },
+    "__schema100": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema101": {
+      "default": 0,
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "__schema102": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "opening": {
+          "type": "string"
+        },
+        "middle": {
+          "type": "string"
+        },
+        "ending": {
+          "type": "string"
+        },
+        "tone": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

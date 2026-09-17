@@ -1,0 +1,68 @@
+{
+  "$id": "https://editorial-ir.dev/schemas/ScoreRequest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "question_id": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "question": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "levels": {
+      "$ref": "#/$defs/__schema2"
+    }
+  },
+  "required": [
+    "question_id",
+    "question",
+    "levels"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": "string"
+    },
+    "__schema1": {
+      "type": "string"
+    },
+    "__schema2": {
+      "minItems": 2,
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ScoreLevel"
+      }
+    },
+    "ScoreLevel": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "label": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "description": {
+          "$ref": "#/$defs/__schema5"
+        }
+      },
+      "required": [
+        "level",
+        "label"
+      ],
+      "additionalProperties": false
+    },
+    "__schema3": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema4": {
+      "type": "string"
+    },
+    "__schema5": {
+      "default": "",
+      "type": "string"
+    }
+  }
+}
