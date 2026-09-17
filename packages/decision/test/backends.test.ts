@@ -238,6 +238,75 @@ describe('FallbackDecisionBackend', () => {
     expect(seen.length).toBeGreaterThan(0);
   });
 
+  it('offers a batch path only when the backend it wraps has one', () => {
+    // Callers check for the method to decide how to ask, so a wrapper that
+    // always had it would route every backend down a path half of them cannot
+    // serve.
+    const withoutBatch = new FallbackDecisionBackend(failing, new HeuristicDecisionBackend());
+    expect(withoutBatch.assessAll).toBeUndefined();
+
+    const batching = {
+      ...failing,
+      assessAll: async () => {
+        throw new Error('connection reset');
+      },
+    };
+    expect(
+      new FallbackDecisionBackend(batching, new HeuristicDecisionBackend()).assessAll,
+    ).toBeTypeOf('function');
+  });
+
+  it('answers a whole batch from the fallback when the batch call fails', async () => {
+    // Nineteen questions in one call is how a hosted backend is affordable. When
+    // that call fails the run must still produce answers for all nineteen, not
+    // lose the event.
+    const batching = {
+      ...failing,
+      assessAll: async () => {
+        throw new Error('connection reset');
+      },
+    };
+    const backend = new FallbackDecisionBackend(batching, new HeuristicDecisionBackend());
+
+    const answers = await backend.assessAll!(state(), {
+      scores: Object.values(METRIC_QUESTIONS).slice(0, 3),
+      booleans: Object.values(FLAG_QUESTIONS).slice(0, 2),
+      choice: NARRATIVE_ROLE_QUESTION,
+    });
+
+    expect(Object.keys(answers.scores)).toHaveLength(3);
+    expect(Object.keys(answers.booleans)).toHaveLength(2);
+    expect(answers.choice).toBeDefined();
+    // The fallback's own confidence, so the IR does not claim the good model
+    // answered.
+    expect(answers.confidence).toBe(new HeuristicDecisionBackend().identity.baseConfidence);
+  });
+
+  it('prefers the fallback’s own batch path to asking it one at a time', async () => {
+    let batched = 0;
+    const cheap = new HeuristicDecisionBackend();
+    const fallback = {
+      ...cheap,
+      identity: cheap.identity,
+      assessAll: async () => {
+        batched++;
+        return { scores: {}, booleans: {}, confidence: 0.4 };
+      },
+    } as unknown as HeuristicDecisionBackend;
+
+    const backend = new FallbackDecisionBackend(
+      {
+        ...failing,
+        assessAll: async () => {
+          throw new Error('down');
+        },
+      },
+      fallback,
+    );
+    await backend.assessAll!(state(), { scores: [], booleans: [] });
+    expect(batched).toBe(1);
+  });
+
   it('stops retrying a backend that is plainly down', async () => {
     let attempts = 0;
     const counting = {
