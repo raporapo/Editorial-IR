@@ -34,19 +34,19 @@ take down a run that was otherwise fine.
 }
 ```
 
-| op              | What it does                                |
-| --------------- | ------------------------------------------- |
-| `health`        | what this worker can actually do, right now |
-| `probe`         | container metadata                          |
-| `prepare`       | proxy, extracted audio, sampled frames      |
-| `detect_shots`  | shot boundaries                             |
-| `analyze_audio` | loudness, silence, speech presence          |
-| `transcribe`    | speech recognition                          |
-| `embed_frames`  | frame vectors and zero-shot labels          |
-| `ocr`           | on-screen text                              |
-| `describe`      | the multimodal look at one event            |
-| `embed_text`    | text vectors                                |
-| `shutdown`      | reply and exit                              |
+| op              | What it does                                                                                                |
+| --------------- | ----------------------------------------------------------------------------------------------------------- |
+| `health`        | what this worker can actually do, right now                                                                 |
+| `probe`         | container metadata                                                                                          |
+| `prepare`       | proxy, extracted audio, sampled frames                                                                      |
+| `detect_shots`  | shot boundaries                                                                                             |
+| `analyze_audio` | loudness, silence, speech presence, and — with a tagging model — laughter, music, applause, cheering, crowd |
+| `transcribe`    | speech recognition                                                                                          |
+| `embed_frames`  | frame vectors and zero-shot labels                                                                          |
+| `ocr`           | on-screen text                                                                                              |
+| `describe`      | the multimodal look at one event                                                                            |
+| `embed_text`    | text vectors                                                                                                |
+| `shutdown`      | reply and exit                                                                                              |
 
 ## Replies
 
@@ -71,6 +71,44 @@ so a producer in another language writes `null` for a field it has no value for.
 Both are accepted and normalised to absence. The shipped worker omits them
 anyway, because saying nothing is clearer than saying null — but the consumer
 does not depend on that politeness.
+
+## Audio event tagging, and the licence you have to pick
+
+`analyze_audio` always reports loudness, silence and speech presence: that is
+signal processing and needs no model. Classifying **laughter, music, applause,
+cheering and crowd** needs one, and this is the one place in the project where
+the model choice is a legal decision rather than a technical one.
+
+The rule engine has exposed `has_laughter` and `has_music` since it was written.
+Until a tagger exists they are unreachable, and `memory-film`'s
+`laughter-is-the-point` rule never fires — a rule that reads as implemented,
+passes review, and silently makes the edit worse than the skill promises.
+
+Set `OEA_AUDIO_TAGGER` to a model directory. There is deliberately **no
+default**, because the best option is encumbered:
+
+| model                                 | size      | speed                   | quality                                                                | licence                                                   |
+| ------------------------------------- | --------- | ----------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------- |
+| `sherpa-onnx-ced-tiny-audio-tagging`  | 6 MB int8 | 120x realtime, 1 thread | zero false positives on laughter and applause across 28 clips; F1 0.88 | **GPL-3.0** — weights converted from a GPL-3.0 repository |
+| `sherpa-onnx-zipformer-audio-tagging` | 300 MB    | 19x realtime            | not measured here                                                      | Apache-2.0                                                |
+
+Whether GPL-3.0 on the training repository reaches the weights is genuinely
+contested. It is not a question this codebase should answer by picking a
+default, so it does not: an unset variable means the stage does not run, which
+costs the classification and nothing else. A permissively-licensed deployment
+should use the Apache-2.0 model.
+
+Two measured details worth keeping:
+
+- **One thread, not four.** Each window is two seconds of audio, so the
+  intra-op thread pool costs more to synchronise than the work it splits —
+  `num_threads=4` measured 2.6x _slower_ than 1, consistently, for both models
+  and both quantisations. Parallelise across files at the process level.
+- **The resolution is the hop, not the frame.** These models answer "what is in
+  this audio", not "what is at 3.2 seconds". Timestamps come from sliding a
+  2 s window 1 s at a time and merging windows that agree. That is enough to
+  ask whether laughter is in an event, and not enough to cut on — which is what
+  the transcript's word timings are for.
 
 ## Progress
 

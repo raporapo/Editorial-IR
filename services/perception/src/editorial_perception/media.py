@@ -144,12 +144,25 @@ def prepare(
         if not proxy.exists():
             _run(
                 [
-                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                    "-i", path,
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-i",
+                    path,
                     # -2 keeps the width even, which h264 requires.
-                    "-vf", f"scale=-2:{proxy_height}",
-                    "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf),
-                    "-an", "-movflags", "+faststart",
+                    "-vf",
+                    f"scale=-2:{proxy_height}",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-crf",
+                    str(crf),
+                    "-an",
+                    "-movflags",
+                    "+faststart",
                     str(proxy),
                 ]
             )
@@ -160,9 +173,20 @@ def prepare(
         if not audio.exists():
             _run(
                 [
-                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                    "-i", path,
-                    "-vn", "-ac", "1", "-ar", str(AUDIO_SAMPLE_RATE), "-c:a", "pcm_s16le",
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-i",
+                    path,
+                    "-vn",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    str(AUDIO_SAMPLE_RATE),
+                    "-c:a",
+                    "pcm_s16le",
                     str(audio),
                 ]
             )
@@ -174,10 +198,17 @@ def prepare(
         if not any(frames.iterdir()):
             _run(
                 [
-                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                    "-i", path,
-                    "-vf", f"fps={frame_fps}",
-                    "-q:v", "4",
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-i",
+                    path,
+                    "-vf",
+                    f"fps={frame_fps}",
+                    "-q:v",
+                    "4",
                     str(frames / "%08d.jpg"),
                 ]
             )
@@ -202,9 +233,16 @@ def detect_shots(path: str, threshold: float = 0.3, min_shot_ms: int = 800) -> d
 
     result = _run(
         [
-            "ffmpeg", "-hide_banner", "-i", path,
-            "-filter:v", f"select='gt(scene,{threshold})',showinfo",
-            "-an", "-f", "null", "-",
+            "ffmpeg",
+            "-hide_banner",
+            "-i",
+            path,
+            "-filter:v",
+            f"select='gt(scene,{threshold})',showinfo",
+            "-an",
+            "-f",
+            "null",
+            "-",
         ],
         allow_failure=True,
     )
@@ -281,14 +319,63 @@ def _parse_showinfo(stderr: str) -> list[int]:
     return times
 
 
+def decode_pcm(path: str, sample_rate: int = 16000):
+    """Mono float32 samples in [-1, 1], straight from ffmpeg.
+
+    Reads from whatever the path is — an extracted wav or the original video —
+    without writing an intermediate file, because the caller already has one
+    temporary directory's worth of derivatives and does not need another.
+
+    Returns an empty array for a file with no audio, which is a real case (a
+    phone clip with the mic muted) and not an error: the stage that asked has
+    nothing to say about it, and the analysis carries on.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    if not has_ffmpeg():
+        raise MediaError("ffmpeg is needed to read audio")
+    result = subprocess.run(  # noqa: S603
+        [
+            "ffmpeg",
+            "-nostdin",
+            "-v",
+            "error",
+            "-i",
+            path,
+            "-f",
+            "s16le",
+            "-ac",
+            "1",
+            "-ar",
+            str(sample_rate),
+            "-",
+        ],
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0 and not result.stdout:
+        raise MediaError(f"could not read audio from {path}: {result.stderr.decode()[:200]}")
+    # int16 is what was asked for; the models want float in [-1, 1].
+    return np.frombuffer(result.stdout, np.int16).astype(np.float32) / 32768.0
+
+
 def extract_frame(path: str, timestamp_ms: int, out_path: str) -> str:
     """Pulls one frame, for a model that wants a specific moment."""
     _run(
         [
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-            "-ss", f"{timestamp_ms / 1000:.3f}",
-            "-i", path,
-            "-frames:v", "1", "-q:v", "3",
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-ss",
+            f"{timestamp_ms / 1000:.3f}",
+            "-i",
+            path,
+            "-frames:v",
+            "1",
+            "-q:v",
+            "3",
             out_path,
         ],
         timeout=120,

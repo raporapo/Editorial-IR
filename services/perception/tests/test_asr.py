@@ -194,8 +194,21 @@ def test_real_model_transcribes_real_audio():
         # transcript assertion would need bundled speech audio and a licence for
         # it. The word-level assertions above cover the translation.
         subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
-             "-i", "sine=frequency=440:duration=2", "-ar", "16000", "-ac", "1", wav],
+            [
+                "ffmpeg",
+                "-y",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=2",
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                wav,
+            ],
             check=True,
         )
         model = asr.load(REAL_MODEL, compute_type="int8")

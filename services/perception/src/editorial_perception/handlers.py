@@ -13,7 +13,7 @@ import re
 import sys
 from typing import Any
 
-from .backends import asr, hashing, text_embedding, visual, vlm
+from .backends import asr, audio_tags, hashing, text_embedding, visual, vlm
 from .backends import audio as audio_backend
 from .backends import ocr as ocr_backend
 from .errors import BadRequest, MissingDependency
@@ -109,6 +109,9 @@ def _stage_models() -> dict[str, str]:
     # name that was asked for: an unloadable model falls back to hashing, and
     # the cache must not serve one stage's vectors under the other's key.
     models["embed_text"] = text_embedding.describe()
+    tagger = audio_tags.describe()
+    if tagger:
+        models["analyze_audio"] = tagger
     vlm = os.environ.get("OEA_VLM_MODEL")
     if vlm:
         models["describe"] = vlm
@@ -145,11 +148,40 @@ def handle_detect_shots(params: dict[str, Any], session: Session) -> dict[str, A
 
 
 def handle_analyze_audio(params: dict[str, Any], session: Session) -> dict[str, Any]:
-    return audio_backend.analyze(
-        _require(params, "audio_path"),
+    audio_path = _require(params, "audio_path")
+    result = audio_backend.analyze(
+        audio_path,
         hop_ms=int(params.get("hop_ms", 100)),
         silence_threshold_db=float(params.get("silence_threshold_db", -40)),
     )
+
+    # `classify_events` has been in the request contract, defaulting to true and
+    # documented as "classify laughter, applause, music and so on", since before
+    # anything could do it. The rule engine's `has_laughter` and `has_music`
+    # were reachable and never fired.
+    #
+    # Tagging is an addition to this stage rather than a stage of its own: the
+    # events it produces have the same shape as the silence and speech ones
+    # already here, and a model that is absent costs the classification without
+    # costing the loudness analysis that every cut point depends on.
+    if params.get("classify_events", True) and audio_tags.available():
+        try:
+            tagged = audio_tags.tag(
+                _scheduler.get("audio_tags", audio_tags.load),
+                audio_path,
+                progress=lambda fraction: session.progress(fraction),
+            )
+        except Exception as error:  # noqa: BLE001
+            session.log(f"audio tagging failed, keeping the loudness analysis: {error}")
+        else:
+            result["events"] = _ordered(result.get("events", []) + tagged["events"])
+            if tagged.get("model"):
+                result["model"] = f"{result.get('model') or 'audio'}+{tagged['model']}"
+    return result
+
+
+def _ordered(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(events, key=lambda event: (event["start_ms"], event["event_type"]))
 
 
 def handle_transcribe(params: dict[str, Any], session: Session) -> dict[str, Any]:
