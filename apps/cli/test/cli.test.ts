@@ -339,6 +339,63 @@ describe('the first five minutes', () => {
   }, 60_000);
 });
 
+describe('oea search', () => {
+  // The command had no test at all, on a feature whose ranking had a real bug
+  // in it: unrelated events were being returned as confident-looking matches.
+  async function searchable(): Promise<string> {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+    output = [];
+    errors = [];
+    return root;
+  }
+
+  it('finds the moment a word actually appears in', async () => {
+    const root = await searchable();
+    expect(await main(['search', 'ラーメン', '--project', root])).toBe(0);
+    expect(stdout()).toContain('result');
+    expect(stdout()).toMatch(/evt_\d+/);
+  }, 60_000);
+
+  it('says why it found nothing, rather than only that it found nothing', async () => {
+    // The default index is lexical, and somebody searching in the wrong language
+    // needs to know that is what happened rather than that their footage is
+    // missing.
+    const root = await searchable();
+    expect(await main(['search', 'zzzznotathing', '--project', root])).toBe(0);
+    expect(stdout() + stderr()).toContain('lexical');
+  }, 60_000);
+
+  it('searches one aspect when asked', async () => {
+    const root = await searchable();
+    expect(await main(['search', 'night_view', '--aspect', 'visual', '--project', root])).toBe(0);
+    expect(stdout()).toMatch(/evt_\d+/);
+  }, 60_000);
+
+  it('answers as JSON with the scores that produced the ranking', async () => {
+    const root = await searchable();
+    expect(await main(['search', 'ラーメン', '--project', root, '--json'])).toBe(0);
+    const hits = JSON.parse(stdout()) as { lexical_score: number; vector_score: number }[];
+    expect(hits.length).toBeGreaterThan(0);
+    // Every hit under the default encoder shares a word with the query; a score
+    // without one is a hash collision.
+    for (const hit of hits) expect(hit.lexical_score).toBeGreaterThan(0);
+  }, 60_000);
+
+  it('honours a limit', async () => {
+    const root = await searchable();
+    expect(await main(['search', 'night_view', '--project', root, '--limit', '2', '--json'])).toBe(
+      0,
+    );
+    expect((JSON.parse(stdout()) as unknown[]).length).toBeLessThanOrEqual(2);
+  }, 60_000);
+
+  it('needs something to look for', async () => {
+    const root = await searchable();
+    expect(await main(['search', '--project', root])).toBe(2);
+  }, 60_000);
+});
+
 describe('oea explain', () => {
   it('says when a decision was the user’s rather than the model’s', async () => {
     // A correction that applied silently looks exactly like one that did not,
