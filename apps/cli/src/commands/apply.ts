@@ -1,9 +1,9 @@
 import { relative } from 'node:path';
 import { createAdapter, listAdapters } from '@editorial-ir/adapters';
 import { validatePlan } from '@editorial-ir/agent';
-import { EditorialError, summariseReport } from '@editorial-ir/contracts';
+import { summariseReport } from '@editorial-ir/contracts';
 import { openProject } from '../project.js';
-import { requireIr } from '../ir.js';
+import { requireIr, requirePlan } from '../ir.js';
 import { detail, fail, heading, note, success, table, warn } from '../ui.js';
 
 export interface ApplyArgs {
@@ -21,10 +21,7 @@ export async function runApply(args: ApplyArgs): Promise<number> {
   const editor = args.editor ?? 'otio';
   const adapter = createAdapter(editor);
 
-  const plan = args.plan ? store.readPlan(args.plan) : store.latestPlan();
-  if (!plan) {
-    throw new EditorialError('not_found', 'there is no plan yet. Run "oea plan" first.');
-  }
+  const plan = requirePlan(store, args.plan);
 
   // Validated against this adapter specifically, so capability mismatches are
   // reported before anything is written rather than discovered in the NLE.

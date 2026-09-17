@@ -10,9 +10,10 @@ import {
   toJsonSchema,
   toJsonSchemaBundle,
 } from '@editorial-ir/contracts';
-import { NodeCommandRunner, createLocalSuite } from '@editorial-ir/perception';
+import { NodeCommandRunner } from '@editorial-ir/perception';
 import { SkillRegistry, validateSkill } from '@editorial-ir/skills';
 import { listAdapters } from '@editorial-ir/adapters';
+import { resolveBackends } from '../backends.js';
 import { createProject, openProject } from '../project.js';
 import { colour, detail, fail, heading, line, note, success, table, warn } from '../ui.js';
 
@@ -106,16 +107,25 @@ export async function runDoctor(): Promise<number> {
   }
 
   heading('what is configured');
-  const suite = createLocalSuite();
-  detail(
-    'perception',
-    suite.speech ? 'with transcription' : 'ffmpeg only (no transcription, no vision)',
-  );
-  detail('embeddings', process.env.OEA_EMBED_MODEL ?? 'hashing (lexical, no model)');
-  detail('closer look', process.env.OEA_VLM_MODEL ?? colour.grey('not configured'));
-  detail('judgement', process.env.OEA_DECISION_MODEL ?? 'rules (free, instant, reproducible)');
+  // Asked of the thing that decides, rather than read out of the environment a
+  // second time. The hand-rolled version looked at `OEA_VLM_MODEL` while the
+  // compiler wires a closer look only when its base URL is set too, so a shell
+  // with half a pair configured was told it had a model it would not get; and
+  // `OEA_DECISION=model` with no base URL got "everything checks out" from the
+  // command whose whole job is to find that before the analysis does.
+  try {
+    const backends = await resolveBackends({ onLog: (message) => note(`  ${message}`) });
+    try {
+      for (const item of backends.description) note(`  ${item}`);
+    } finally {
+      await backends.close();
+    }
+  } catch (error) {
+    problems++;
+    warn(`  ${error instanceof Error ? error.message : String(error)}`);
+  }
 
-  if (!process.env.OEA_VLM_MODEL && !process.env.OEA_DECISION_MODEL) {
+  if (!process.env.OEA_VLM_BASE_URL && !process.env.OEA_DECISION_BASE_URL) {
     note('  Everything runs locally and costs nothing. To add a stronger model for');
     note('  the events that need one, set OEA_VLM_BASE_URL and OEA_VLM_MODEL.');
   }

@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { EditorialError, type EditorialIR } from '@editorial-ir/contracts';
+import { EditorialError, type EditPlan, type EditorialIR } from '@editorial-ir/contracts';
 import { FlatVectorIndex, SemanticIndex } from '@editorial-ir/index';
 import { HashingTextEmbedding } from '@editorial-ir/perception';
 import { contactSheet, framesIn, shotsIn, type FileProjectStore } from '@editorial-ir/core';
@@ -15,6 +15,29 @@ export function requireIr(store: FileProjectStore): EditorialIR {
     );
   }
   return ir;
+}
+
+/**
+ * Loads a plan, naming the ones there are when the id names none.
+ *
+ * `--plan plan_nope` reported "there is no plan yet. Run 'oea plan' first." at
+ * a project full of plans, and running `oea plan` again did not help — it made
+ * another one, after which the same id failed identically. Nothing printed the
+ * real ids, so the message pointed away from the answer.
+ */
+export function requirePlan(store: FileProjectStore, planId?: string): EditPlan {
+  const plan = planId ? store.readPlan(planId) : store.latestPlan();
+  if (plan) return plan;
+
+  const known = store.listPlans();
+  if (planId) {
+    throw new EditorialError('not_found', `there is no plan called "${planId}"`, {
+      ...(known.length > 0
+        ? { available: known.join(', ') }
+        : { hint: 'this project has no plans yet — run "oea plan"' }),
+    });
+  }
+  throw new EditorialError('not_found', 'there is no plan yet. Run "oea plan" first.');
 }
 
 /**

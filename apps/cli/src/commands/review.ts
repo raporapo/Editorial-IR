@@ -4,9 +4,8 @@ import {
   summariseReport,
 } from '@editorial-ir/contracts';
 import { recordRevision, reviewPlan, suggestRevisions, validatePlan } from '@editorial-ir/agent';
-import { EditorialError } from '@editorial-ir/contracts';
 import { openProject } from '../project.js';
-import { requireIr } from '../ir.js';
+import { requireIr, requirePlan } from '../ir.js';
 import { colour, detail, heading, line, note, success, table, warn } from '../ui.js';
 
 export interface ReviewArgs {
@@ -27,10 +26,7 @@ export function runReview(args: ReviewArgs): number {
   const store = openProject(args.project);
   const ir = requireIr(store);
 
-  const plan = args.plan ? store.readPlan(args.plan) : store.latestPlan();
-  if (!plan) {
-    throw new EditorialError('not_found', 'there is no plan yet. Run "oea plan" first.');
-  }
+  const plan = requirePlan(store, args.plan);
 
   const validation = validatePlan(plan, {
     ir,

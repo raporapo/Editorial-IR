@@ -8,6 +8,7 @@ import {
 } from '@editorial-ir/contracts';
 import { aspectText, populatedAspects } from '@editorial-ir/index';
 import type { TextEmbeddingModel } from '@editorial-ir/perception';
+import type { ModelRunRecorder } from './model-runs.js';
 
 /**
  * Building the searchable representation of every event.
@@ -21,6 +22,19 @@ import type { TextEmbeddingModel } from '@editorial-ir/perception';
 export interface EmbedOptions {
   /** Frame vectors from this compile, keyed `<asset_id>:<timestamp_ms>`. */
   frameVectors?: Map<string, number[]>;
+  /**
+   * Where the encoder's identity is written down.
+   *
+   * The embedding stage was the one model call that recorded nothing: a
+   * configured endpoint received every event's transcript, its labels and the
+   * user's own background as plain text, and `ir.model_runs` had no entry for
+   * it, the records carried no `model_run_id`, and the privacy block said
+   * "media left this machine: no". Nothing in the project said a third party
+   * had seen any of it.
+   */
+  runs?: ModelRunRecorder;
+  /** The run that produced the frame vectors, for the records made from them. */
+  visualRunId?: string;
   onProgress?: (done: number, total: number) => void;
 }
 
@@ -32,6 +46,9 @@ export async function buildEmbeddings(
 ): Promise<{ records: EmbeddingRecord[]; kinds: EmbeddingKind[] }> {
   const jobs: { eventId: string; kind: EmbeddingKind; text: string }[] = [];
   const records: EmbeddingRecord[] = [];
+  // Recorded even when nothing is sent anywhere: "this ran locally on the
+  // hashing encoder" is an answer to the question, and an absent run is not.
+  const runId = options.runs?.fromIdentity('embedding', encoder.identity);
 
   // Either every visual vector in this index came from the pictures, or none of
   // them did. A frame vector and an embedding of the words attached to a frame
@@ -42,6 +59,7 @@ export async function buildEmbeddings(
   // vector index refuses vectors of different widths, which catches this only
   // when the two models disagree about how wide a vector is.
   const seen = options.frameVectors ? options.frameVectors.size > 0 : false;
+  const visualRunId = seen ? options.visualRunId : undefined;
 
   for (const event of events) {
     const visual = seen ? visualVectorFor(event, options.frameVectors!) : undefined;
@@ -52,6 +70,8 @@ export async function buildEmbeddings(
         kind: 'visual',
         dim: visual.length,
         vector: visual,
+        // The vision model's, not the text encoder's: these came from frames.
+        ...(visualRunId === undefined ? {} : { model_run_id: visualRunId }),
       });
     }
     for (const kind of populatedAspects(event, context)) {
@@ -78,6 +98,7 @@ export async function buildEmbeddings(
       kind: job.kind,
       dim: vector.length,
       vector,
+      ...(runId === undefined ? {} : { model_run_id: runId }),
     });
   }
 

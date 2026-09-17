@@ -94,6 +94,12 @@ export class ModelRunRecorder {
     run.latency_ms = (run.latency_ms ?? 0) + Math.round(latencyMs);
   }
 
+  /** The run recorded for a stage, when there is exactly one to point at. */
+  forStage(stage: PipelineStage): string | undefined {
+    const matches = [...this.runs.values()].filter((run) => run.stage === stage);
+    return matches.length === 1 ? matches[0]!.id : undefined;
+  }
+
   all(): ModelRun[] {
     return [...this.runs.values()].sort(
       (a, b) => compareText(a.stage, b.stage) || compareText(a.id, b.id),

@@ -225,7 +225,23 @@ describe('compiling an unchanged project again', () => {
 
     expect(second.ir.events).toEqual(first.ir.events);
     expect(second.ir.relations).toEqual(first.ir.relations);
-    expect(second.embeddings.records).toEqual(first.embeddings.records);
+
+    // A model run's id is deliberately random — `newId` is for "documents that
+    // could collide if produced independently", and a run is one — so the
+    // vectors are compared as vectors, and the runs they point at are compared
+    // as runs.
+    const vectorsOf = (records: typeof first.embeddings.records) =>
+      records.map(({ model_run_id: _run, ...rest }) => rest);
+    expect(vectorsOf(second.embeddings.records)).toEqual(vectorsOf(first.embeddings.records));
+
+    const named = (ir: typeof first.ir, records: typeof first.embeddings.records) =>
+      records.map((record) => {
+        const run = ir.model_runs.find((r) => r.id === record.model_run_id);
+        return `${record.id} <- ${run?.stage}:${run?.backend}:${run?.model ?? ''}`;
+      });
+    expect(named(second.ir, second.embeddings.records)).toEqual(
+      named(first.ir, first.embeddings.records),
+    );
   }, 60_000);
 
   it('keeps the frame vectors, and only for the analysis they belong to', async () => {

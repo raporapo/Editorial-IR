@@ -257,7 +257,13 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   // tell.
   let embedded;
   try {
-    embedded = await buildEmbeddings(built.events, context, options.suite.text, { frameVectors });
+    embedded = await buildEmbeddings(built.events, context, options.suite.text, {
+      frameVectors,
+      runs,
+      // The frame vectors came from the vision model, not from the text
+      // encoder, and the records made out of them should say so.
+      ...(runs.forStage('visual') === undefined ? {} : { visualRunId: runs.forStage('visual') }),
+    });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     failures.push({
@@ -265,8 +271,14 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       assetId: '(the whole index)',
       reason: `${reason} — indexed lexically instead, so search matches words rather than meaning`,
     });
+    // The fallback records itself, so the IR never claims a vector came from a
+    // model that did not answer.
     embedded = await buildEmbeddings(built.events, context, new HashingTextEmbedding(), {
       frameVectors,
+      runs,
+      // The frame vectors came from the vision model, not from the text
+      // encoder, and the records made out of them should say so.
+      ...(runs.forStage('visual') === undefined ? {} : { visualRunId: runs.forStage('visual') }),
     });
   }
   const vectorIndex = new FlatVectorIndex();
