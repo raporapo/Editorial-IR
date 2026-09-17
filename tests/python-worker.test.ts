@@ -34,11 +34,11 @@ function pythonAvailable(): boolean {
 
 const describeIfPython = pythonAvailable() ? describe : describe.skip;
 
-function makeClient(): PythonWorkerClient {
+function makeClient(env: Record<string, string> = {}): PythonWorkerClient {
   return new PythonWorkerClient({
     command: 'python3',
     args: ['-m', 'editorial_perception'],
-    env: { PYTHONPATH: WORKER_SRC },
+    env: { PYTHONPATH: WORKER_SRC, ...env },
     timeoutMs: 30_000,
   });
 }
@@ -51,7 +51,20 @@ describeIfPython('the Python worker, over the real protocol', () => {
       expect(health.protocol_version).toBe('0.1.0');
       // Answered by importing, not by claiming.
       expect(typeof health.capabilities.probe).toBe('boolean');
-      expect(health.capabilities.embed_text).toBe(true);
+      // This used to assert `true`, and in doing so asserted the bug: the
+      // worker hardcoded the capability while its loader returned nothing and
+      // the stage fell through to lexical hashing. What the contract actually
+      // promises is that the answer matches the machine — so a worker claiming
+      // the capability must also name the model providing it, and one that
+      // does not must name the fallback.
+      expect(typeof health.capabilities.embed_text).toBe('boolean');
+      const embedModel = health.stage_models?.embed_text;
+      expect(typeof embedModel).toBe('string');
+      if (health.capabilities.embed_text) {
+        expect(embedModel).not.toMatch(/^hashing-/);
+      } else {
+        expect(embedModel).toMatch(/^hashing-/);
+      }
       expect(health.python_version).toMatch(/^3\./);
     } finally {
       await client.close(2000);
@@ -59,7 +72,12 @@ describeIfPython('the Python worker, over the real protocol', () => {
   }, 30_000);
 
   it('produces text vectors the TypeScript side can use directly', async () => {
-    const client = makeClient();
+    // Forced onto the hashing path, because that is the claim being tested:
+    // the two implementations of it agree to the last decimal, so an index
+    // built by one side and queried by the other lands in the same space.
+    // Leaving this to the ambient environment made the test assert 256
+    // dimensions on a machine that happened to have a real encoder configured.
+    const client = makeClient({ OEA_TEXT_MODEL: '' });
     try {
       const texts = ['やっと着いた', 'night view', ''];
       const result = await client.request('embed_text', { texts, role: 'passage' });

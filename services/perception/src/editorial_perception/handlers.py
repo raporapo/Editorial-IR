@@ -22,8 +22,6 @@ from .protocol import PROTOCOL_VERSION, WORKER_VERSION, Session
 from .scheduler import ModelScheduler
 
 _scheduler = ModelScheduler(capacity=int(os.environ.get("OEA_MODEL_SLOTS", "1")))
-_text_model_loaded = False
-_text_model = None
 
 
 def handle_health(params: dict[str, Any], session: Session) -> dict[str, Any]:
@@ -48,7 +46,14 @@ def handle_health(params: dict[str, Any], session: Session) -> dict[str, Any]:
             "describe": bool(
                 os.environ.get("OEA_VLM_BASE_URL") and os.environ.get("OEA_VLM_MODEL")
             ),
-            "embed_text": True,
+            # Asked, not asserted. This was hardcoded True while the loader
+            # quietly returned None and the stage fell through to lexical
+            # hashing, so the client wired a worker-backed encoder that does
+            # not declare itself a stand-in and stamped the result as a
+            # full-strength analysis. Search then could not match 夜景 to
+            # "night view" at all — cosine exactly 0.0, since the two share no
+            # character n-grams.
+            "embed_text": text_embedding.available(),
         },
         # Where the work would happen, which is not always here. `describe` is
         # an HTTP call to whatever OEA_VLM_BASE_URL names, and the client cannot
@@ -87,7 +92,6 @@ def _stage_models() -> dict[str, str]:
     """What each stage would load, without loading any of it."""
     from .backends.asr import DEFAULT_COMPUTE  # noqa: PLC0415
     from .backends.asr import DEFAULT_MODEL as ASR_MODEL
-    from .backends.text_embedding import DEFAULT_MODEL as TEXT_MODEL  # noqa: PLC0415
     from .backends.visual import DEFAULT_MODEL as VISUAL_MODEL  # noqa: PLC0415
 
     models = {
@@ -101,8 +105,10 @@ def _stage_models() -> dict[str, str]:
         "transcribe": f"{_model_name(ASR_MODEL)}/{DEFAULT_COMPUTE}",
         "embed_frames": VISUAL_MODEL,
     }
-    if TEXT_MODEL:
-        models["embed_text"] = TEXT_MODEL
+    # The name that actually produced the vectors, which is not always the
+    # name that was asked for: an unloadable model falls back to hashing, and
+    # the cache must not serve one stage's vectors under the other's key.
+    models["embed_text"] = text_embedding.describe()
     vlm = os.environ.get("OEA_VLM_MODEL")
     if vlm:
         models["describe"] = vlm
@@ -187,17 +193,15 @@ def handle_describe(params: dict[str, Any], session: Session) -> dict[str, Any]:
 
 
 def handle_embed_text(params: dict[str, Any], session: Session) -> dict[str, Any]:
-    global _text_model_loaded, _text_model  # noqa: PLW0603 - one process-wide model
     texts = params.get("texts") or []
     if not isinstance(texts, list) or not texts:
         raise BadRequest("embed_text needs a non-empty list of texts")
 
-    if not _text_model_loaded:
-        _text_model = text_embedding.load()
-        _text_model_loaded = True
-
+    # Memoised in the backend rather than here, so that the capability report
+    # and the stage-name report share this session instead of building their
+    # own. Answering "can you embed text?" used to cost a model load.
     return text_embedding.embed(
-        _text_model, [str(text) for text in texts], str(params.get("role", "passage"))
+        text_embedding.resolve(), [str(text) for text in texts], str(params.get("role", "passage"))
     )
 
 
