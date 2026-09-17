@@ -64,6 +64,7 @@ describe('FileProjectStore', () => {
         id: 'ann_0001',
         type: 'essential',
         target: { kind: 'event', event_id: 'evt_0001' },
+        anchor: [],
         priority: 0,
         created_at: '2026-05-17T09:00:00.000Z',
       },

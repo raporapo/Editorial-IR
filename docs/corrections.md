@@ -76,6 +76,20 @@ A time range matches an event when they overlap by more than half of the
 _shorter_ of the two. Selecting one second inside an eight-second event means
 that event; a loosely drawn range that clips its edge does not.
 
+**An event id is recorded as the footage it names, not as the number.**
+`evt_0031` is the thirty-first event of the analysis you are looking at and
+nothing more, so splitting or merging anything earlier renumbers everything
+after it. A correction stored against the number would land on different
+material the next time you corrected the segmentation — one `merge` was enough
+to move an `essential` and a title onto a wordless platform shot, with nothing
+said about it. `oea annotate` therefore resolves the id against the current
+analysis and stores the range it names, so the correction follows the footage
+through any amount of resegmentation. The id is kept for reading.
+
+That is also why `oea annotate` wants an analysis to exist: run `oea analyze`
+before correcting, or the correction is pinned to a number rather than to
+anything.
+
 ## Kinds
 
 | Kind         | Takes            | Says                                       |

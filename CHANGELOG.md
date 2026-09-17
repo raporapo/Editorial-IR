@@ -75,6 +75,18 @@ is compatible with.
 
 ### Fixed
 
+- **A correction moved to different footage when the events were renumbered.**
+  An event id is a handle the compiler regenerates — `evt_0008` is the eighth
+  event of the last analysis and nothing more — so splitting or merging anything
+  earlier shifts every id after it. A correction stored against an id then
+  landed on material the user had never pointed at, and nothing said so: on the
+  worked example, one `merge` at 22 seconds moved an `essential` and a title
+  from "電車混んでるね" onto a wordless platform shot, `oea explain` reported that
+  clip as locked, and the moment the user had actually marked was dropped from
+  the cut. `oea annotate` now resolves an event id against the current analysis
+  and records the footage it names, so the correction follows the material
+  through any amount of resegmentation. The id is kept for reading.
+
 - **Compiling an unchanged project twice produced two different analyses.**
   Frame vectors were held in memory and thrown away, and reusing an observation
   set is the normal path — so the second compile segmented without the visual

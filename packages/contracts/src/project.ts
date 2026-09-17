@@ -133,9 +133,36 @@ export const AnnotationTarget = z
   .meta({ id: 'AnnotationTarget' });
 export type AnnotationTarget = z.infer<typeof AnnotationTarget>;
 
+/**
+ * The footage a target named, as it was when the annotation was made.
+ *
+ * An event id is a handle the compiler regenerates: `evt_0008` is the eighth
+ * event of the last analysis and nothing more. Splitting or merging anything
+ * earlier renumbers everything after it, so a correction stored against an id
+ * silently moved to different material — on the worked example, one `merge`
+ * moved an `essential` and a title onto a wordless platform shot and a
+ * "this is the ending" onto a different moment, with nothing said about it.
+ *
+ * What the user pointed at is the material, so that is what is stored. The id
+ * stays for display. One range per event the target names, so a pair has two.
+ */
+export const AnnotationAnchor = obj({
+  asset_id: AssetId,
+  start_ms: Milliseconds,
+  end_ms: Milliseconds,
+}).meta({ id: 'AnnotationAnchor' });
+export type AnnotationAnchor = z.infer<typeof AnnotationAnchor>;
+
 const annotationBase = {
   id: AnnotationId,
   target: AnnotationTarget,
+  /**
+   * The material the target named, in the asset's own time.
+   *
+   * Empty for a target that names material directly — a time range, an asset,
+   * the project — because there is nothing to drift.
+   */
+  anchor: z.array(AnnotationAnchor).default([]),
   /** Higher priority wins when two annotations contradict each other. */
   priority: z.int().default(0),
   note: z.string().optional(),

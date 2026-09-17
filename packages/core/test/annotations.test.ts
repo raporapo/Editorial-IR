@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { UserAnnotation } from '@editorial-ir/contracts';
+import type { SemanticEvent, UserAnnotation } from '@editorial-ir/contracts';
 import {
   annotationsFor,
   applyAnnotations,
@@ -21,7 +21,7 @@ const event = makeEvent(
 );
 
 const now = () => '2026-05-17T09:00:00.000Z';
-const base = { priority: 0, created_at: now() };
+const base = { anchor: [], priority: 0, created_at: now() };
 
 function annotation(partial: Partial<UserAnnotation> & { type: string }): UserAnnotation {
   return { id: `ann_${partial.type}`, ...base, ...partial } as UserAnnotation;
@@ -255,5 +255,53 @@ describe('continuityOverrides', () => {
       }),
     ]);
     expect(overrides.get('evt_0007->evt_0008')).toBe(0.95);
+  });
+});
+
+/**
+ * A correction that stays on the footage it was made about.
+ *
+ * An event id is a handle the compiler regenerates — `evt_0008` is the eighth
+ * event of the last analysis and nothing more — so splitting or merging
+ * anything earlier renumbers everything after it. A correction stored against
+ * an id moved to different material, silently: on the worked example one
+ * `merge` put an `essential` and a title onto a wordless platform shot, and
+ * `oea explain` then reported that clip as locked while the moment the user had
+ * actually marked was dropped from the cut.
+ */
+describe('an annotation after the events are renumbered', () => {
+  const material = { asset_id: 'asset_001', start_ms: 10_000, end_ms: 20_000 };
+
+  function eventAt(id: string, start: number, end: number): SemanticEvent {
+    return {
+      ...event,
+      id,
+      start_ms: start,
+      end_ms: end,
+      source_ranges: [{ asset_id: 'asset_001', source_in_ms: start, source_out_ms: end }],
+    };
+  }
+
+  const marked = annotation({
+    type: 'essential',
+    target: { kind: 'event', event_id: 'evt_0008' },
+    anchor: [material],
+  });
+
+  it('follows the footage rather than the id', () => {
+    // The material the user pointed at is now called evt_0007.
+    expect(annotationsFor(eventAt('evt_0007', 10_000, 20_000), [marked])).toHaveLength(1);
+  });
+
+  it('does not land on whatever inherited the id', () => {
+    expect(annotationsFor(eventAt('evt_0008', 20_000, 30_000), [marked])).toHaveLength(0);
+  });
+
+  it('still goes by the id when there was no analysis to anchor against', () => {
+    const unanchored = annotation({
+      type: 'essential',
+      target: { kind: 'event', event_id: 'evt_0008' },
+    });
+    expect(annotationsFor(eventAt('evt_0008', 20_000, 30_000), [unanchored])).toHaveLength(1);
   });
 });

@@ -2,12 +2,14 @@ import {
   NARRATIVE_ROLES,
   newId,
   parseTimecode,
+  type AnnotationAnchor,
   type NarrativeRole,
   type UserAnnotation,
 } from '@editorial-ir/contracts';
 import { EditorialError } from '@editorial-ir/contracts';
+import type { ProjectStore } from '@editorial-ir/core';
 import { openProject } from '../project.js';
-import { heading, note, success, table } from '../ui.js';
+import { heading, note, success, table, warn } from '../ui.js';
 
 export interface AnnotateArgs {
   target?: string;
@@ -50,7 +52,7 @@ export function runAnnotate(args: AnnotateArgs): number {
     return 1;
   }
 
-  const annotation = buildAnnotation(args.target, args.kind, args.value);
+  const annotation = anchored(buildAnnotation(args.target, args.kind, args.value), store);
   store.writeAnnotations([...existing, annotation]);
 
   success(`${annotation.type} on ${describeTarget(annotation)}`);
@@ -58,10 +60,55 @@ export function runAnnotate(args: AnnotateArgs): number {
   return 0;
 }
 
+/**
+ * Records the footage the target named, so the correction cannot drift off it.
+ *
+ * `evt_0008` is the eighth event of the last analysis and nothing more, so any
+ * split or merge earlier in the timeline renumbers everything after it and a
+ * correction stored against an id lands on different material. On the worked
+ * example a single `merge` moved an `essential` and a title onto a wordless
+ * platform shot, and "this is the ending" onto a different moment, and nothing
+ * was said about it: `oea explain` reported the wrong clip as locked while the
+ * moment the user had actually marked was dropped from the cut.
+ *
+ * The id stays as written, for reading. What the compiler matches on is this.
+ */
+function anchored(annotation: UserAnnotation, store: ProjectStore): UserAnnotation {
+  const target = annotation.target;
+  if (target.kind !== 'event' && target.kind !== 'event_pair') return annotation;
+
+  const ir = store.readIr();
+  if (!ir) {
+    // Nothing to resolve against yet. The id is all there is, and `oea analyze`
+    // has to run before the correction can apply anyway.
+    warn('  no analysis yet, so this is stored against the event id as written');
+    note('  run "oea analyze" first if you want it pinned to the footage');
+    return annotation;
+  }
+
+  const ids = target.kind === 'event' ? [target.event_id] : [target.event_a, target.event_b];
+  const anchor: AnnotationAnchor[] = [];
+  for (const id of ids) {
+    const range = ir.events.find((event) => event.id === id)?.source_ranges[0];
+    if (!range) {
+      throw new EditorialError('not_found', `there is no event called "${id}" in this analysis`, {
+        hint: 'oea timeline lists them',
+      });
+    }
+    anchor.push({
+      asset_id: range.asset_id,
+      start_ms: range.source_in_ms,
+      end_ms: range.source_out_ms,
+    });
+  }
+  return { ...annotation, anchor };
+}
+
 function buildAnnotation(target: string, kind: string, value: string | undefined): UserAnnotation {
   const base = {
     id: newId('ann'),
     target: parseTarget(target),
+    anchor: [],
     priority: 0,
     created_at: new Date().toISOString(),
   };

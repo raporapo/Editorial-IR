@@ -6,9 +6,6 @@
       "$ref": "#/$defs/__schema0"
     },
     {
-      "$ref": "#/$defs/__schema8"
-    },
-    {
       "$ref": "#/$defs/__schema9"
     },
     {
@@ -21,10 +18,10 @@
       "$ref": "#/$defs/__schema12"
     },
     {
-      "$ref": "#/$defs/__schema14"
+      "$ref": "#/$defs/__schema13"
     },
     {
-      "$ref": "#/$defs/__schema16"
+      "$ref": "#/$defs/__schema15"
     },
     {
       "$ref": "#/$defs/__schema17"
@@ -34,6 +31,9 @@
     },
     {
       "$ref": "#/$defs/__schema19"
+    },
+    {
+      "$ref": "#/$defs/__schema20"
     }
   ],
   "title": "UserAnnotation",
@@ -47,11 +47,14 @@
         "target": {
           "$ref": "#/$defs/AnnotationTarget"
         },
-        "priority": {
+        "anchor": {
           "$ref": "#/$defs/__schema6"
         },
-        "note": {
+        "priority": {
           "$ref": "#/$defs/__schema7"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema8"
         },
         "created_at": {
           "$ref": "#/$defs/Iso8601"
@@ -199,12 +202,39 @@
       "additionalProperties": false
     },
     "__schema6": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AnnotationAnchor"
+      }
+    },
+    "AnnotationAnchor": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "$ref": "#/$defs/assetId"
+        },
+        "start_ms": {
+          "$ref": "#/$defs/Milliseconds"
+        },
+        "end_ms": {
+          "$ref": "#/$defs/Milliseconds"
+        }
+      },
+      "required": [
+        "asset_id",
+        "start_ms",
+        "end_ms"
+      ],
+      "additionalProperties": false
+    },
+    "__schema7": {
       "default": 0,
       "type": "integer",
       "minimum": -9007199254740991,
       "maximum": 9007199254740991
     },
-    "__schema7": {
+    "__schema8": {
       "type": "string"
     },
     "Iso8601": {
@@ -212,7 +242,7 @@
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
       "description": "ISO-8601 timestamp, always UTC with a trailing Z."
     },
-    "__schema8": {
+    "__schema9": {
       "type": "object",
       "properties": {
         "id": {
@@ -221,11 +251,14 @@
         "target": {
           "$ref": "#/$defs/AnnotationTarget"
         },
-        "priority": {
+        "anchor": {
           "$ref": "#/$defs/__schema6"
         },
-        "note": {
+        "priority": {
           "$ref": "#/$defs/__schema7"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema8"
         },
         "created_at": {
           "$ref": "#/$defs/Iso8601"
@@ -243,7 +276,7 @@
       ],
       "additionalProperties": false
     },
-    "__schema9": {
+    "__schema10": {
       "type": "object",
       "properties": {
         "id": {
@@ -252,11 +285,14 @@
         "target": {
           "$ref": "#/$defs/AnnotationTarget"
         },
-        "priority": {
+        "anchor": {
           "$ref": "#/$defs/__schema6"
         },
-        "note": {
+        "priority": {
           "$ref": "#/$defs/__schema7"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema8"
         },
         "created_at": {
           "$ref": "#/$defs/Iso8601"
@@ -283,7 +319,7 @@
       "minimum": 0,
       "maximum": 1
     },
-    "__schema10": {
+    "__schema11": {
       "type": "object",
       "properties": {
         "id": {
@@ -292,11 +328,14 @@
         "target": {
           "$ref": "#/$defs/AnnotationTarget"
         },
-        "priority": {
+        "anchor": {
           "$ref": "#/$defs/__schema6"
         },
-        "note": {
+        "priority": {
           "$ref": "#/$defs/__schema7"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema8"
         },
         "created_at": {
           "$ref": "#/$defs/Iso8601"
@@ -318,7 +357,7 @@
       ],
       "additionalProperties": false
     },
-    "__schema11": {
+    "__schema12": {
       "type": "object",
       "properties": {
         "id": {
@@ -327,11 +366,14 @@
         "target": {
           "$ref": "#/$defs/AnnotationTarget"
         },
-        "priority": {
+        "anchor": {
           "$ref": "#/$defs/__schema6"
         },
-        "note": {
+        "priority": {
           "$ref": "#/$defs/__schema7"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema8"
         },
         "created_at": {
           "$ref": "#/$defs/Iso8601"
@@ -354,7 +396,7 @@
       ],
       "additionalProperties": false
     },
-    "__schema12": {
+    "__schema13": {
       "type": "object",
       "properties": {
         "id": {
@@ -363,11 +405,14 @@
         "target": {
           "$ref": "#/$defs/AnnotationTarget"
         },
-        "priority": {
+        "anchor": {
           "$ref": "#/$defs/__schema6"
         },
-        "note": {
+        "priority": {
           "$ref": "#/$defs/__schema7"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema8"
         },
         "created_at": {
           "$ref": "#/$defs/Iso8601"
@@ -380,7 +425,7 @@
           "minItems": 1,
           "type": "array",
           "items": {
-            "$ref": "#/$defs/__schema13"
+            "$ref": "#/$defs/__schema14"
           }
         }
       },
@@ -393,10 +438,10 @@
       ],
       "additionalProperties": false
     },
-    "__schema13": {
+    "__schema14": {
       "type": "string"
     },
-    "__schema14": {
+    "__schema15": {
       "type": "object",
       "properties": {
         "id": {
@@ -405,11 +450,14 @@
         "target": {
           "$ref": "#/$defs/AnnotationTarget"
         },
-        "priority": {
+        "anchor": {
           "$ref": "#/$defs/__schema6"
         },
-        "note": {
+        "priority": {
           "$ref": "#/$defs/__schema7"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema8"
         },
         "created_at": {
           "$ref": "#/$defs/Iso8601"
@@ -422,7 +470,7 @@
           "minItems": 1,
           "type": "array",
           "items": {
-            "$ref": "#/$defs/__schema15"
+            "$ref": "#/$defs/__schema16"
           }
         }
       },
@@ -435,10 +483,10 @@
       ],
       "additionalProperties": false
     },
-    "__schema15": {
+    "__schema16": {
       "type": "string"
     },
-    "__schema16": {
+    "__schema17": {
       "type": "object",
       "properties": {
         "id": {
@@ -447,11 +495,14 @@
         "target": {
           "$ref": "#/$defs/AnnotationTarget"
         },
-        "priority": {
+        "anchor": {
           "$ref": "#/$defs/__schema6"
         },
-        "note": {
+        "priority": {
           "$ref": "#/$defs/__schema7"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema8"
         },
         "created_at": {
           "$ref": "#/$defs/Iso8601"
@@ -479,7 +530,7 @@
       ],
       "additionalProperties": false
     },
-    "__schema17": {
+    "__schema18": {
       "type": "object",
       "properties": {
         "id": {
@@ -488,11 +539,14 @@
         "target": {
           "$ref": "#/$defs/AnnotationTarget"
         },
-        "priority": {
+        "anchor": {
           "$ref": "#/$defs/__schema6"
         },
-        "note": {
+        "priority": {
           "$ref": "#/$defs/__schema7"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema8"
         },
         "created_at": {
           "$ref": "#/$defs/Iso8601"
@@ -530,7 +584,7 @@
       ],
       "description": "The structural job an event does in the finished piece."
     },
-    "__schema18": {
+    "__schema19": {
       "type": "object",
       "properties": {
         "id": {
@@ -539,11 +593,14 @@
         "target": {
           "$ref": "#/$defs/AnnotationTarget"
         },
-        "priority": {
+        "anchor": {
           "$ref": "#/$defs/__schema6"
         },
-        "note": {
+        "priority": {
           "$ref": "#/$defs/__schema7"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema8"
         },
         "created_at": {
           "$ref": "#/$defs/Iso8601"
@@ -572,7 +629,7 @@
       ],
       "additionalProperties": false
     },
-    "__schema19": {
+    "__schema20": {
       "type": "object",
       "properties": {
         "id": {
@@ -581,11 +638,14 @@
         "target": {
           "$ref": "#/$defs/AnnotationTarget"
         },
-        "priority": {
+        "anchor": {
           "$ref": "#/$defs/__schema6"
         },
-        "note": {
+        "priority": {
           "$ref": "#/$defs/__schema7"
+        },
+        "note": {
+          "$ref": "#/$defs/__schema8"
         },
         "created_at": {
           "$ref": "#/$defs/Iso8601"

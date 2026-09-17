@@ -25,10 +25,31 @@ export function annotationsFor(
   annotations: readonly UserAnnotation[],
   captureOffsetMs = 0,
 ): UserAnnotation[] {
+  /** Whether the event covers a piece of material the user pointed at. */
+  const covers = (anchor: { asset_id: string; start_ms: number; end_ms: number }): boolean => {
+    if (!event.source_ranges.some((r) => r.asset_id === anchor.asset_id)) return false;
+    const range = {
+      start_ms: anchor.start_ms + captureOffsetMs,
+      end_ms: anchor.end_ms + captureOffsetMs,
+    };
+    return (
+      overlapMs(range, event) >=
+      Math.min(event.end_ms - event.start_ms, range.end_ms - range.start_ms) / 2
+    );
+  };
+
   return (
     annotations
       .filter((annotation) => {
         const target = annotation.target;
+        // An event id is a handle the compiler regenerates, so a correction
+        // stored against one moved to different material the moment anything
+        // earlier was split or merged. Where the annotation recorded what it was
+        // pointing at, that is what decides — the id is only a fallback for an
+        // annotation made before there was an analysis to resolve against.
+        if (annotation.anchor.length > 0) {
+          return annotation.anchor.some(covers);
+        }
         switch (target.kind) {
           case 'event':
             return target.event_id === event.id;
