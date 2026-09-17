@@ -6803,14 +6803,17 @@
         "stage_locality": {
           "$ref": "#/$defs/__schema4"
         },
-        "device": {
+        "stage_models": {
           "$ref": "#/$defs/__schema5"
         },
-        "vram_total_mb": {
+        "device": {
           "$ref": "#/$defs/__schema6"
         },
-        "ffmpeg_available": {
+        "vram_total_mb": {
           "$ref": "#/$defs/__schema7"
+        },
+        "ffmpeg_available": {
+          "$ref": "#/$defs/__schema8"
         }
       },
       "required": [
@@ -6857,10 +6860,20 @@
           }
         },
         "__schema5": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "__schema6": {
           "default": "cpu",
           "type": "string"
         },
-        "__schema6": {
+        "__schema7": {
           "anyOf": [
             {
               "type": "integer",
@@ -6872,7 +6885,7 @@
             }
           ]
         },
-        "__schema7": {
+        "__schema8": {
           "default": false,
           "type": "boolean"
         }

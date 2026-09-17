@@ -56,6 +56,11 @@ def handle_health(params: dict[str, Any], session: Session) -> dict[str, Any]:
         # a run that posted the user's transcripts to a hosted endpoint was
         # written into the record as having stayed on the machine.
         "stage_locality": {"describe": _describe_locality()},
+        # The names that actually decide each stage's output. The client keys
+        # its cache on these, and it had no way to learn them: every
+        # worker-backed stage reported a placeholder, so changing the ASR model
+        # and re-running served the old model's transcript.
+        "stage_models": _stage_models(),
         "device": _device(),
         "vram_total_mb": _vram_mb(),
         "ffmpeg_available": has_ffmpeg(),
@@ -63,6 +68,27 @@ def handle_health(params: dict[str, Any], session: Session) -> dict[str, Any]:
 
 
 _LOOPBACK = re.compile(r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:|/|$)")
+
+
+def _stage_models() -> dict[str, str]:
+    """What each stage would load, without loading any of it."""
+    from .backends.asr import DEFAULT_COMPUTE  # noqa: PLC0415
+    from .backends.asr import DEFAULT_MODEL as ASR_MODEL
+    from .backends.text_embedding import DEFAULT_MODEL as TEXT_MODEL  # noqa: PLC0415
+    from .backends.visual import DEFAULT_MODEL as VISUAL_MODEL  # noqa: PLC0415
+
+    models = {
+        # The compute type changes the numbers that come out, so it is part of
+        # what identifies the model rather than a detail of how it was run.
+        "transcribe": f"{ASR_MODEL}/{DEFAULT_COMPUTE}",
+        "embed_frames": VISUAL_MODEL,
+    }
+    if TEXT_MODEL:
+        models["embed_text"] = TEXT_MODEL
+    vlm = os.environ.get("OEA_VLM_MODEL")
+    if vlm:
+        models["describe"] = vlm
+    return models
 
 
 def _describe_locality() -> str:

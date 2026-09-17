@@ -75,6 +75,19 @@ is compatible with.
 
 ### Fixed
 
+- **Changing the transcription model served the old model's transcript.** Every
+  worker-backed stage reported a placeholder name — `asr`, `vlm`,
+  `text-embedding` — because the real one is decided by an environment variable
+  inside the worker, which this process cannot read. The perception cache keys
+  on that name, so a user unhappy with a transcript who set
+  `OEA_ASR_MODEL=large-v3` and re-ran got the small model's answer back, under a
+  line saying the analysis had been reused because nothing that affects it had
+  changed. The IR recorded the stage as having run on a model called `asr`,
+  which is not a model. The worker now reports what each stage would actually
+  load, in `health.stage_models`, including the compute type where it changes
+  the numbers; a worker that does not answer leaves the placeholder, which at
+  least does not claim to be a model anyone chose.
+
 - **A worker pointed at a hosted model was recorded as having run here.** The
   Python worker's closer look is an HTTP call to whatever `OEA_VLM_BASE_URL`
   names, and that variable is set inside the worker, where this process cannot

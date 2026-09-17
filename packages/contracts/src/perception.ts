@@ -170,6 +170,18 @@ export const HealthResult = obj({
    * the IR as having stayed on the machine, and the privacy report said so.
    */
   stage_locality: z.record(z.string(), z.enum(['local', 'remote_api', 'unknown'])).default({}),
+  /**
+   * The model each stage would actually use, by the name that decides its output.
+   *
+   * Same reason as `stage_locality`: the worker reads `OEA_ASR_MODEL` and this
+   * process does not. Every worker-backed stage reported a placeholder — `asr`,
+   * `vlm`, `text-embedding` — and the perception cache keys on it, so a user who
+   * was unhappy with a transcript, set `OEA_ASR_MODEL=large-v3` and re-ran was
+   * served the small model's transcript, under a line saying the analysis had
+   * been reused because nothing that affects it had changed. The IR said the
+   * stage ran on a model called `asr`, which is not a model.
+   */
+  stage_models: z.record(z.string(), z.string()).default({}),
   /** `cuda`, `mps`, `cpu`. */
   device: z.string().default('cpu'),
   vram_total_mb: jsonOptional(z.int().min(0)),

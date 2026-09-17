@@ -1,7 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PythonWorkerClient, WorkerContextModel, workerHealth } from '@editorial-ir/perception';
+import {
+  PythonWorkerClient,
+  WorkerContextModel,
+  WorkerSpeechModel,
+  workerHealth,
+} from '@editorial-ir/perception';
 import { HashingTextEmbedding } from '@editorial-ir/perception';
 
 /**
@@ -234,6 +239,66 @@ describeIfPython('a closer look the worker runs somewhere else', () => {
       // A worker that did not answer the question leaves this unknown, which is
       // the honest answer rather than the reassuring one.
       expect(new WorkerContextModel(client).identity.locality).toBe('unknown');
+    } finally {
+      await client.close(2000);
+    }
+  }, 30_000);
+});
+
+/**
+ * Which model a worker-backed stage actually used.
+ *
+ * The perception cache keys on the model's name, and every worker-backed stage
+ * reported a placeholder — `asr`, `vlm`, `text-embedding` — because the name is
+ * decided by an environment variable inside the worker. So a user unhappy with
+ * a transcript who set `OEA_ASR_MODEL=large-v3` and re-ran was served the small
+ * model's transcript, under a line saying the analysis had been reused because
+ * nothing that affects it had changed. The IR said the stage ran on a model
+ * called `asr`, which is not a model.
+ */
+describeIfPython('which model the worker would use', () => {
+  async function models(env: Record<string, string>): Promise<Record<string, string>> {
+    const client = new PythonWorkerClient({
+      command: 'python3',
+      args: ['-m', 'editorial_perception'],
+      env: { PYTHONPATH: WORKER_SRC, ...env },
+      timeoutMs: 30_000,
+    });
+    try {
+      return (await workerHealth(client)).stage_models;
+    } finally {
+      await client.close(2000);
+    }
+  }
+
+  it('names the transcription model, and changes when the user changes it', async () => {
+    expect((await models({ OEA_ASR_MODEL: 'small' })).transcribe).toBe('small/int8');
+    expect((await models({ OEA_ASR_MODEL: 'large-v3' })).transcribe).toBe('large-v3/int8');
+  }, 60_000);
+
+  it('counts the compute type as part of the model, because it changes the output', async () => {
+    expect((await models({ OEA_ASR_MODEL: 'small', OEA_ASR_COMPUTE: 'float16' })).transcribe).toBe(
+      'small/float16',
+    );
+  }, 30_000);
+
+  it('names the vision model too', async () => {
+    expect((await models({ OEA_VISUAL_MODEL: 'openai/clip-vit-base-patch32' })).embed_frames).toBe(
+      'openai/clip-vit-base-patch32',
+    );
+  }, 30_000);
+
+  it('carries the name onto the identity the cache keys on', async () => {
+    const client = new PythonWorkerClient({
+      command: 'python3',
+      args: ['-m', 'editorial_perception'],
+      env: { PYTHONPATH: WORKER_SRC },
+    });
+    try {
+      expect(new WorkerSpeechModel(client, 'large-v3/int8').identity.model).toBe('large-v3/int8');
+      // A worker that did not answer leaves the placeholder, which at least does
+      // not claim to be a model anyone chose.
+      expect(new WorkerSpeechModel(client).identity.model).toBe('asr');
     } finally {
       await client.close(2000);
     }

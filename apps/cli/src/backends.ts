@@ -101,7 +101,16 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
     // said it cannot run turns "this stage is unavailable" into "the whole
     // analysis failed". The compiler is built to degrade around a missing
     // model; it cannot degrade around one that is present and throws.
-    const { capabilities, stageLocality } = await workerHealthOrNothing(client, options.onLog);
+    const { capabilities, stageLocality, stageModels } = await workerHealthOrNothing(
+      client,
+      options.onLog,
+    );
+    // The name that decides a stage's output, which only the worker knows. The
+    // perception cache keys on it, so a placeholder meant changing the ASR
+    // model and re-running served the old model's transcript. A worker that
+    // does not answer leaves the placeholder, which at least does not claim to
+    // be a model anyone chose.
+    const named = (stage: string, fallback: string): string => stageModels[stage] ?? fallback;
     const has = (name: keyof typeof capabilities): boolean => capabilities[name] === true;
     // Where the worker says its describe would run. A worker that does not
     // answer, or an older one that does not know the question, leaves this
@@ -114,7 +123,9 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
     suite = {
       probe: new WorkerMediaProbe(client),
       ...(has('prepare') ? { preparer: new WorkerMediaPreparer(client) } : {}),
-      ...(has('transcribe') ? { speech: new WorkerSpeechModel(client) } : {}),
+      ...(has('transcribe')
+        ? { speech: new WorkerSpeechModel(client, named('transcribe', 'asr')) }
+        : {}),
       ...(has('detect_shots') ? { shots: new WorkerShotDetector(client) } : {}),
       ...(has('analyze_audio') ? { audio: new WorkerAudioModel(client) } : {}),
       ...(has('ocr') ? { ocr: new WorkerOcrModel(client) } : {}),
@@ -125,14 +136,22 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
       // `--budget` and recorded at a cost of zero. A remote one becomes the
       // escalation model below, which is where spending is decided and counted.
       ...(has('describe') && describeLocality !== 'remote_api'
-        ? { context: new WorkerContextModel(client, 'vlm', describeLocality) }
+        ? { context: new WorkerContextModel(client, named('describe', 'vlm'), describeLocality) }
         : {}),
-      ...(has('embed_frames') ? { visual: new WorkerVisualEmbeddingModel(client) } : {}),
-      text: has('embed_text') ? new WorkerTextEmbeddingModel(client) : new HashingTextEmbedding(),
+      ...(has('embed_frames')
+        ? { visual: new WorkerVisualEmbeddingModel(client, named('embed_frames', 'visual')) }
+        : {}),
+      text: has('embed_text')
+        ? new WorkerTextEmbeddingModel(client, named('embed_text', 'text-embedding'))
+        : new HashingTextEmbedding(),
     };
 
     if (has('describe') && describeLocality === 'remote_api') {
-      remoteWorkerContext = new WorkerContextModel(client, 'vlm', describeLocality);
+      remoteWorkerContext = new WorkerContextModel(
+        client,
+        named('describe', 'vlm'),
+        describeLocality,
+      );
     }
 
     const missing = Object.entries(capabilities)
@@ -273,14 +292,22 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
 async function workerHealthOrNothing(
   client: PythonWorkerClient,
   onLog?: (message: string) => void,
-): Promise<{ capabilities: Record<string, boolean>; stageLocality: Record<string, string> }> {
+): Promise<{
+  capabilities: Record<string, boolean>;
+  stageLocality: Record<string, string>;
+  stageModels: Record<string, string>;
+}> {
   try {
     const health = await workerHealth(client);
-    return { capabilities: health.capabilities, stageLocality: health.stage_locality };
+    return {
+      capabilities: health.capabilities,
+      stageLocality: health.stage_locality,
+      stageModels: health.stage_models,
+    };
   } catch (error) {
     onLog?.(
       `the Python worker did not answer health (${error instanceof Error ? error.message : String(error)})`,
     );
-    return { capabilities: {}, stageLocality: {} };
+    return { capabilities: {}, stageLocality: {}, stageModels: {} };
   }
 }
