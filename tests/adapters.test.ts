@@ -240,10 +240,19 @@ describe('the Premiere adapter', () => {
     expect(xml).toContain('<mastercomment1>');
   });
 
-  it('has one clipitem per operation', async () => {
+  it('has one picture clipitem per operation, and sound beside it', async () => {
     const { plan, request } = await prepared();
-    const xml = buildFcpXml(plan, request);
-    expect(xml.match(/<clipitem id=/g) ?? []).toHaveLength(plan.tracks.video.length);
+    const root = parseXml(buildFcpXml(plan, request));
+    const media = root.children
+      .find((child) => child.tag === 'sequence')!
+      .children.find((child) => child.tag === 'media')!;
+    const video = media.children.find((child) => child.tag === 'video')!;
+    const audio = media.children.find((child) => child.tag === 'audio')!;
+
+    expect(findAll(video, 'clipitem')).toHaveLength(plan.tracks.video.length);
+    // Sound is only under the clips that asked for it, on one track per channel.
+    const wanting = plan.tracks.video.filter((operation) => operation.use_source_audio).length;
+    expect(findAll(audio, 'clipitem').length % wanting).toBe(0);
   });
 
   it('escapes user content, because one unescaped ampersand breaks the file', () => {
@@ -329,6 +338,91 @@ describe('the AviUtl2 adapter', () => {
     expect(exo).toContain('\r\n');
     expect(exo.match(/^\[\d+\]$/gm) ?? []).toHaveLength(plan.tracks.video.length);
   });
+});
+
+describe('the sound', () => {
+  // A cut with no sound is not a rough cut. The plan names which clips carry
+  // their own audio and declares the tracks to lay it on; both were read and
+  // neither was written, so every sequence and every timeline arrived silent
+  // while the capabilities advertised two audio tracks.
+  it('puts the source audio in the Premiere sequence, linked to its picture', async () => {
+    const { plan, request } = await prepared();
+    const root = parseXml(buildFcpXml(plan, request));
+    const sequence = root.children.find((child) => child.tag === 'sequence')!;
+    const media = sequence.children.find((child) => child.tag === 'media')!;
+    const audio = media.children.find((child) => child.tag === 'audio')!;
+    const video = media.children.find((child) => child.tag === 'video')!;
+
+    const audioClips = findAll(audio, 'clipitem');
+    expect(audioClips.length).toBeGreaterThan(0);
+
+    // Every audio clip names a picture clip that exists, or the editor gets
+    // sound it cannot move with the shot it belongs to.
+    const pictureIds = new Set(findAll(video, 'clipitem').map((clip) => clip.attributes.id));
+    const links = audioClips.flatMap((clip) => findAll(clip, 'linkclipref').map((ref) => ref.text));
+    const toPicture = links.filter((ref) => pictureIds.has(ref));
+    expect(toPicture.length).toBeGreaterThan(0);
+    for (const ref of links) {
+      expect(pictureIds.has(ref) || ref.startsWith('clipitem-a')).toBe(true);
+    }
+  }, 60_000);
+
+  it('gives OTIO an audio track for the clips that carry their own sound', async () => {
+    const { plan, request } = await prepared();
+    const timeline = buildOtioTimeline(plan, request) as unknown as {
+      tracks: { children: { kind: string; children: { OTIO_SCHEMA: string }[] }[] };
+    };
+
+    const audio = timeline.tracks.children.filter((track) => track.kind === 'Audio');
+    expect(audio.length).toBeGreaterThan(0);
+    const clips = audio[0]!.children.filter((child) => child.OTIO_SCHEMA.startsWith('Clip'));
+    expect(clips.length).toBeGreaterThan(0);
+
+    // Only the clips that asked for it, and the rest left as gaps so the two
+    // tracks stay aligned.
+    const wanting = plan.tracks.video.filter((operation) => operation.use_source_audio).length;
+    expect(clips).toHaveLength(wanting);
+  }, 60_000);
+
+  it('says so rather than silently dropping a bed it cannot write', async () => {
+    const { plan, request } = await prepared();
+    const withBed: EditPlan = {
+      ...plan,
+      tracks: {
+        ...plan.tracks,
+        audio: [
+          ...plan.tracks.audio,
+          {
+            type: 'external',
+            track: 1,
+            asset_id: request.ir.assets[0]!.id,
+            source_in_ms: 0,
+            timeline_start_ms: 0,
+            gain_db: -18,
+          },
+        ],
+      },
+    } as unknown as EditPlan;
+
+    const warnings: string[] = [];
+    buildFcpXml(withBed, request, warnings);
+    expect(warnings.some((warning) => warning.includes('external audio bed'))).toBe(true);
+  }, 60_000);
+
+  it('gives every clip one length, not two that disagree', async () => {
+    // `end - start` and `out - in` were rounded independently and differed by a
+    // frame on 14 of the 39 clips in the worked example. A clipitem whose two
+    // lengths conflict is one the importer resolves by guessing.
+    const { plan, request } = await prepared();
+    const root = parseXml(buildFcpXml(plan, request));
+
+    const clips = findAll(root, 'clipitem');
+    expect(clips.length).toBeGreaterThan(0);
+    for (const clip of clips) {
+      const at = (tag: string) => Number(childText(clip, tag));
+      expect(at('end') - at('start')).toBe(at('out') - at('in'));
+    }
+  }, 60_000);
 });
 
 describe('would it actually import', () => {

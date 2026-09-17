@@ -75,6 +75,21 @@ is compatible with.
 
 ### Fixed
 
+- **Every export was silent.** The EditPlan names which clips carry their own
+  sound and declares the tracks to lay it on; both adapters read neither. A
+  Premiere sequence arrived with no audio track and an OpenTimelineIO timeline
+  with one video track, while the capabilities advertised two audio tracks. Both
+  now write the source audio — Premiere links each audio clipitem to its picture
+  with `linkclipref`, OTIO leaves gaps where a clip declined its own sound so the
+  two tracks stay aligned — and an external bed, which neither can write, is
+  reported rather than dropped.
+- **Premiere clipitems carried two lengths that disagreed.** `end - start` and
+  `out - in` were rounded from milliseconds independently and differed by a frame
+  on 14 of the 39 clips in the worked example. Every clip is now laid out once on
+  the frame grid, and where rounding would push one clip's end past the next
+  clip's start, the length gives way — an overlap is a thing a sequence cannot
+  represent, so the importer resolves it by guessing.
+
 - **Re-analysing a project no longer destroys it.** The perception backend was a
   command-line flag that was never stored, so `oea analyze` on a project built
   from a recorded fixture silently fell back to local perception — turning the

@@ -178,6 +178,75 @@ export function buildOtioTimeline(
       };
     });
 
+  // ---- audio ---------------------------------------------------------------
+  // A cut with no sound is not a rough cut. The plan says which clips carry
+  // their own audio and declares the tracks to lay it on, and until this existed
+  // both were read and neither was written: every export arrived silent, with
+  // the capabilities still advertising two audio tracks.
+  //
+  // Source audio is one clip per video clip that wants it, on its own track, at
+  // the same times — an editor expects to see it under the picture and to be
+  // able to unlink it. A clip that does not want its own sound leaves a gap
+  // rather than being dropped, so the two tracks stay aligned.
+  const audioTracks = plan.tracks.audio
+    .filter((spec) => spec.type === 'source_audio')
+    .map((spec) => {
+      const children: Record<string, unknown>[] = [];
+      let cursor = 0;
+
+      for (const operation of operationsInOrder(plan)) {
+        const length = operationTimelineDuration(operation);
+        if (!operation.use_source_audio) continue;
+        if (operation.timeline_start_ms > cursor) {
+          children.push({
+            OTIO_SCHEMA: 'Gap.1',
+            name: 'gap',
+            source_range: range(0, operation.timeline_start_ms - cursor),
+            metadata: {},
+          });
+        }
+        const path = resolveAssetPath(request, operation.source_asset_id);
+        const asset = request.ir.assets.find((a) => a.id === operation.source_asset_id);
+        children.push({
+          OTIO_SCHEMA: 'Clip.1',
+          name: clipName(operation, request),
+          source_range: range(operation.source_in_ms, length),
+          media_reference: {
+            OTIO_SCHEMA: 'ExternalReference.1',
+            target_url: path ? toFileUrl(path) : '',
+            available_range: asset ? range(0, asset.duration_ms) : null,
+            metadata: {},
+          },
+          metadata: {
+            'editorial-ir': {
+              operation_id: operation.operation_id,
+              follows: operation.operation_id,
+              gain_db: spec.gain_db,
+            },
+          },
+          enabled: true,
+        });
+        cursor = operation.timeline_start_ms + length;
+      }
+
+      return {
+        OTIO_SCHEMA: 'Track.1',
+        name: `A${spec.track + 1}`,
+        kind: 'Audio',
+        children,
+        source_range: null,
+        enabled: true,
+        metadata: { 'editorial-ir': { gain_db: spec.gain_db } },
+      };
+    })
+    .filter((track) => track.children.length > 0);
+
+  if (plan.tracks.audio.some((spec) => spec.type === 'external')) {
+    // Writing one would need the bed's own media resolved and its duration
+    // decided, and a silently missing bed is worse than a named one.
+    warnings.push('an external audio bed was asked for; this adapter writes source audio only');
+  }
+
   return {
     OTIO_SCHEMA: 'Timeline.1',
     name: plan.sequence.name,
@@ -185,7 +254,7 @@ export function buildOtioTimeline(
     tracks: {
       OTIO_SCHEMA: 'Stack.1',
       name: 'tracks',
-      children: tracks,
+      children: [...tracks, ...audioTracks],
       source_range: null,
       enabled: true,
       metadata: {},

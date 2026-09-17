@@ -6,6 +6,7 @@ import {
   operationsInOrder,
   type ApplyResult,
   type EditPlan,
+  type VideoOperation,
 } from '@editorial-ir/contracts';
 import type { ApplyRequest, EditorAdapter } from './types.js';
 import { msToFrames, negotiate, resolveAssetPath, toFileUrl } from './types.js';
@@ -147,10 +148,8 @@ export function buildFcpXml(
       }
 
       const clipId = `clipitem-${trackIndex + 1}-${index + 1}`;
-      const timelineStart = frames(operation.timeline_start_ms);
-      const timelineEnd = frames(
-        operation.timeline_start_ms + operationTimelineDuration(operation),
-      );
+      const span = spanOf(operation, trackOperations[index + 1], frames);
+      const { start: timelineStart, end: timelineEnd, in: sourceIn, out: sourceOut } = span;
 
       lines.push(`          <clipitem id="${clipId}">`);
       lines.push(`            <name>${escapeXml(asset.file_name)}</name>`);
@@ -158,8 +157,8 @@ export function buildFcpXml(
       lines.push(rateElement(timebase, ntsc, 12));
       lines.push(`            <start>${timelineStart}</start>`);
       lines.push(`            <end>${timelineEnd}</end>`);
-      lines.push(`            <in>${frames(operation.source_in_ms)}</in>`);
-      lines.push(`            <out>${frames(operation.source_out_ms)}</out>`);
+      lines.push(`            <in>${sourceIn}</in>`);
+      lines.push(`            <out>${sourceOut}</out>`);
       lines.push('            <enabled>TRUE</enabled>');
 
       const existing = fileIds.get(asset.id);
@@ -207,14 +206,107 @@ export function buildFcpXml(
   }
 
   lines.push('      </video>');
+
+  // ---- audio ---------------------------------------------------------------
+  // A cut with no sound is not a rough cut. The plan names which clips carry
+  // their own audio and declares the tracks to lay it on; both were read here
+  // and neither was written, so every sequence imported silent while the
+  // capabilities advertised two audio tracks.
+  //
+  // FCP7 XML links picture and sound by `linkclipref`: one video clipitem and
+  // its audio clipitems name each other, and the editor sees them as one clip
+  // that can still be unlinked.
   lines.push('      <audio>');
   lines.push('        <numOutputChannels>2</numOutputChannels>');
+
+  const sourceAudio = plan.tracks.audio.filter((spec) => spec.type === 'source_audio');
+  if (plan.tracks.audio.some((spec) => spec.type === 'external')) {
+    warnings.push('an external audio bed was asked for; this adapter writes source audio only');
+  }
+
+  // One track per channel of a stereo source, which is what the format expects
+  // and what an editor opening a sequence expects to find under the picture.
+  const AUDIO_CHANNELS = 2;
+
+  for (const spec of sourceAudio) {
+    for (let channel = 0; channel < AUDIO_CHANNELS; channel++) {
+      const written: string[] = [];
+      for (const [index, operation] of operations.entries()) {
+        if (!operation.use_source_audio) continue;
+        const asset = request.ir.assets.find((a) => a.id === operation.source_asset_id);
+        const fileId = fileIds.get(operation.source_asset_id);
+        if (!asset || !fileId) continue;
+
+        const span = spanOf(operation, operations[index + 1], frames);
+        const clipId = `clipitem-a${spec.track + 1}-${channel + 1}-${index + 1}`;
+
+        written.push(`          <clipitem id="${clipId}">`);
+        written.push(`            <name>${escapeXml(asset.file_name)}</name>`);
+        written.push(`            <duration>${frames(asset.duration_ms)}</duration>`);
+        written.push(rateElement(timebase, ntsc, 12));
+        written.push(`            <start>${span.start}</start>`);
+        written.push(`            <end>${span.end}</end>`);
+        written.push(`            <in>${span.in}</in>`);
+        written.push(`            <out>${span.out}</out>`);
+        written.push('            <enabled>TRUE</enabled>');
+        written.push(`            <file id="${fileId}"/>`);
+        written.push('            <sourcetrack>');
+        written.push('              <mediatype>audio</mediatype>');
+        written.push(`              <trackindex>${channel + 1}</trackindex>`);
+        written.push('            </sourcetrack>');
+        // Names the picture this sound belongs to, so the editor links them.
+        written.push('            <link>');
+        written.push(`              <linkclipref>clipitem-1-${index + 1}</linkclipref>`);
+        written.push('            </link>');
+        written.push('            <link>');
+        written.push(`              <linkclipref>${clipId}</linkclipref>`);
+        written.push('            </link>');
+        written.push('          </clipitem>');
+      }
+
+      if (written.length === 0) continue;
+      lines.push('        <track>');
+      lines.push(...written);
+      lines.push('        </track>');
+    }
+  }
+
   lines.push('      </audio>');
   lines.push('    </media>');
   lines.push('  </sequence>');
   lines.push('</xmeml>');
 
   return `${lines.join('\n')}\n`;
+}
+
+/**
+ * One clip, laid on the frame grid.
+ *
+ * A sequence is frames, not milliseconds, and three things have to hold at once:
+ * a clip's two lengths must agree (`end - start` and `out - in`), no clip may
+ * start before the one before it ends, and the cut must not gain gaps the plan
+ * did not ask for. Rounding each edge independently from milliseconds satisfies
+ * none of them reliably — it made the two lengths differ by a frame on 14 of the
+ * 39 clips in the worked example, and fixing that alone pushed one clip's end a
+ * frame past the next clip's start.
+ *
+ * So the length is decided once, on the grid, and the source out is derived from
+ * it. Where the next clip starts sooner than this one's rounded length would
+ * end, the length gives way: an overlap is a thing a sequence cannot represent,
+ * and the importer resolves it by guessing.
+ */
+function spanOf(
+  operation: VideoOperation,
+  next: VideoOperation | undefined,
+  frames: (ms: number) => number,
+): { start: number; end: number; in: number; out: number } {
+  const start = frames(operation.timeline_start_ms);
+  const wanted = Math.max(1, frames(operationTimelineDuration(operation)));
+  const nextStart = next ? frames(next.timeline_start_ms) : undefined;
+  const length =
+    nextStart !== undefined && nextStart > start ? Math.min(wanted, nextStart - start) : wanted;
+  const sourceIn = frames(operation.source_in_ms);
+  return { start, end: start + length, in: sourceIn, out: sourceIn + length };
 }
 
 function rateElement(timebase: number, ntsc: boolean, indent: number): string {
