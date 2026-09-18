@@ -9,6 +9,7 @@ import {
 } from '@editorial-ir/contracts';
 import type { VectorIndex } from './vector.js';
 import { aspectText } from './aspects.js';
+import { calibrationOf, strengthOf } from './calibrate.js';
 
 /**
  * Anything that can turn text into vectors.
@@ -182,12 +183,31 @@ export class SemanticIndex {
       // aspect whose query does not come from the sentence encoder.
       const queryFor = kind === 'visual' ? visualVector : queryVector;
       if (queryFor) {
-        for (const hit of this.vectors.search({
-          vector: queryFor,
-          kind,
-          ownerIds: candidates,
-        })) {
-          vectorHits.set(hit.ownerId, hit.score);
+        const raw = this.vectors.search({ vector: queryFor, kind, ownerIds: candidates });
+        // Almost everything in a project is unrelated to any given query, so
+        // the bulk of these scores is this model's floor, observed right here.
+        // Without it `minScore` means nothing: measured against e5, "a rocket
+        // launching into space" returned all eleven events of a harbour project
+        // between 0.486 and 0.517, every one above the threshold. A lexical
+        // encoder has no spread to speak of and falls through unchanged.
+        // The visual aspect's vectors came from the vision model, so whether
+        // the *text* encoder is lexical says nothing about them.
+        const lexical = kind === 'visual' ? false : this.encoder.lexical === true;
+        // Two different questions, and both have to be asked. Can this aspect
+        // tell its own events apart at all — a property of the index — and where
+        // does this query's answer sit among the rest, which is per query. The
+        // `audio` aspect of a real project answers no to the first: its text is
+        // "music speech" for almost every event, so any query separates them by
+        // rounding, and the luckiest one came out at 1.000.
+        const discrimination = lexical ? undefined : this.vectors.discrimination?.(kind);
+        const calibration =
+          discrimination?.kind === 'undiscriminating'
+            ? discrimination
+            : lexical
+              ? undefined
+              : calibrationOf(raw.map((h) => h.score));
+        for (const hit of raw) {
+          vectorHits.set(hit.ownerId, strengthOf(hit.score, calibration));
         }
       }
       // Stored vectors that the query could not be compared against: the search

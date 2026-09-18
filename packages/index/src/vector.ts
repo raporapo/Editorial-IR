@@ -1,5 +1,6 @@
 import { compareText } from '@editorial-ir/contracts';
 import type { EmbeddingKind, EmbeddingRecord } from '@editorial-ir/contracts';
+import { calibrationOf, strengthOf, type Calibration } from './calibrate.js';
 
 /**
  * Vector storage, behind an interface so the default can be replaced without
@@ -22,6 +23,12 @@ export interface VectorHit {
 }
 
 export interface VectorIndex {
+  /**
+   * How well this aspect's own vectors tell its members apart, when the index
+   * can say. Optional so that a replacement index need not implement it; search
+   * simply keeps the per-query calibration alone.
+   */
+  discrimination?(kind: EmbeddingKind): Calibration | undefined;
   add(records: readonly EmbeddingRecord[]): void;
   search(query: VectorQuery): VectorHit[];
   get(ownerId: string, kind: EmbeddingKind): number[] | undefined;
@@ -42,8 +49,21 @@ export interface VectorIndex {
  *
  * Vectors are stored already normalised, so cosine similarity is a dot product.
  */
+/**
+ * How many vectors to sample when measuring an aspect's discriminating power.
+ *
+ * Sixty gives 1,770 pairs, which is far more than a median and a MAD need, and
+ * it bounds the cost at a constant rather than at the square of the project.
+ */
+const DISCRIMINATION_SAMPLE = 60;
+
 export class FlatVectorIndex implements VectorIndex {
   private readonly byKind = new Map<EmbeddingKind, Map<string, number[]>>();
+  /**
+   * Memoised, and invalidated by `add`, because it is a property of the whole
+   * index rather than of a query and every search would otherwise recompute it.
+   */
+  private readonly discriminationByKind = new Map<EmbeddingKind, { calibration?: Calibration }>();
 
   get size(): number {
     let total = 0;
@@ -52,6 +72,9 @@ export class FlatVectorIndex implements VectorIndex {
   }
 
   add(records: readonly EmbeddingRecord[]): void {
+    // Whatever was measured about how well these aspects separate is now about
+    // a smaller index than the one that exists.
+    if (records.length > 0) this.discriminationByKind.clear();
     for (const record of records) {
       let map = this.byKind.get(record.kind);
       if (!map) {
@@ -114,6 +137,81 @@ export class FlatVectorIndex implements VectorIndex {
     }
     pairs.sort((x, y) => y.score - x.score || compareText(x.a, y.a) || compareText(x.b, y.b));
     return pairs;
+  }
+
+  /**
+   * Each owner's closest neighbour, as a strength rather than a raw cosine.
+   *
+   * The raw number is what `maxSimilarities` returns and it is not comparable
+   * across models: measured on a real 62-minute project embedded with
+   * multilingual-e5-large, the *least* similar pair of events scored 0.747 and
+   * the median pair 0.813. The rules turn those into redundancy with
+   * `(similarity - 0.6) / 0.4`, a constant written when the lexical vectoriser
+   * scored unrelated pairs at zero — so the least similar pair in the project
+   * came out at 0.368 and the median pair at 0.533, over the 0.5 line that skill
+   * rules read as "redundant". More than half the footage was marked as
+   * repeating itself, on material where nothing repeated, and that decides which
+   * clips get dropped.
+   *
+   * Every pairwise similarity in the corpus is the sample: almost all of those
+   * pairs are unrelated, so their bulk is this model's floor. Returns the raw
+   * maxima unchanged when there is nothing to calibrate against — too few pairs,
+   * or a lexical encoder whose spread is zero — so the existing behaviour is
+   * what a caller gets when calibration would be a guess.
+   */
+  calibratedMaxSimilarities(kind: EmbeddingKind): {
+    maxima: Map<string, number>;
+    calibration?: Calibration;
+  } {
+    const maxima = this.maxSimilarities(kind);
+    const calibration = this.discrimination(kind);
+    if (!calibration) return { maxima };
+    const calibrated = new Map<string, number>();
+    for (const [ownerId, score] of maxima) calibrated.set(ownerId, strengthOf(score, calibration));
+    return { maxima: calibrated, calibration };
+  }
+
+  /**
+   * How well an aspect's own vectors tell its members apart.
+   *
+   * A property of the index rather than of any query, and the thing that catches
+   * an aspect no query can use. The `audio` aspect's text is "music speech" for
+   * almost every event of a real project, so its vectors are nearly the same
+   * point — and a query's similarity to all of them is then nearly the same
+   * number, differing only in the last decimal. Calibrated per query that reads
+   * as one event standing four deviations clear of the rest, and it scored 1.000
+   * and beat a genuinely better match in another aspect. Measured there: the
+   * stored vectors have a median pairwise similarity of 0.9754, so there is less
+   * room above the floor than there is noise in it.
+   *
+   * Sampled rather than exhaustive. Every pair of a 500-event project is 125,000
+   * dot products of 1024 dimensions per aspect, and a median needs nothing like
+   * that many; the sample is taken at an even stride through the ids, so it is
+   * the same sample on every run.
+   */
+  discrimination(kind: EmbeddingKind): Calibration | undefined {
+    const cached = this.discriminationByKind.get(kind);
+    if (cached !== undefined) return cached.calibration;
+
+    const map = this.byKind.get(kind);
+    let calibration: Calibration | undefined;
+    if (map && map.size >= 2) {
+      const all = [...map.entries()].sort((a, b) => compareText(a[0], b[0]));
+      const stride = Math.max(1, Math.ceil(all.length / DISCRIMINATION_SAMPLE));
+      const sample = all.filter((_, index) => index % stride === 0);
+      const pairs: number[] = [];
+      for (let i = 0; i < sample.length; i++) {
+        for (let j = i + 1; j < sample.length; j++) {
+          const first = sample[i];
+          const second = sample[j];
+          if (!first || !second) continue;
+          pairs.push(dot(first[1], second[1]));
+        }
+      }
+      calibration = calibrationOf(pairs);
+    }
+    this.discriminationByKind.set(kind, { calibration });
+    return calibration;
   }
 
   /** The highest similarity each owner has to any other owner of the same kind. */

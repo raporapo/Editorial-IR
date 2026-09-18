@@ -306,7 +306,24 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   vectorIndex.add(embedded.records);
   // Redundancy is a question about the whole set, which is why the index has to
   // exist before the decision layer runs.
-  const similarities = vectorIndex.maxSimilarities('event');
+  //
+  // Calibrated against this corpus when the vectors came from a model, raw when
+  // they came from the lexical vectoriser. The rules turn this into redundancy
+  // with `(similarity - 0.6) / 0.4`, a constant whose scale is n-gram overlap —
+  // which is a real, known scale for the lexical path and means nothing at all
+  // for a model. Measured on a 62-minute project embedded with
+  // multilingual-e5-large: the *least* similar pair of events scored 0.747,
+  // giving redundancy 0.368, and the median pair 0.813, giving 0.533 — past the
+  // 0.5 line that skill rules read as "redundant". More than half the footage
+  // was marked as repeating itself, on material where nothing repeated, and
+  // that decides which clips get dropped.
+  //
+  // The lexical path keeps the constant deliberately: its similarity *is* shared
+  // n-grams, the constant was written for that, and there is no defect there to
+  // fix. Changing a documented worked example needs a bug behind it.
+  const similarities = embeddingUsed.lexical
+    ? vectorIndex.maxSimilarities('event')
+    : vectorIndex.calibratedMaxSimilarities('event').maxima;
 
   // ---- judgement -----------------------------------------------------------
   const assessed = await assessEvents(built.events, {

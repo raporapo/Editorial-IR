@@ -162,6 +162,31 @@ information the planner needs when choosing between two near-equal candidates.
 `history` keeps what a previous backend said. Re-running with a different model
 is a comparison, not a rewrite.
 
+### A unit score has to be a unit score for every backend
+
+`redundancy` comes from cosine similarity, and cosine similarity has no fixed
+scale: two things with nothing in common score 0.00 with the lexical vectoriser,
+0.184 with CLIP and **0.722** with multilingual-e5-large. The rules turn
+similarity into redundancy with a constant, and that constant was written for the
+first of those.
+
+Measured on a real 62-minute project embedded with multilingual-e5-large: the
+_least_ similar pair of events in the whole project came out at 0.368 redundant
+and the median pair at 0.533 — past the 0.5 line a skill rule reads as
+"redundant". Every one of its eleven events was marked as repeating itself, on
+material where nothing repeated. That is not a ranking nuisance; redundancy is
+strongly negative in every skill's weighting, so it drops clips.
+
+So a similarity from a model is calibrated against the corpus it came from
+before the rules see it: the bulk of a project's pairwise similarities _is_ that
+model's floor, observed where it matters. On the same project that turns eleven
+of eleven events over the line into seven, spread across 0.13 to 0.93 instead of
+compressed into 0.58 to 0.86. The lexical path keeps the constant, because its
+similarity is literally shared n-grams — a known scale, with no defect to fix.
+
+The same correction applies to search: `packages/index/src/calibrate.ts` has the
+measurements and the two cases where it declines to answer.
+
 ## The event graph
 
 The list already carries "what happened, in order". The graph carries what an
