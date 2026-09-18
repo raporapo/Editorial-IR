@@ -94,13 +94,30 @@ export async function assessEvents(
   // reader, and the escalation policy on the next pass, that a rule-based judge
   // at confidence 0.4 said what a hosted model said.
   const producedBy = new Map<string, string>();
+  // The base pass costs whatever the base model costs, and that was not being
+  // counted either — `addCost` appeared only in the escalation branch below.
+  // With `OEA_DECISION=local-system-one` the base judge is a real language model
+  // answering nineteen questions per event, and a run reported no tokens at all.
+  const baseCostPerEvent = options.baseModel.identity.costPerEventUsd ?? 0;
   for (const [index, event] of ordered.entries()) {
     options.onProgress?.('assess', index, ordered.length);
-    drafts.set(
-      event.id,
-      await assessCached(options.baseModel, states.get(event.id)!, options.cache),
+    const { draft, cached } = await assessCached(
+      options.baseModel,
+      states.get(event.id)!,
+      options.cache,
     );
+    drafts.set(event.id, draft);
     producedBy.set(event.id, baseRun);
+    // A cache hit is free. Counting it would make a re-run look as expensive as
+    // the first one, which is the opposite of what the cache is for.
+    if (!cached) {
+      options.runs.addCost(
+        baseRun,
+        draft.costUsd ?? baseCostPerEvent,
+        draft.inputTokens,
+        draft.outputTokens,
+      );
+    }
   }
 
   const escalated: string[] = [];
@@ -257,17 +274,18 @@ function assessKey(
   };
 }
 
+/** The judgement, and whether it cost anything to get. */
 async function assessCached(
   model: EditorialDecisionModel,
   state: EventState,
   cache: PerceptionCache | undefined,
-): Promise<Awaited<ReturnType<typeof assessEvent>>> {
+): Promise<{ draft: Awaited<ReturnType<typeof assessEvent>>; cached: boolean }> {
   const key = assessKey(model, state);
   const hit = cache?.get<Awaited<ReturnType<typeof assessEvent>>>(key);
-  if (hit) return hit;
+  if (hit) return { draft: hit, cached: true };
   const draft = await assessEvent(model, state);
   cache?.set(key, draft);
-  return draft;
+  return { draft, cached: false };
 }
 
 /** Builds the structured state a decision backend sees. */

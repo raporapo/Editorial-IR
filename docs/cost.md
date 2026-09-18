@@ -84,6 +84,41 @@ rule-based judge reports 0.4, and says so, rather than pretending.
 `--budget 2.00` refuses to exceed two dollars and stops with an error. Finding
 out a limit from an invoice is not an acceptable way to learn it.
 
+## What it actually spends, measured
+
+Every number below is from a real run — two minutes of footage, three events,
+llama3.2-1b-instruct answering both the descriptions and the judgement:
+
+| stage       | input tokens | output tokens | per event         |
+| ----------- | ------------ | ------------- | ----------------- |
+| description | 400          | 459           | 133 in, 153 out   |
+| judgement   | 4,691        | 559           | 1,564 in, 186 out |
+
+**The judgement stage sends twelve times the input tokens the description stage
+does**, which is the opposite of what "the expensive one" above would lead you to
+expect. The reason is structural rather than incidental: a description is one
+question about one event, and judgement is nineteen. A hosted deployment that
+budgets for the vision model and not for the judge has budgeted for the smaller
+half.
+
+That table did not exist until recently, and not because nobody ran the
+pipeline — because **nothing counted**. `addCost` was called only in the
+escalation branch of each stage, so a run whose descriptions and judgements all
+came from the base model recorded no tokens and no cost at all, and `oea analyze`
+printed "cost: nothing" after making twenty-six model calls. The base model is
+the ordinary case: a model on this machine is _made_ the base model precisely so
+it can look at every event.
+
+It was not only a reporting gap. `OEA_VLM_SCOPE=base` is documented above as the
+way to have a hosted model describe everything, and with the base pass uncounted
+`--budget` could not see that spending — a limit that does not bind is worse than
+no limit, because the documentation promises that it does.
+
+The dollar figures are estimates and are labelled as such in the code; the token
+counts are measured. A price per token belongs to whichever provider you chose,
+and the token count belongs to this pipeline. Work on this machine is recorded at
+zero, because it is.
+
 ## 4. Ask fewer, larger questions
 
 A decision backend that can answer a batch is asked once for all nineteen

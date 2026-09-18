@@ -82,6 +82,16 @@ export interface BuildEventsOptions {
  */
 const GIVE_UP_AFTER = 3;
 
+/**
+ * What one multimodal look at an event is assumed to cost on a hosted model.
+ *
+ * An estimate, and labelled as one. It exists so `--budget` has something to
+ * count before a provider has told anyone the price; the `input_tokens` and
+ * `output_tokens` recorded alongside it are measured, and are what a real cost
+ * figure should be computed from.
+ */
+const ESTIMATED_COST_PER_EVENT_USD = 0.004;
+
 export interface BuildEventsResult {
   events: SemanticEvent[];
   conflicts: Conflict[];
@@ -138,12 +148,42 @@ export async function buildSemanticEvents(
   const failures: { eventId: string; stage: string; reason: string }[] = [];
   if (options.baseModel) {
     const model = options.baseModel;
-    options.runs.fromIdentity('context', model.identity);
+    const baseRun = options.runs.fromIdentity('context', model.identity);
+    // What the base pass costs, which was not being counted at all.
+    //
+    // `addCost` was called only in the escalation branch below, so a run whose
+    // descriptions all came from the base model recorded no tokens and no cost —
+    // and that is the ordinary case, because a model on this machine is made the
+    // base model precisely so it can describe every event. An eleven-event run
+    // against a local model reported "cost: nothing" having made eleven calls.
+    //
+    // It is not only a reporting gap. `OEA_VLM_SCOPE=base` is documented as the
+    // way to have a *hosted* model describe everything, and with the base pass
+    // uncounted `--budget` could not see that spending at all — a limit that
+    // does not bind is worse than no limit, because the documentation promises
+    // it does.
+    // Zero for a model on this machine, because it is. For a hosted one this
+    // is an estimate and the tokens beside it are not — which is the right way
+    // round: a price per token is a property of whichever provider you chose,
+    // and the token count is a property of this pipeline.
+    const baseCostPerEvent =
+      model.identity.locality === 'remote_api' ? ESTIMATED_COST_PER_EVENT_USD : 0;
     for (const [index, skeleton] of skeletons.entries()) {
       options.onProgress?.('describe', index, skeletons.length);
       const params = describeParams(skeleton, skeletons, index, options, { includeFrames: false });
       try {
-        descriptions.set(skeleton.id, await describeCached(model, params, options.cache));
+        const { result, cached } = await describeCached(model, params, options.cache);
+        descriptions.set(skeleton.id, result);
+        // A cache hit is free, which is the whole point of the cache; counting
+        // it would make a re-run look as expensive as the first one.
+        if (!cached) {
+          options.runs.addCost(
+            baseRun,
+            baseCostPerEvent,
+            result.input_tokens,
+            result.output_tokens,
+          );
+        }
       } catch (error) {
         // Leave the map empty for this one and let `fallbackDescription` below
         // do the job it was written for, at confidence 0.15 — the honest record
@@ -169,7 +209,13 @@ export async function buildSemanticEvents(
   let limitedBy = 'nothing';
   if (options.escalationModel) {
     const model = options.escalationModel;
-    const costPerEvent = 0.004;
+    // Free when the closer look runs on this machine, for the same reason the
+    // base pass is: it is. Reporting "$0.01" for a run that spent nothing and
+    // sent nothing anywhere is the same falsified provenance as reporting a
+    // hosted stage as local, one field over. Escalation stays bounded without
+    // it — `selectForEscalation` limits by count and by value as well as cost.
+    const costPerEvent =
+      model.identity.locality === 'remote_api' ? ESTIMATED_COST_PER_EVENT_USD : 0;
     const totalDuration = skeletons.reduce((sum, s) => sum + (s.endMs - s.startMs), 0) || 1;
 
     const decision = selectForEscalation(
@@ -202,7 +248,7 @@ export async function buildSemanticEvents(
 
       let result;
       try {
-        result = cached ?? (await describeCached(model, params, options.cache));
+        result = cached ?? (await describeCached(model, params, options.cache)).result;
       } catch (error) {
         // The cheap description already in the map stands. A closer look that
         // could not be taken is worth less than the analysis.
@@ -358,17 +404,18 @@ function describeKey(
   };
 }
 
+/** The description, and whether it cost anything to get. */
 async function describeCached(
   model: ContextModel,
   params: Parameters<ContextModel['describe']>[0],
   cache: PerceptionCache | undefined,
-): Promise<Awaited<ReturnType<ContextModel['describe']>>> {
+): Promise<{ result: Awaited<ReturnType<ContextModel['describe']>>; cached: boolean }> {
   const key = describeKey(model, params);
   const hit = cache?.get<Awaited<ReturnType<ContextModel['describe']>>>(key);
-  if (hit) return hit;
+  if (hit) return { result: hit, cached: true };
   const result = await model.describe(params);
   cache?.set(key, result);
-  return result;
+  return { result, cached: false };
 }
 
 /**

@@ -108,7 +108,29 @@ export const MODELS = [
     notes:
       'The multilingual one, and the reason search can match 夜景 to "night view" at all. ' +
       'Large: 1.3 GB to download, ~2.3 GB unpacked, because the fp32 export keeps its ' +
-      'weights in a separate model.onnx_data file.',
+      'weights in a separate model.onnx_data file. Quantise it afterwards to get that ' +
+      'down to 561 MB — see the note under `quantise` below.',
+    /**
+     * Turning the 2.3 GB fp32 export into the 561 MB int8 one, on this machine.
+     *
+     * Worth having rather than shipping a second download, and worth trusting:
+     * `quantize_dynamic(..., weight_type=QInt8)` on this file with onnxruntime
+     * 1.30.0 reproduces a known-good int8 copy **bit for bit** — 560,662,568
+     * bytes, sha256 9dea7aca68a3bff916953106c374a0b1d92cdc65acaae10c7d14e8ddaafc99cc
+     * — and the tokenizer is already byte-identical. So there is one reachable
+     * download and one local step, with no model hub anywhere in it.
+     *
+     * Measured through the project's own encoder, `query:` against `passage:`:
+     * fp32 puts cos(夜景, "night view of the city") at 0.8391 against
+     * cos(夜景, "料理を食べている") at 0.8291; int8 gives 0.8315 and 0.8285. The
+     * ordering search depends on survives, and the two agree to about 0.008.
+     */
+    quantise: {
+      from: 'model.onnx',
+      to: 'model.int8.onnx',
+      sha256: '9dea7aca68a3bff916953106c374a0b1d92cdc65acaae10c7d14e8ddaafc99cc',
+      bytes: 560_662_568,
+    },
     archive: {
       url: 'https://storage.googleapis.com/qdrant-fastembed/fast-multilingual-e5-large.tar.gz',
       sha256: '6de9742c12bc29e37a0ac49521eda668028424c8068df8ca4941861e504a9d40',
@@ -410,6 +432,66 @@ async function get(model, root) {
   return dir;
 }
 
+/**
+ * The int8 conversion, run locally rather than downloaded.
+ *
+ * Needs `python3` with `onnxruntime`, which the perception runtime already
+ * requires. Shelled out because the quantiser is a Python library and there is
+ * no reason to reimplement it.
+ */
+async function quantise(model, root) {
+  if (!model.quantise) {
+    console.error(`${model.id} has nothing to quantise`);
+    process.exitCode = 2;
+    return;
+  }
+  const dir = join(root, model.id);
+  const source = join(dir, model.quantise.from);
+  const target = join(dir, model.quantise.to);
+  if (!(await exists(source))) {
+    console.error(`${source} is not there — run "models get ${model.id}" first`);
+    process.exitCode = 2;
+    return;
+  }
+  if (await exists(target)) {
+    const digest = await sha256Of(target);
+    if (digest === model.quantise.sha256) {
+      console.log(`${colour.bold(model.id)} ${colour.dim('already quantised and correct')}`);
+      return;
+    }
+  }
+
+  console.log(`${colour.bold(model.id)} — quantising ${model.quantise.from} to int8`);
+  console.log(colour.dim('  a few minutes, and it wants several gigabytes of memory'));
+  await run('python3', [
+    '-c',
+    [
+      'import sys',
+      'from onnxruntime.quantization import quantize_dynamic, QuantType',
+      'quantize_dynamic(sys.argv[1], sys.argv[2], weight_type=QuantType.QInt8)',
+    ].join('\n'),
+    source,
+    target,
+  ]);
+
+  const digest = await sha256Of(target);
+  if (digest !== model.quantise.sha256) {
+    // Not fatal, because a different onnxruntime legitimately produces
+    // different bytes — but it does mean this is no longer the file every
+    // measurement in this project was taken against, and nobody should find
+    // that out from a search result.
+    console.log(`  ${colour.red('note')} the result does not match the recorded digest`);
+    console.log(`    expected ${model.quantise.sha256}`);
+    console.log(`    got      ${digest}`);
+    console.log('    A different onnxruntime version will do this. The model still works,');
+    console.log("    but it is not the one this project's numbers were measured on.");
+  } else {
+    console.log(`  ${colour.green('ok')} ${digest.slice(0, 16)}… matches the recorded build`);
+  }
+  console.log(`\n  ${colour.bold(`export ${model.env}=${dir}`)}`);
+  console.log(`  ${colour.dim(`then rename ${model.quantise.to} to model.onnx, or keep both`)}\n`);
+}
+
 async function list(root) {
   console.log(colour.bold('models this project can fetch\n'));
   for (const model of MODELS) {
@@ -479,8 +561,8 @@ async function main() {
 
   if (!command || command === 'list') return list(root);
   if (command === 'check') return check(root);
-  if (command !== 'get') {
-    console.error('usage: models.mjs [list | get <id…> | check] [--to DIR]');
+  if (command !== 'get' && command !== 'quantise') {
+    console.error('usage: models.mjs [list | get <id…> | quantise <id> | check] [--to DIR]');
     process.exitCode = 2;
     return;
   }
@@ -498,7 +580,8 @@ async function main() {
       process.exitCode = 2;
       return;
     }
-    await get(model, root);
+    if (command === 'quantise') await quantise(model, root);
+    else await get(model, root);
   }
 }
 

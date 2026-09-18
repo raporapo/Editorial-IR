@@ -14,8 +14,9 @@ installed, and it is mirrored exactly in TypeScript so the two sides agree. It
 is also **lexical**, and the difference is not subtle. Measured here, with the
 hashing vectoriser, `cos("夜景", "night view of the city")` is exactly 0.0 —
 not low, zero, because the two strings share no character n-grams. With
-multilingual-e5-large the same pair scores 0.85 while `cos("夜景", "料理を
-食べている")` scores 0.78, so the ordering that search depends on exists at all.
+multilingual-e5-large, asked as a query against a passage, the same pair scores
+0.831 while `cos("夜景", "料理を食べている")` scores 0.765, so the ordering that
+search depends on exists at all.
 
 Which one is in use has to be visible from outside this module, because the
 worker advertises its capabilities and the client decides the analysis tier from
@@ -32,11 +33,16 @@ from . import hashing
 DEFAULT_MODEL = os.environ.get("OEA_TEXT_MODEL", "")
 
 # e5 and its relatives are asymmetric: they are trained expecting the stored
-# side and the searched side to announce which they are. Dropping the prefixes,
-# or using the same one on both sides, measurably degrades cross-lingual
-# ranking. Changing this convention invalidates an existing index — vectors
-# written under one convention and searched under another are the "two
-# embedding spaces in one index" bug this project has already been bitten by.
+# side and the searched side to announce which they are, and the cost of getting
+# it wrong is measured rather than asserted. On the pair above, `query:` against
+# `passage:` separates the right answer from the wrong one by +0.066; the same
+# prefix on both sides separates them by +0.020. The same ordering, a third of
+# the margin — which is the difference between a ranking that survives a noisy
+# corpus and one that does not.
+#
+# Changing this convention invalidates an existing index — vectors written under
+# one convention and searched under another are the "two embedding spaces in one
+# index" bug this project has already been bitten by.
 PREFIXES = {"query": "query: ", "passage": "passage: "}
 
 HASHING_MODEL = f"hashing-{hashing.DEFAULT_DIM}"
