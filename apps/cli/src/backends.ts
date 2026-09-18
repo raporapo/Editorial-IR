@@ -141,10 +141,8 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
     // said it cannot run turns "this stage is unavailable" into "the whole
     // analysis failed". The compiler is built to degrade around a missing
     // model; it cannot degrade around one that is present and throws.
-    const { capabilities, stageLocality, stageModels } = await workerHealthOrNothing(
-      client,
-      options.onLog,
-    );
+    const { capabilities, stageLocality, stageModels, stageQueryLanguages } =
+      await workerHealthOrNothing(client, options.onLog);
     // The name that decides a stage's output, which only the worker knows. The
     // perception cache keys on it, so a placeholder meant changing the ASR
     // model and re-running served the old model's transcript. A worker that
@@ -178,8 +176,17 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
       ...(has('describe') && describeLocality !== 'remote_api'
         ? { context: new WorkerContextModel(client, named('describe', 'vlm'), describeLocality) }
         : {}),
+      // `canEmbedQuery` is a separate capability from `embed_frames` on purpose:
+      // an export with no text tower embeds frames perfectly well and cannot be
+      // asked about them, and a client that assumes otherwise builds an index
+      // whose visual aspect nothing can reach.
       ...(has('embed_frames')
-        ? { visual: new WorkerVisualEmbeddingModel(client, named('embed_frames', 'visual')) }
+        ? {
+            visual: new WorkerVisualEmbeddingModel(client, named('embed_frames', 'visual'), {
+              canEmbedQuery: has('embed_text_visual'),
+              queryLanguage: stageQueryLanguages.embed_text_visual ?? 'en',
+            }),
+          }
         : {}),
       text: has('embed_text')
         ? new WorkerTextEmbeddingModel(client, named('embed_text', 'text-embedding'))
@@ -448,6 +455,7 @@ async function workerHealthOrNothing(
   capabilities: Record<string, boolean>;
   stageLocality: Record<string, string>;
   stageModels: Record<string, string>;
+  stageQueryLanguages: Record<string, string>;
 }> {
   try {
     const health = await workerHealth(client);
@@ -455,11 +463,17 @@ async function workerHealthOrNothing(
       capabilities: health.capabilities,
       stageLocality: health.stage_locality,
       stageModels: health.stage_models,
+      stageQueryLanguages: health.stage_query_languages,
     };
   } catch (error) {
     onLog?.(
       `the Python worker did not answer health (${error instanceof Error ? error.message : String(error)})`,
     );
-    return { capabilities: {}, stageLocality: {}, stageModels: {} };
+    return {
+      capabilities: {},
+      stageLocality: {},
+      stageModels: {},
+      stageQueryLanguages: {},
+    };
   }
 }

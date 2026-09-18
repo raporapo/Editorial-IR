@@ -6078,19 +6078,19 @@
           "$ref": "#/$defs/__schema21"
         },
         {
-          "$ref": "#/$defs/__schema25"
+          "$ref": "#/$defs/__schema26"
         },
         {
-          "$ref": "#/$defs/__schema30"
+          "$ref": "#/$defs/__schema31"
         },
         {
-          "$ref": "#/$defs/__schema35"
+          "$ref": "#/$defs/__schema36"
         },
         {
-          "$ref": "#/$defs/__schema46"
+          "$ref": "#/$defs/__schema47"
         },
         {
-          "$ref": "#/$defs/__schema50"
+          "$ref": "#/$defs/__schema52"
         }
       ],
       "title": "PerceptionRequest",
@@ -6411,6 +6411,9 @@
             },
             "label_vocabulary": {
               "$ref": "#/$defs/__schema24"
+            },
+            "frames_dir": {
+              "$ref": "#/$defs/__schema25"
             }
           },
           "required": [
@@ -6438,6 +6441,9 @@
           }
         },
         "__schema25": {
+          "type": "string"
+        },
+        "__schema26": {
           "type": "object",
           "properties": {
             "id": {
@@ -6465,16 +6471,16 @@
           "type": "object",
           "properties": {
             "audio_path": {
-              "$ref": "#/$defs/__schema26"
-            },
-            "hop_ms": {
               "$ref": "#/$defs/__schema27"
             },
-            "silence_threshold_db": {
+            "hop_ms": {
               "$ref": "#/$defs/__schema28"
             },
-            "classify_events": {
+            "silence_threshold_db": {
               "$ref": "#/$defs/__schema29"
+            },
+            "classify_events": {
+              "$ref": "#/$defs/__schema30"
             }
           },
           "required": [
@@ -6482,25 +6488,25 @@
           ],
           "additionalProperties": false
         },
-        "__schema26": {
+        "__schema27": {
           "type": "string",
           "minLength": 1
         },
-        "__schema27": {
+        "__schema28": {
           "default": 100,
           "type": "integer",
           "minimum": 1,
           "maximum": 9007199254740991
         },
-        "__schema28": {
+        "__schema29": {
           "default": -40,
           "type": "number"
         },
-        "__schema29": {
+        "__schema30": {
           "default": true,
           "type": "boolean"
         },
-        "__schema30": {
+        "__schema31": {
           "type": "object",
           "properties": {
             "id": {
@@ -6528,16 +6534,16 @@
           "type": "object",
           "properties": {
             "path": {
-              "$ref": "#/$defs/__schema31"
-            },
-            "timestamps_ms": {
               "$ref": "#/$defs/__schema32"
             },
-            "language": {
+            "timestamps_ms": {
               "$ref": "#/$defs/__schema33"
             },
-            "frames_dir": {
+            "language": {
               "$ref": "#/$defs/__schema34"
+            },
+            "frames_dir": {
+              "$ref": "#/$defs/__schema35"
             }
           },
           "required": [
@@ -6546,24 +6552,24 @@
           ],
           "additionalProperties": false
         },
-        "__schema31": {
+        "__schema32": {
           "type": "string",
           "minLength": 1
         },
-        "__schema32": {
+        "__schema33": {
           "minItems": 1,
           "type": "array",
           "items": {
             "$ref": "#/$defs/Milliseconds"
           }
         },
-        "__schema33": {
-          "type": "string"
-        },
         "__schema34": {
           "type": "string"
         },
         "__schema35": {
+          "type": "string"
+        },
+        "__schema36": {
           "type": "object",
           "properties": {
             "id": {
@@ -6591,34 +6597,34 @@
           "type": "object",
           "properties": {
             "event_id": {
-              "$ref": "#/$defs/__schema36"
-            },
-            "frame_paths": {
               "$ref": "#/$defs/__schema37"
             },
-            "transcript": {
+            "frame_paths": {
               "$ref": "#/$defs/__schema38"
             },
-            "ocr": {
+            "transcript": {
               "$ref": "#/$defs/__schema39"
             },
-            "audio_tags": {
+            "ocr": {
               "$ref": "#/$defs/__schema40"
             },
-            "visual_labels": {
+            "audio_tags": {
               "$ref": "#/$defs/__schema41"
             },
-            "previous_summary": {
+            "visual_labels": {
               "$ref": "#/$defs/__schema42"
             },
-            "next_summary": {
+            "previous_summary": {
               "$ref": "#/$defs/__schema43"
             },
-            "user_context": {
+            "next_summary": {
               "$ref": "#/$defs/__schema44"
             },
-            "language": {
+            "user_context": {
               "$ref": "#/$defs/__schema45"
+            },
+            "language": {
+              "$ref": "#/$defs/__schema46"
             }
           },
           "required": [
@@ -6626,15 +6632,8 @@
           ],
           "additionalProperties": false
         },
-        "__schema36": {
-          "type": "string"
-        },
         "__schema37": {
-          "default": [],
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+          "type": "string"
         },
         "__schema38": {
           "default": [],
@@ -6665,12 +6664,19 @@
           }
         },
         "__schema42": {
-          "type": "string"
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "__schema43": {
           "type": "string"
         },
         "__schema44": {
+          "type": "string"
+        },
+        "__schema45": {
           "default": {},
           "type": "object",
           "propertyNames": {
@@ -6678,10 +6684,10 @@
           },
           "additionalProperties": {}
         },
-        "__schema45": {
+        "__schema46": {
           "type": "string"
         },
-        "__schema46": {
+        "__schema47": {
           "type": "object",
           "properties": {
             "id": {
@@ -6709,10 +6715,13 @@
           "type": "object",
           "properties": {
             "texts": {
-              "$ref": "#/$defs/__schema47"
+              "$ref": "#/$defs/__schema48"
             },
             "role": {
-              "$ref": "#/$defs/__schema49"
+              "$ref": "#/$defs/__schema50"
+            },
+            "space": {
+              "$ref": "#/$defs/__schema51"
             }
           },
           "required": [
@@ -6720,17 +6729,17 @@
           ],
           "additionalProperties": false
         },
-        "__schema47": {
+        "__schema48": {
           "minItems": 1,
           "type": "array",
           "items": {
-            "$ref": "#/$defs/__schema48"
+            "$ref": "#/$defs/__schema49"
           }
         },
-        "__schema48": {
+        "__schema49": {
           "type": "string"
         },
-        "__schema49": {
+        "__schema50": {
           "default": "passage",
           "type": "string",
           "enum": [
@@ -6738,7 +6747,15 @@
             "passage"
           ]
         },
-        "__schema50": {
+        "__schema51": {
+          "default": "text",
+          "type": "string",
+          "enum": [
+            "text",
+            "visual"
+          ]
+        },
+        "__schema52": {
           "type": "object",
           "properties": {
             "id": {
@@ -6985,14 +7002,17 @@
         "stage_models": {
           "$ref": "#/$defs/__schema5"
         },
-        "device": {
+        "stage_query_languages": {
           "$ref": "#/$defs/__schema6"
         },
-        "vram_total_mb": {
+        "device": {
           "$ref": "#/$defs/__schema7"
         },
-        "ffmpeg_available": {
+        "vram_total_mb": {
           "$ref": "#/$defs/__schema8"
+        },
+        "ffmpeg_available": {
+          "$ref": "#/$defs/__schema9"
         }
       },
       "required": [
@@ -7049,10 +7069,20 @@
           }
         },
         "__schema6": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "__schema7": {
           "default": "cpu",
           "type": "string"
         },
-        "__schema7": {
+        "__schema8": {
           "anyOf": [
             {
               "type": "integer",
@@ -7064,7 +7094,7 @@
             }
           ]
         },
-        "__schema8": {
+        "__schema9": {
           "default": false,
           "type": "boolean"
         }

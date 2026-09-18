@@ -94,18 +94,44 @@ export class WorkerVisualEmbeddingModel implements VisualEmbeddingModel {
   readonly identity: ModelIdentity;
   /** Learned from the first response; the worker owns the real value. */
   dim = 0;
+  /**
+   * Set only when the worker says it has a text tower, which is what makes the
+   * frame vectors searchable rather than merely stored.
+   */
+  readonly embedQuery?: (texts: string[]) => Promise<number[][]>;
+  readonly queryLanguage?: string;
+
   constructor(
     private readonly client: PythonWorkerClient,
     model = 'visual-embedding',
+    options: { canEmbedQuery?: boolean; queryLanguage?: string } = {},
   ) {
     this.identity = identity(model);
+    if (options.canEmbedQuery === true) {
+      this.embedQuery = (texts) => this.query(texts);
+      this.queryLanguage = options.queryLanguage ?? 'en';
+    }
   }
+
   async embedFrames(params: EmbedFramesParams): Promise<EmbedFramesResult> {
     const result = await this.client.request('embed_frames', params, {
       timeoutMs: LONG_TIMEOUT_MS,
     });
     this.dim = result.dim;
     return result;
+  }
+
+  private async query(texts: string[]): Promise<number[][]> {
+    // `space: 'visual'` rather than a second op: it is the same question — turn
+    // these strings into vectors — asked of a different model, and the worker
+    // refuses outright when it has no tower rather than answering in the
+    // sentence encoder's space, which would be two spaces in one index.
+    const result = await this.client.request(
+      'embed_text',
+      { texts, role: 'query', space: 'visual' },
+      { timeoutMs: LONG_TIMEOUT_MS },
+    );
+    return result.vectors;
   }
 }
 

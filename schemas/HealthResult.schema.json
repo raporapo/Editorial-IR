@@ -21,14 +21,17 @@
     "stage_models": {
       "$ref": "#/$defs/__schema5"
     },
-    "device": {
+    "stage_query_languages": {
       "$ref": "#/$defs/__schema6"
     },
-    "vram_total_mb": {
+    "device": {
       "$ref": "#/$defs/__schema7"
     },
-    "ffmpeg_available": {
+    "vram_total_mb": {
       "$ref": "#/$defs/__schema8"
+    },
+    "ffmpeg_available": {
+      "$ref": "#/$defs/__schema9"
     }
   },
   "required": [
@@ -85,10 +88,20 @@
       }
     },
     "__schema6": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "__schema7": {
       "default": "cpu",
       "type": "string"
     },
-    "__schema7": {
+    "__schema8": {
       "anyOf": [
         {
           "type": "integer",
@@ -100,7 +113,7 @@
         }
       ]
     },
-    "__schema8": {
+    "__schema9": {
       "default": false,
       "type": "boolean"
     }

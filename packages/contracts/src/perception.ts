@@ -94,6 +94,15 @@ export const EmbedFramesParams = obj({
   timestamps_ms: z.array(Milliseconds).min(1),
   /** Candidate labels for zero-shot tagging. Empty means embeddings only. */
   label_vocabulary: z.array(z.string()).default([]),
+  /**
+   * Where to put the frames it has to extract to look at them.
+   *
+   * The same field `OcrParams` has, and for the same reason: the worker's guess
+   * was "beside the file", and for an asset with no proxy that is the user's own
+   * footage directory. `ocr` was fixed and this was missed, so the stage kept
+   * writing a `_frames` folder into somebody's footage and leaving it there.
+   */
+  frames_dir: z.string().optional(),
 }).meta({ id: 'EmbedFramesParams' });
 export type EmbedFramesParams = z.infer<typeof EmbedFramesParams>;
 
@@ -142,10 +151,32 @@ export const DescribeParams = obj({
 }).meta({ id: 'DescribeParams' });
 export type DescribeParams = z.infer<typeof DescribeParams>;
 
+/** Which model's space a vector lands in. Not a preference — an address. */
+export const EMBEDDING_SPACES = ['text', 'visual'] as const;
+export type EmbeddingSpace = (typeof EMBEDDING_SPACES)[number];
+
 export const EmbedTextParams = obj({
   texts: z.array(z.string()).min(1),
   /** `query` and `passage` may be encoded differently by asymmetric models. */
   role: z.enum(['query', 'passage']).default('passage'),
+  /**
+   * `text` is the sentence encoder. `visual` is the vision model's own text
+   * tower, which is the only thing that can put a query beside a frame.
+   *
+   * This exists because without it the visual stage was unusable in a way that
+   * raised nothing. `embed_frames` wrote 512-wide CLIP vectors into the `visual`
+   * aspect; a search encoded its query with the sentence encoder and arrived
+   * 1024 wide; the index refused to compare them, correctly, and reported the
+   * aspect unsearchable on every query. So every frame was embedded, at real
+   * cost, and none of it could be asked anything — and the only visible symptom
+   * was a diagnostic nobody was reading.
+   *
+   * A worker with no vision model, or one whose export has no text tower, says
+   * so through the `embed_text_visual` capability rather than quietly answering
+   * in the wrong space. That would be the "two embedding spaces in one index"
+   * bug this project has already been bitten by once.
+   */
+  space: z.enum(EMBEDDING_SPACES).default('text'),
 }).meta({ id: 'EmbedTextParams' });
 export type EmbedTextParams = z.infer<typeof EmbedTextParams>;
 
@@ -197,6 +228,20 @@ export const HealthResult = obj({
    * stage ran on a model called `asr`, which is not a model.
    */
   stage_models: z.record(z.string(), z.string()).default({}),
+  /**
+   * The natural language a stage can be *asked* in, where that is narrower than
+   * what it can analyse.
+   *
+   * One stage needs this today and it is not a detail. A vision model's text
+   * tower is the only thing that can encode a query into the same space as its
+   * frame vectors, and CLIP's and SigLIP-base's towers are English-only:
+   * measured, six frames against six English descriptions scored 6/6 top-1 and
+   * the same six concepts in Japanese scored 4/6 with the margins at noise
+   * level. A Japanese query against that tower does not fail — it returns a
+   * confident ranking of noise, which is worse. The client reads this and
+   * declines, falling back to the text index, which does read Japanese.
+   */
+  stage_query_languages: z.record(z.string(), z.string()).default({}),
   /** `cuda`, `mps`, `cpu`. */
   device: z.string().default('cpu'),
   vram_total_mb: jsonOptional(z.int().min(0)),

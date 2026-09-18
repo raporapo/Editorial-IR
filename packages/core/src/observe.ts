@@ -19,6 +19,7 @@ import {
   type Utterance,
 } from '@editorial-ir/contracts';
 import { ModelScheduler, frameFileName, type PerceptionSuite } from '@editorial-ir/perception';
+import { vocabularyFor } from './label-vocabulary.js';
 import type { PerceptionCache } from './cache.js';
 import type { ModelRunRecorder } from './model-runs.js';
 import type { CacheKeyParts } from './fingerprint.js';
@@ -301,6 +302,9 @@ export async function observeAssets(
   if (options.suite.visual) {
     const visual = options.suite.visual;
     const runId = options.runs.fromIdentity('visual', visual.identity);
+    // Computed once per run, not per asset: it is the same list every time, and
+    // it is part of the cache key, so recomputing it has to be deterministic.
+    const vocabulary = vocabularyFor(visual, options.context);
     await scheduler.withModel('visual', async () => {
       let done = 0;
       for (const asset of ordered) {
@@ -312,7 +316,13 @@ export async function observeAssets(
         const params = {
           path: prepared?.proxy_path ?? absolutePath(asset, options.projectRoot),
           timestamps_ms: timestamps,
-          label_vocabulary: [],
+          // This was `[]`, which made the zero-shot path and its calibration
+          // unreachable and left `visual_labels` empty in every IR ever
+          // produced. The words are the user's own; see `labelVocabulary`.
+          label_vocabulary: vocabulary,
+          // Never beside the media: the worker's fallback was to write a
+          // `_frames` folder into whatever directory the footage lives in.
+          ...(prepared?.frames_dir ? { frames_dir: prepared.frames_dir } : {}),
         };
         let result: Awaited<ReturnType<typeof visual.embedFrames>> | undefined;
         await attempt('visual', asset.id, async () => {

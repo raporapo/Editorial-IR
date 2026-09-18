@@ -9,7 +9,7 @@ import { ModelRunRecorder } from '@editorial-ir/core';
 import { localityOf } from '@editorial-ir/perception';
 import { SkillRegistry } from '@editorial-ir/skills';
 import { openProject } from '../project.js';
-import { openIndex, requireIr } from '../ir.js';
+import { openSearchableIndex, requireIr } from '../ir.js';
 import { colour, detail, fail, heading, line, note, success, table, truncate } from '../ui.js';
 
 export interface AgentArgs {
@@ -71,88 +71,98 @@ export async function runAgent(args: AgentArgs): Promise<number> {
   );
   note('  your project background and the transcript of every moment it looks at');
 
-  const toolkit = new AgentToolkit(ir, openIndex(store, ir));
-  const agent = new LlmEditingAgent(toolkit, {
-    baseUrl,
-    model,
-    ...((process.env.OEA_AGENT_API_KEY ?? process.env.OEA_DECISION_API_KEY)
-      ? { apiKey: process.env.OEA_AGENT_API_KEY ?? process.env.OEA_DECISION_API_KEY }
-      : {}),
-    onStep: (step) => note(`  ${colour.grey(`${step.tool}`)} ${step.summary}`),
-  });
+  // The same index the `search` command opens, with the models that can query
+  // it. Built with `openIndex(store, ir)` the agent's own search tool was purely
+  // lexical: it could not find "the arrival" unless something in the analysis
+  // literally said "arrival", which is most of what it is for.
+  const searchable = await openSearchableIndex(store, ir, { onLog: (m) => note(`  ${m}`) });
+  try {
+    const toolkit = new AgentToolkit(ir, searchable.index);
+    const agent = new LlmEditingAgent(toolkit, {
+      baseUrl,
+      model,
+      ...((process.env.OEA_AGENT_API_KEY ?? process.env.OEA_DECISION_API_KEY)
+        ? { apiKey: process.env.OEA_AGENT_API_KEY ?? process.env.OEA_DECISION_API_KEY }
+        : {}),
+      onStep: (step) => note(`  ${colour.grey(`${step.tool}`)} ${step.summary}`),
+    });
 
-  heading('working');
-  const result = await agent.plan({
-    instruction: args.instruction,
-    skill,
-    targetDurationMs,
-    ...(store.readObservations() ? { observations: store.readObservations()! } : {}),
-  });
+    heading('working');
+    const result = await agent.plan({
+      instruction: args.instruction,
+      skill,
+      targetDurationMs,
+      ...(store.readObservations() ? { observations: store.readObservations()! } : {}),
+    });
 
-  const report = validatePlan(result.plan, {
-    ir,
-    projectRoot: store.paths.root,
-    checkMediaExists: true,
-  });
-  if (!report.ok) {
-    fail(`the plan did not validate: ${summariseReport(report)}`);
-    return 1;
-  }
+    const report = validatePlan(result.plan, {
+      ir,
+      projectRoot: store.paths.root,
+      checkMediaExists: true,
+    });
+    if (!report.ok) {
+      fail(`the plan did not validate: ${summariseReport(report)}`);
+      return 1;
+    }
 
-  // The run goes into the plan, so the artifact says who made it. `planning`
-  // has been a PipelineStage since the contract was written and nothing had
-  // ever recorded one — this command wrote a plan and left no trace anywhere
-  // that a model had seen the user's notes. It belongs on the plan rather than
-  // in the IR because the next `oea analyze` rebuilds the IR and not this.
-  const runs = new ModelRunRecorder();
-  const runId = runs.record({
-    stage: 'planning',
-    backend: 'openai-compatible',
-    model,
-    locality,
-    // The toolkit here is built without an inspection source, so `look_at_event`
-    // has no frames to send. If that ever changes, this must change with it.
-    mediaLeavesDevice: false,
-    parameters: { instruction: args.instruction, skill: skill.name },
-  });
-  runs.addCost(runId, 0, result.inputTokens, result.outputTokens);
-  const planned = { ...result.plan, model_runs: runs.all() };
-  store.writePlan(planned);
-  result.plan.model_runs = planned.model_runs;
+    // The run goes into the plan, so the artifact says who made it. `planning`
+    // has been a PipelineStage since the contract was written and nothing had
+    // ever recorded one — this command wrote a plan and left no trace anywhere
+    // that a model had seen the user's notes. It belongs on the plan rather than
+    // in the IR because the next `oea analyze` rebuilds the IR and not this.
+    const runs = new ModelRunRecorder();
+    const runId = runs.record({
+      stage: 'planning',
+      backend: 'openai-compatible',
+      model,
+      locality,
+      // The toolkit here is built without an inspection source, so `look_at_event`
+      // has no frames to send. If that ever changes, this must change with it.
+      mediaLeavesDevice: false,
+      parameters: { instruction: args.instruction, skill: skill.name },
+    });
+    runs.addCost(runId, 0, result.inputTokens, result.outputTokens);
+    const planned = { ...result.plan, model_runs: runs.all() };
+    store.writePlan(planned);
+    result.plan.model_runs = planned.model_runs;
 
-  if (args.json) {
-    line(JSON.stringify({ plan: result.plan, proposal: result.proposal }, null, 2));
+    if (args.json) {
+      line(JSON.stringify({ plan: result.plan, proposal: result.proposal }, null, 2));
+      return 0;
+    }
+
+    success(
+      `${result.plan.stats.operation_count} clips, ${formatTimecode(planDurationMs(result.plan), false)}`,
+    );
+
+    heading('what it decided');
+    if (result.proposal.reasoning) note(`  ${result.proposal.reasoning}`);
+    if (result.proposal.keep.length > 0) detail('kept', result.proposal.keep.join(', '));
+    if (result.proposal.drop.length > 0) detail('left out', result.proposal.drop.join(', '));
+    for (const item of result.proposal.emphasise) {
+      detail(item.event_id, item.reason);
+    }
+
+    heading('the cut');
+    table(
+      result.plan.tracks.video.map((operation) => {
+        const event = ir.events.find((e) => e.id === operation.event_id);
+        return [
+          colour.grey(operation.operation_id),
+          formatTimecode(operation.timeline_start_ms, false),
+          colour.cyan((operation.role ?? '').padEnd(10)),
+          truncate(event?.description.value ?? '', 48),
+        ];
+      }),
+    );
+
+    detail('tokens', `${result.inputTokens} in, ${result.outputTokens} out`);
+    heading('next');
+    note('  oea review                   what is wrong with it');
+    note('  oea apply --editor otio      write it out');
     return 0;
+  } finally {
+    // A worker left running holds a model in memory and the process open.
+    await searchable.close();
   }
-
-  success(
-    `${result.plan.stats.operation_count} clips, ${formatTimecode(planDurationMs(result.plan), false)}`,
-  );
-
-  heading('what it decided');
-  if (result.proposal.reasoning) note(`  ${result.proposal.reasoning}`);
-  if (result.proposal.keep.length > 0) detail('kept', result.proposal.keep.join(', '));
-  if (result.proposal.drop.length > 0) detail('left out', result.proposal.drop.join(', '));
-  for (const item of result.proposal.emphasise) {
-    detail(item.event_id, item.reason);
-  }
-
-  heading('the cut');
-  table(
-    result.plan.tracks.video.map((operation) => {
-      const event = ir.events.find((e) => e.id === operation.event_id);
-      return [
-        colour.grey(operation.operation_id),
-        formatTimecode(operation.timeline_start_ms, false),
-        colour.cyan((operation.role ?? '').padEnd(10)),
-        truncate(event?.description.value ?? '', 48),
-      ];
-    }),
-  );
-
-  detail('tokens', `${result.inputTokens} in, ${result.outputTokens} out`);
-  heading('next');
-  note('  oea review                   what is wrong with it');
-  note('  oea apply --editor otio      write it out');
-  return 0;
 }

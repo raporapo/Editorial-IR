@@ -61,6 +61,47 @@ export interface SearchHit {
 export interface SearchDiagnostics {
   /** Aspects where the query and the index are in different embedding spaces. */
   unsearchableKinds: EmbeddingKind[];
+  /**
+   * Why the visual aspect was matched on words alone, when it was.
+   *
+   * Three different situations produced the same silent outcome before this
+   * existed, and they have different answers: provision a vision model, provision
+   * one with a text tower, or ask in English. A list of aspect names told the
+   * user none of that.
+   */
+  visualFallback?: 'no_query_encoder' | 'query_language' | 'encoder_failed';
+}
+
+/**
+ * Anything that can put a query in the *vision* model's space.
+ *
+ * Separate from `TextEncoder` because it is a different model, and that is the
+ * entire point: frame vectors and query vectors have to come from the same one.
+ */
+export interface VisualQueryEncoder {
+  embedQuery(texts: string[]): Promise<number[][]>;
+  /** `en` or `multi`. See `looksEnglishEnough`. */
+  readonly queryLanguage?: string;
+}
+
+/**
+ * Whether a query is in a script an English-only text tower can read.
+ *
+ * A deliberately blunt test: it looks for the scripts that are definitely not
+ * English — CJK, kana, Hangul, Cyrillic, Arabic, Hebrew, Thai, Devanagari — and
+ * says no if it finds any. It does not try to tell English from French, and it
+ * should not: CLIP's tower has seen enough Latin-script text that "coucher de
+ * soleil" is a degraded answer rather than a wrong one, whereas 夜景 scores at
+ * noise level. The measured failure is the one being guarded against.
+ *
+ * Erring here is asymmetric. A false "not English" costs the visual aspect on a
+ * query the tower might have half-answered; a false "English" returns a
+ * confident ranking of noise and looks exactly like a result.
+ */
+export function looksEnglishEnough(query: string): boolean {
+  return !/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Cyrillic}\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Thai}\p{Script=Devanagari}]/u.test(
+    query,
+  );
 }
 
 const DEFAULT_VECTOR_WEIGHT = 0.65;
@@ -79,6 +120,12 @@ export class SemanticIndex {
     private readonly ir: EditorialIR,
     private readonly vectors: VectorIndex,
     private readonly encoder: TextEncoder,
+    /**
+     * The vision model's text tower, when there is one. Without it the `visual`
+     * aspect is matched on its labels as words and nothing else — which is what
+     * happened on every search this project has ever run.
+     */
+    private readonly visualEncoder?: VisualQueryEncoder,
   ) {
     for (const event of ir.events) this.events.set(event.id, event);
   }
@@ -90,6 +137,31 @@ export class SemanticIndex {
   /** Aspects the last search could not compare vectors for. */
   lastDiagnostics: SearchDiagnostics = { unsearchableKinds: [] };
 
+  /**
+   * The query in the vision model's space, or the reason there isn't one.
+   *
+   * Returning a reason rather than just `undefined` is the point: "your footage
+   * was never looked at", "the model you provisioned cannot be asked questions"
+   * and "ask that in English" are three different problems with three different
+   * answers, and they all used to look identical from outside.
+   */
+  private async visualQuery(
+    query: string,
+  ): Promise<{ vector?: number[]; reason?: SearchDiagnostics['visualFallback'] }> {
+    if (!this.visualEncoder) return { reason: 'no_query_encoder' };
+    if (this.visualEncoder.queryLanguage !== 'multi' && !looksEnglishEnough(query)) {
+      return { reason: 'query_language' };
+    }
+    try {
+      const [vector] = await this.visualEncoder.embedQuery([query]);
+      return vector ? { vector } : { reason: 'encoder_failed' };
+    } catch {
+      // A search is not worth failing over a model that went away. The lexical
+      // half of every aspect still answers, and the diagnostic says what broke.
+      return { reason: 'encoder_failed' };
+    }
+  }
+
   /** Searches one aspect, or all of them and keeps each event's best. */
   async search(query: string, options: SearchOptions = {}): Promise<SearchHit[]> {
     const kinds = options.kinds ?? EMBEDDING_KINDS;
@@ -99,24 +171,31 @@ export class SemanticIndex {
     if (candidates.length === 0 || query.trim().length === 0) return [];
 
     const [queryVector] = await this.encoder.embed([query], 'query');
+    const { vector: visualVector, reason: visualFallback } = await this.visualQuery(query);
 
     const best = new Map<string, SearchHit>();
     const unsearchable: EmbeddingKind[] = [];
 
     for (const kind of kinds) {
       const vectorHits = new Map<string, number>();
-      if (queryVector) {
+      // The visual aspect holds vectors from the vision model, so it is the one
+      // aspect whose query does not come from the sentence encoder.
+      const queryFor = kind === 'visual' ? visualVector : queryVector;
+      if (queryFor) {
         for (const hit of this.vectors.search({
-          vector: queryVector,
+          vector: queryFor,
           kind,
           ownerIds: candidates,
         })) {
           vectorHits.set(hit.ownerId, hit.score);
         }
-        // Stored vectors that the query could not be compared against: the
-        // search still works lexically, and the caller is told why it is weaker.
-        if (vectorHits.size === 0 && this.vectors.owners(kind).length > 0) unsearchable.push(kind);
       }
+      // Stored vectors that the query could not be compared against: the search
+      // still works lexically, and the caller is told why it is weaker. This
+      // check sat inside the branch above, so an aspect with no query vector at
+      // all — exactly what `visual` has when there is no text tower — was
+      // skipped without ever being reported.
+      if (vectorHits.size === 0 && this.vectors.owners(kind).length > 0) unsearchable.push(kind);
 
       for (const eventId of candidates) {
         const event = this.events.get(eventId);
@@ -153,7 +232,10 @@ export class SemanticIndex {
       }
     }
 
-    this.lastDiagnostics = { unsearchableKinds: unsearchable };
+    this.lastDiagnostics = {
+      unsearchableKinds: unsearchable,
+      ...(visualFallback && unsearchable.includes('visual') ? { visualFallback } : {}),
+    };
 
     const minScore = options.minScore ?? 0;
     return [...best.values()]
