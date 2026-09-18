@@ -20,7 +20,21 @@ export interface EditorAdapter {
   /** Writes the plan out, as a project file or into a running application. */
   apply(request: ApplyRequest): Promise<ApplyResult>;
 
-  /** Reads a timeline back, where the target can. Used by the review loop. */
+  /**
+   * Reads a timeline back, where the target can. **Nothing calls this yet.**
+   *
+   * It said "used by the review loop", and there is no such loop: `reviewPlan`
+   * works from the plan and the IR alone, which its own header says. No shipped
+   * adapter implements this and all three declare `reads_back_timeline: false`,
+   * so `Provenance.nle_observed` — "read back out of an NLE after the plan was
+   * applied" — has never been produced either.
+   *
+   * Left in place rather than deleted because the shape is right and an adapter
+   * outside this repository may already implement it. What is corrected here is
+   * the claim: a hook is not a feature, and describing one as though a caller
+   * exists is how a reader concludes their edits are being read back when
+   * nothing is reading them.
+   */
   readTimeline?(request: ApplyRequest): Promise<EditPlan | undefined>;
 
   /** True when this adapter can be used right now on this machine. */

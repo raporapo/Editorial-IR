@@ -25,6 +25,11 @@ export interface TrimRequest {
   range: TrimWindow;
   /** Speech inside the asset, in asset time. */
   speech: readonly TrimWindow[];
+  /**
+   * Individual words inside the asset, in asset time, when the transcriber gave
+   * them. Rule 1 above is unenforceable without these.
+   */
+  words?: readonly TrimWindow[];
   /** Silences inside the asset, in asset time. */
   silences: readonly TrimWindow[];
   desiredMs: number;
@@ -116,6 +121,26 @@ export function chooseTrim(request: TrimRequest): TrimResult {
     }
   }
 
+  // Rule 1, last, because it outranks the other two.
+  //
+  // It had no implementation at all. `Utterance.words` has said "enables cutting
+  // on word boundaries" since the contract was written, `observe` asks
+  // faster-whisper for word timestamps and pays for them on every run, and
+  // nothing ever read them: `end = start + desired` put the out point wherever
+  // the duration budget landed, and the only thing that ever pulled it back was
+  // a whole-utterance boundary that happened to fall within the snap window.
+  // With no utterance ending nearby — which is most of a long take — the cut
+  // went through whatever syllable was there.
+  //
+  // Applied after the silence snap on purpose. A silence boundary is not
+  // normally inside a word, so this is usually a no-op; when it is not, the
+  // detector has put the cut mid-word and the more important rule wins.
+  if (request.words && request.words.length > 0) {
+    const aligned = avoidWordSplit(start, end, request);
+    start = aligned.start;
+    end = aligned.end;
+  }
+
   const clampedStart = Math.max(request.range.start_ms, Math.round(start));
   const clampedEnd = Math.min(request.range.end_ms, Math.round(end));
 
@@ -130,6 +155,55 @@ export function chooseTrim(request: TrimRequest): TrimResult {
   }
 
   return { in_ms: clampedStart, out_ms: clampedEnd, reason };
+}
+
+/** The word a moment falls strictly inside, if any. */
+function wordAt(at: number, words: readonly TrimWindow[]): TrimWindow | undefined {
+  return words.find((word) => at > word.start_ms && at < word.end_ms);
+}
+
+/**
+ * Moves a cut out of the middle of a word.
+ *
+ * Each edge has two ways out and they are not equivalent. At the in point,
+ * retreating to the word's start keeps the word whole and lengthens the clip;
+ * advancing to its end drops the word and shortens it. At the out point it is
+ * the mirror. Both silence the fault, so the choice is made on length: take the
+ * one that keeps the clip inside its window, and prefer the one that keeps the
+ * speech when both do.
+ *
+ * Exported because it is the rule this file says matters most, and a rule worth
+ * stating is worth testing directly.
+ */
+export function avoidWordSplit(
+  start: number,
+  end: number,
+  request: Pick<TrimRequest, 'words' | 'range' | 'minMs' | 'maxMs'>,
+): { start: number; end: number } {
+  const words = request.words ?? [];
+  const fits = (from: number, to: number): boolean => {
+    const length = to - from;
+    return length >= request.minMs && length <= request.maxMs;
+  };
+
+  let movedStart = start;
+  const startWord = wordAt(start, words);
+  if (startWord) {
+    // Keeping the word is the first choice; dropping it is the fallback.
+    const keep = Math.max(request.range.start_ms, startWord.start_ms);
+    const drop = Math.min(request.range.end_ms, startWord.end_ms);
+    movedStart = fits(keep, end) ? keep : fits(drop, end) ? drop : keep;
+  }
+
+  let movedEnd = end;
+  const endWord = wordAt(end, words);
+  if (endWord) {
+    const keep = Math.min(request.range.end_ms, endWord.end_ms);
+    const drop = Math.max(request.range.start_ms, endWord.start_ms);
+    movedEnd = fits(movedStart, keep) ? keep : fits(movedStart, drop) ? drop : keep;
+  }
+
+  return { start: movedStart, end: movedEnd };
 }
 
 /**

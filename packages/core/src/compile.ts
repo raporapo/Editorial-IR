@@ -368,6 +368,11 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
 
   const relations = buildEventGraph(eventsWithChapters, {
     continuityOverrides: continuityOverrides(annotations),
+    // Built after judgement, which is what makes this available — and what lets
+    // the graph carry the dependency the planner already acts on.
+    requiresPreviousContext: (eventId) =>
+      assessed.editorial.find((entry) => entry.event_id === eventId)?.current.flags
+        .requires_previous_context,
     similarity: (a, b) => {
       const vectorA = vectorIndex.get(a, 'event');
       const vectorB = vectorIndex.get(b, 'event');

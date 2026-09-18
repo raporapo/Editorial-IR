@@ -17,6 +17,7 @@ import {
   type SkillManifest,
   type Transition,
   type VideoOperation,
+  REQUIRES_CONTEXT_THRESHOLD,
 } from '@editorial-ir/contracts';
 import { SkillRuntime } from '@editorial-ir/skills';
 import { chooseTrim } from './trim.js';
@@ -323,11 +324,15 @@ export function planEdit(options: PlanOptions): EditPlan {
       end_ms: s.end_ms,
     }));
     const silences = silencesFor(options.observations, range.asset_id);
+    // The event's denormalised speech carries no word timings, so these come
+    // from the observation timeline — the same place the silences do.
+    const words = wordsFor(options.observations, range.asset_id, range);
 
     const trim = chooseTrim({
       range: { start_ms: range.source_in_ms, end_ms: range.source_out_ms },
       speech: assetSpeech,
       silences,
+      words,
       desiredMs: candidate.allocatedMs ?? candidate.minMs,
       minMs: candidate.minMs,
       maxMs: candidate.maxMs,
@@ -899,7 +904,7 @@ function enforceContextDependencies(
   for (const candidate of chronological) {
     if (candidate.required) continue;
     const needsContext = candidate.assessment.flags.requires_previous_context ?? 0;
-    if (needsContext < 0.6) continue;
+    if (needsContext < REQUIRES_CONTEXT_THRESHOLD) continue;
 
     const previous = previousOf.get(candidate.event.id);
     if (previous === undefined || chosen.has(previous)) continue;
@@ -1193,6 +1198,33 @@ function buildSequenceSpec(
     frame_rate_den: overrides?.frame_rate_den ?? reference?.fps_den ?? 1,
     sample_rate: overrides?.sample_rate ?? 48_000,
   };
+}
+
+/**
+ * Word spans inside one clip's range, for the rule that a cut never goes through
+ * a word.
+ *
+ * Narrowed to the range because a long asset has thousands of words and the
+ * trimmer only ever asks about two moments. Returns nothing when the transcriber
+ * gave no word timings, which is what makes the rule degrade rather than fail:
+ * `chooseTrim` then behaves exactly as it did before.
+ */
+function wordsFor(
+  observations: ObservationTimeline | undefined,
+  assetId: string,
+  range: { source_in_ms: number; source_out_ms: number },
+): { start_ms: number; end_ms: number }[] {
+  if (!observations) return [];
+  const words: { start_ms: number; end_ms: number }[] = [];
+  for (const utterance of observations.utterances) {
+    if (utterance.asset_id !== assetId || utterance.words === undefined) continue;
+    if (utterance.end_ms < range.source_in_ms || utterance.start_ms > range.source_out_ms) continue;
+    for (const word of utterance.words) {
+      if (word.end_ms < range.source_in_ms || word.start_ms > range.source_out_ms) continue;
+      words.push({ start_ms: word.start_ms, end_ms: word.end_ms });
+    }
+  }
+  return words;
 }
 
 function silencesFor(

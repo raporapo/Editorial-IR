@@ -6,6 +6,7 @@ import {
   type EventRelation,
   type RelationType,
   type SemanticEvent,
+  REQUIRES_CONTEXT_THRESHOLD,
 } from '@editorial-ir/contracts';
 
 /**
@@ -28,6 +29,14 @@ export interface GraphOptions {
   similarity?: (a: string, b: string) => number | undefined;
   /** How far apart two events may be and still be linked as a callback. */
   maxCallbackDistance?: number;
+  /**
+   * How strongly an event depends on the one before it, from its assessment.
+   *
+   * Optional, because the graph is buildable before anything has judged the
+   * events — and then this kind of relation simply is not produced, rather than
+   * being guessed at.
+   */
+  requiresPreviousContext?: (eventId: string) => number | undefined;
   /**
    * How many links of one associative kind an event keeps, strongest first.
    *
@@ -134,6 +143,26 @@ export function buildEventGraph(
     }
 
     add(previous.id, event.id, 'continuation', continuityBetween(previous, event, settings));
+
+    // "This one only makes sense after that one", as a relation rather than only
+    // as a flag on an assessment.
+    //
+    // `setup_for`, `answers` and `reaction_to` are first-class relation types
+    // that **nothing ever produced**: a real IR contains only `continuation`,
+    // `duplicate_of`, `same_topic`, `same_location`, `same_person` and
+    // `callback`. So `dependenciesOf`, whose filter names three of them, could
+    // only ever return an empty array — its test passed by hand-building
+    // relations the compiler cannot emit.
+    //
+    // The judgement itself was already being made and acted on: the planner
+    // drops an event whose predecessor is not in the cut, and the reviewer warns
+    // about one. What was missing is the edge that says *which* event it depends
+    // on, which is the difference between a document a reader can follow and a
+    // number they have to guess at.
+    const needsContext = settings.requiresPreviousContext?.(event.id) ?? 0;
+    if (needsContext >= REQUIRES_CONTEXT_THRESHOLD) {
+      add(previous.id, event.id, 'setup_for', needsContext);
+    }
   }
 
   // ---- pairwise ------------------------------------------------------------

@@ -8,6 +8,7 @@ import {
   type EditorialIR,
   type PlanRevision,
   type ReviewObservation,
+  REQUIRES_CONTEXT_THRESHOLD,
 } from '@editorial-ir/contracts';
 
 /**
@@ -97,7 +98,7 @@ export function reviewPlan(
     // A clip that only makes sense after another clip, where the other clip is
     // not in the cut. This is the most recognisable failure of an automatic edit.
     const assessment = ir.editorial.find((e) => e.event_id === event.id)?.current;
-    if ((assessment?.flags.requires_previous_context ?? 0) > 0.6) {
+    if ((assessment?.flags.requires_previous_context ?? 0) > REQUIRES_CONTEXT_THRESHOLD) {
       const ordered = [...ir.events].sort((a, b) => a.start_ms - b.start_ms);
       const position = ordered.findIndex((e) => e.id === event.id);
       const previous = position > 0 ? ordered[position - 1] : undefined;

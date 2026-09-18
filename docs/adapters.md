@@ -19,8 +19,16 @@ export interface EditorAdapter {
 }
 ```
 
-`apply` is the only required method. `readTimeline` is for targets that can hand
-a timeline back, which is what the review loop uses to see what a human changed.
+`apply` is the only required method.
+
+`readTimeline` is a hook for targets that can hand a timeline back, and **nothing
+in this repository calls it yet**. It previously said the review loop used it to
+see what a human changed; there is no such loop — `oea review` works from the
+plan and the IR alone — no shipped adapter implements it, and all three declare
+`reads_back_timeline: false`. `Provenance.nle_observed` exists for values read
+back out of an NLE and has never been produced. The shape is right and an adapter
+outside this repository may want it; the claim that something consumes it was
+not.
 
 ## Declare what you can do
 

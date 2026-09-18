@@ -252,6 +252,61 @@ describe('duplicateGroups', () => {
   });
 });
 
+describe('the dependency an event has on the one before it', () => {
+  /**
+   * `setup_for`, `answers` and `reaction_to` are first-class relation types that
+   * **nothing produced**. A real IR contained only `continuation`,
+   * `duplicate_of`, `same_topic`, `same_location`, `same_person` and `callback`,
+   * so `dependenciesOf` — whose filter names three of them — could only ever
+   * return an empty array. Its test passed by hand-building relations the
+   * compiler cannot emit, which is what let it look implemented.
+   *
+   * The judgement itself was already being made and acted on: the planner drops
+   * an event whose predecessor is not in the cut, and the reviewer warns about
+   * one. What was missing was the edge saying *which* event it depends on.
+   */
+  it('becomes a relation when the assessment says the event needs one', () => {
+    const relations = buildEventGraph(events, {
+      requiresPreviousContext: (id) => (id === 'evt_0002' ? 0.8 : 0.1),
+    });
+    const setup = relations.filter((relation) => relation.relation_type === 'setup_for');
+    expect(setup).toHaveLength(1);
+    expect(setup[0]?.source_event_id).toBe('evt_0001');
+    expect(setup[0]?.target_event_id).toBe('evt_0002');
+  });
+
+  it('is then answerable by the function written to answer it', () => {
+    const relations = buildEventGraph(events, {
+      requiresPreviousContext: (id) => (id === 'evt_0002' ? 0.8 : 0.1),
+    });
+    expect(dependenciesOf(relations, 'evt_0002')).toEqual(['evt_0001']);
+  });
+
+  it('carries the strength the judgement gave it', () => {
+    const relations = buildEventGraph(events, {
+      requiresPreviousContext: (id) => (id === 'evt_0002' ? 0.77 : 0),
+    });
+    const setup = relations.find((relation) => relation.relation_type === 'setup_for');
+    expect(setup?.strength).toBeCloseTo(0.77, 4);
+  });
+
+  it('is not invented below the threshold the planner acts on', () => {
+    // The rules backend reaches 0.55 for a deictic opener alone, which is
+    // deliberately under the line; only a reaction that also opens deictically
+    // clears it. A graph that linked every 0.55 would contradict a planner that
+    // ignores them.
+    const relations = buildEventGraph(events, { requiresPreviousContext: () => 0.55 });
+    expect(relations.some((relation) => relation.relation_type === 'setup_for')).toBe(false);
+  });
+
+  it('is not produced at all when nothing has judged the events', () => {
+    // The graph is buildable before the decision layer runs, and then this kind
+    // of relation simply does not exist rather than being guessed at.
+    const relations = buildEventGraph(events);
+    expect(relations.some((relation) => relation.relation_type === 'setup_for')).toBe(false);
+  });
+});
+
 describe('dependenciesOf', () => {
   it('finds what an event needs in order to make sense', () => {
     const relations = [
