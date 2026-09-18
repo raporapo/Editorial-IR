@@ -236,45 +236,77 @@ FFMPEG_SCALE = 1 / 3
 PYSCENE_SCALE = 180
 
 
-def detect_shots(path: str, threshold: float = 0.15, min_shot_ms: int = 800) -> dict[str, Any]:
+def detect_shots(path: str, threshold: float = 0.3, min_shot_ms: int = 800) -> dict[str, Any]:
     """Shot boundaries from ffmpeg's own scene metric.
 
     PySceneDetect is better and is a heavy dependency; ffmpeg is already here.
     When PySceneDetect is installed it is used instead, because the difference in
     boundary quality is worth having when the cost is already paid.
 
-    ## Why the default moved from 0.3 to 0.15
+    ## Where 0.3 comes from
 
-    0.3 found nothing. Measured on twelve minutes of multi-scene footage with
-    thirteen hard cuts: ffmpeg returned **one shot per file** and PySceneDetect
-    returned **none at all**, and the effect downstream was one event per asset —
-    a five-minute recording compiled into a single 253-second "moment". The whole
-    pipeline reads shot boundaries, so under-detection here is not a small loss
-    of resolution, it is the segmentation layer having nothing to work with.
+    The number is a *sensitivity*, not a raw metric value: the scale constants
+    above turn it into whatever each backend measures in. Two rounds of
+    measurement set it.
 
-    The scores say why. At the three true cuts in one file the metric read
-    0.195, 0.123 and similar; everywhere else it sat at 0.010-0.024. So the
-    separation is clean and roughly ten to one — and the old default sat above
-    every real cut.
+    The first was the bug, and it was the scaling rather than the number. The
+    threshold used to reach ffmpeg unscaled, so 0.3 meant a raw cutoff of 0.3 —
+    above every real cut. Twelve minutes of multi-scene footage with thirteen
+    hard cuts returned one shot per file, and the effect downstream was one
+    event per asset: a five-minute recording compiled into a single 253-second
+    "moment". Scaling alone fixed it, and it is why 0.3 now means 0.1.
 
-    ## Why erring sensitive is the right direction here
+    Worth recording because it was nearly mis-attributed: the default here was
+    also lowered to 0.15 at the time, and that had no effect at all. The
+    pipeline passes its own sensitivity from `observe.ts` and has sent 0.3 since
+    the compiler was written, so this default is reached only by a direct
+    caller. The improvement came entirely from the scaling; the lowered default
+    was an inconsistency hiding behind it, which is why the two sides now share
+    a constant and `scripts/check-python.mjs` fails if they drift apart.
 
-    A shot boundary is a *candidate* for an event boundary, not an event. The
-    segmentation layer merges shots that belong together, so an extra boundary
-    costs a merge; a missing one cannot be recovered by anything downstream.
-    `min_shot_ms` bounds the over-segmentation, and the asymmetry does the rest.
+    The second round confirmed the value the pipeline was already using, on 62
+    minutes of real camera footage across four unedited takes — where every
+    boundary found is by definition wrong:
 
-    ## What is still open
+        sensitivity   raw cutoff   false boundaries   per minute
+              0.10        0.033            194           3.13
+              0.15        0.050             79           1.28
+              0.20        0.067             33           0.53
+              0.30        0.100             14           0.23
 
-    On the footage measured here the two backends still disagree — ffmpeg finds
-    4/5/3 cuts against a truth of 4/5/4, PySceneDetect fewer. That footage is
-    flat colour fields with synthetic grain, which is adversarial for a mean-HSV
-    metric and not representative of a camera, so the numbers are not tuned to
-    make it agree: tuning a default on a fixture like that would trade a
-    measurable problem for an unmeasurable one. The honest instrument for this
-    is real footage, and until there is some, `oea analyze` reports when an
-    asset comes back as a single shot over several minutes so the case shows up
-    where it can actually be judged.
+    The distributions were consistent across all four clips: the median score
+    sat near 0.014, the 90th percentile near 0.027, and the 99th between 0.054
+    and 0.090. **0.3 is the smallest value tested whose cutoff clears the 99th
+    percentile of all four**, which is the criterion: a threshold inside the
+    noise distribution admits noise at exactly the rate the distribution says it
+    will, and 0.15 sat below every one of them — five times the false boundaries
+    for anyone who had reached that default.
+
+    ## What is still not measured
+
+    Recall. Everything above is the false-positive side, because unedited takes
+    give that for free and an edited clip with known cut times is what the other
+    side needs. It is possible that 0.3 misses real cuts, and the instrument for
+    catching that is `oea analyze` reporting when an asset comes back as a
+    single shot over several minutes.
+
+    `scripts/scene-report.mjs` produces the table above from footage that never
+    leaves the machine it is on, which is how these numbers were obtained.
+
+    ## The direction this points, which is not a threshold
+
+    The false positives were not evenly spread: they came in bursts of a few
+    seconds during violent camera movement — three consecutive frames scoring
+    0.178, 0.246 and 0.328 in one case, with a maximum of 0.435 across the set.
+    That overlaps the range a genuine cut occupies, so **no threshold separates
+    these cleanly** and raising this number further would start costing real
+    cuts to buy diminishing returns.
+
+    What does separate them is shape rather than height: a cut is one frame
+    where everything changes and then stays changed, while camera motion is
+    elevated for seconds at a time. Suppressing a candidate whose neighbours are
+    also elevated would use that, and it needs the recall data first — a rule
+    that quiets sustained motion could quiet a rapid-cut sequence just as well.
     """
     try:
         return _detect_shots_pyscenedetect(path, threshold, min_shot_ms)

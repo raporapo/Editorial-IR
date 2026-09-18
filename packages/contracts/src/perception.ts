@@ -66,10 +66,25 @@ export const TranscribeParams = obj({
 }).meta({ id: 'TranscribeParams' });
 export type TranscribeParams = z.infer<typeof TranscribeParams>;
 
+/**
+ * How readily a change in the picture counts as a shot boundary.
+ *
+ * A *sensitivity*, not a raw metric value: each backend measures content change
+ * on its own scale and converts this into it. Measured on 62 minutes of real
+ * unedited camera footage, where every boundary found is by definition wrong —
+ * see `detect_shots` in the Python worker for the table and the criterion.
+ *
+ * It lives here because it was written down in three places. The pipeline sent
+ * 0.3 from `observe.ts`, the schema defaulted to 0.3, and the worker's own
+ * default drifted to 0.15 without anything noticing — which is harmless only
+ * for as long as the caller keeps passing one explicitly.
+ */
+export const SCENE_SENSITIVITY = 0.3;
+
 export const DetectShotsParams = obj({
   path: z.string().min(1),
-  /** Content-change threshold in [0,1]. Higher means fewer boundaries. */
-  threshold: z.number().min(0).max(1).default(0.3),
+  /** Content-change sensitivity in [0,1]. Higher means fewer boundaries. */
+  threshold: z.number().min(0).max(1).default(SCENE_SENSITIVITY),
   min_shot_ms: Milliseconds.default(800),
 }).meta({ id: 'DetectShotsParams' });
 export type DetectShotsParams = z.infer<typeof DetectShotsParams>;

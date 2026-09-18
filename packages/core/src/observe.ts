@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { isAbsolute, resolve } from 'node:path';
 import {
+  SCENE_SENSITIVITY,
   compareText,
   EMPTY_OBSERVATIONS,
   PIPELINE_VERSION,
@@ -215,7 +216,7 @@ export async function observeAssets(
       options.onProgress?.('shots', asset.file_name, done++, ordered.length);
 
       const source = derived.get(asset.id)?.proxy_path ?? absolutePath(asset, options.projectRoot);
-      const params = { path: source, threshold: 0.3, min_shot_ms: 800 };
+      const params = { path: source, threshold: SCENE_SENSITIVITY, min_shot_ms: 800 };
       let result: Awaited<ReturnType<typeof detector.detectShots>> | undefined;
       await attempt('shots', asset.id, async () => {
         result = await cached(
