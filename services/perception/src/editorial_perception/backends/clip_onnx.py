@@ -317,11 +317,20 @@ class ClipOnnx:
         self.textual = None
         self.tokenizer = None
         if os.path.exists(textual_path) and os.path.exists(vocab_path):
+            # Loaded in two steps rather than one try block, so that a failure
+            # names the file that failed. Together they reported a corrupt
+            # vocabulary as "could not load textual.onnx: Not a gzipped file",
+            # which points at 254 MB of perfectly good graph and away from the
+            # 1.3 MB text file that is actually broken.
             try:
                 self.textual = ort.InferenceSession(
                     textual_path, sess_options=options, providers=["CPUExecutionProvider"]
                 )
                 self._textual_input = self.textual.get_inputs()[0].name
+            except Exception as error:  # noqa: BLE001
+                raise ModelError(f"could not load {textual_path}: {error}") from error
+
+            try:
                 self.tokenizer = SimpleTokenizer(vocab_path)
             except MissingDependency:
                 # ftfy or regex absent. The image tower is still perfectly
@@ -329,7 +338,7 @@ class ClipOnnx:
                 self.textual = None
                 self.tokenizer = None
             except Exception as error:  # noqa: BLE001
-                raise ModelError(f"could not load {textual_path}: {error}") from error
+                raise ModelError(f"could not load {vocab_path}: {error}") from error
 
     @property
     def has_text_tower(self) -> bool:

@@ -43,9 +43,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install pytest ruff
+      # numpy and Pillow are what the CLIP preprocessing goldens need to run at
+      # all. Without them those tests skip, and a golden that skips in CI is
+      # decoration: the whole point of `clip_golden.json` is that a change to the
+      # tokeniser or the resize fails here rather than quietly returning slightly
+      # worse vectors forever.
+      - run: pip install pytest ruff numpy pillow regex ftfy
+      # CLIP's merge table: 1.3 MB, MIT, from OpenAI's own repository. Fetched
+      # rather than committed — it is a model asset, not source — and pinned by
+      # digest, because a different merge table silently produces different
+      # tokens for everything and the golden failures would look like a bug in
+      # the test.
+      - name: Fetch CLIP's merge table
+        run: |
+          curl -sSfL -o /tmp/bpe_simple_vocab_16e6.txt.gz \
+            https://raw.githubusercontent.com/openai/CLIP/main/clip/bpe_simple_vocab_16e6.txt.gz
+          echo '924691ac288e54409236115652ad4aa250f48203de50a9e4722a6ecd48d6804a  /tmp/bpe_simple_vocab_16e6.txt.gz' \
+            | sha256sum -c -
       - run: ruff check services/perception
       - run: PYTHONPATH=services/perception/src python -m pytest services/perception/tests -q
+        env:
+          OEA_TEST_CLIP_VOCAB: /tmp/bpe_simple_vocab_16e6.txt.gz
       # The tests above run against src/, where every module is present whether
       # or not the packaging lists it — the same blind spot the `package` job
       # covers on the TypeScript side. Install it the way a user would, and ask
@@ -58,6 +76,51 @@ jobs:
             | /tmp/worker/bin/editorial-perception \
             | tee /tmp/health.json
           python -c "import json,sys; r=json.load(open('/tmp/health.json')); sys.exit(0 if r.get('ok') else 'the worker did not answer health')"
+
+  # Everything above runs against the worked example, whose `footage/` files are
+  # ASCII placeholders that `scripts/make-example.mjs` writes. That is what makes
+  # the compiler testable with no ffmpeg and no GPU, and it is also why nothing
+  # here had ever run `probe`, `prepare`, `detect_shots` or `analyze_audio`
+  # against a video — the entire media layer, which every later stage stands on.
+  # The Python unit tests reach the pure functions either side of the subprocess
+  # and never the subprocess itself.
+  #
+  # So this job synthesises a clip whose cuts are at known times and whose quiet
+  # is in known places, and drives the real worker over the real JSON Lines
+  # protocol against it. It needs no `pnpm install` and no build, which is why it
+  # is the shortest job in this file despite being the only one that installs
+  # ffmpeg.
+  media:
+    runs-on: ubuntu-latest
+    # The worker's protocol loop blocks on stdin, so a reply that never comes is
+    # a job that sits for six hours and then reports nothing. The script times
+    # each request out at 60s; this is the backstop for ffmpeg itself hanging.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      # The runner image ships no ffmpeg, and this is the one job that is about
+      # ffmpeg, so it installs rather than skipping. --no-install-recommends
+      # keeps it to the codecs instead of pulling a desktop stack in behind them.
+      - name: Install ffmpeg
+        run: |
+          command -v ffmpeg >/dev/null || {
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends ffmpeg
+          }
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+      # The script starts the worker from `services/perception/src` itself and
+      # speaks the protocol directly, so a failure points at the media code
+      # rather than at the TypeScript transport, which has its own tests. No
+      # models are needed and nothing is downloaded.
+      - name: Drive the real worker against real video
+        run: node scripts/check-media.mjs
 
   example:
     runs-on: ubuntu-latest
