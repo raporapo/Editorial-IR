@@ -153,9 +153,41 @@ export function planEdit(options: PlanOptions): EditPlan {
       continue;
     }
 
+    // The user's own bounds, which outrank the skill's.
+    //
+    // `constraints.min_clip_duration_ms` and `max_clip_duration_ms` sit in the
+    // document described as "everything the user knows that the media cannot
+    // contain", which no model may write to, and **nothing read them**. Verified:
+    // writing `min_clip_duration_ms: 8000` into a project's context.yaml and
+    // planning it returned clips of 2.7s, 2.0s, 2.5s, 9s and 3.8s — four of five
+    // under the stated floor, with nothing said by `plan` or by `oea review`.
     const available = event.end_ms - event.start_ms;
-    const minMs = Math.min(directive.min_duration_ms, available);
-    const maxMs = Math.max(minMs, Math.min(directive.max_duration_ms, available));
+    const userFloor = ir.context.constraints.min_clip_duration_ms ?? 0;
+    const userCeiling = ir.context.constraints.max_clip_duration_ms ?? Infinity;
+
+    // A moment too short to satisfy the floor is not used, rather than used at a
+    // length the user said not to. Clamping the floor to whatever the event
+    // happens to contain is the same as not having a floor, and the first
+    // attempt here did exactly that: on a project with a stated eight-second
+    // minimum it still returned two- and four-second clips, because it went on
+    // choosing short events. That is precisely what the constraint exists to
+    // stop, and there were forty-eight events long enough to choose instead.
+    //
+    // Excluded rather than dropped, for the same reason an excluded asset is:
+    // the user decided this, not the skill, and the rationale should say so.
+    if (userFloor > 0 && available < userFloor) {
+      rationale.push({
+        event_id: event.id,
+        decision: 'excluded',
+        reason: `shorter than the ${Math.round(userFloor / 1000)}s minimum the project asks for`,
+        skill_rule_ids: directive.matched_rule_ids,
+        tags: directive.tags,
+      });
+      continue;
+    }
+
+    const minMs = Math.min(Math.max(directive.min_duration_ms, userFloor), available);
+    const maxMs = Math.max(minMs, Math.min(directive.max_duration_ms, userCeiling, available));
     const candidate: Candidate = {
       event,
       assessment,
@@ -192,6 +224,37 @@ export function planEdit(options: PlanOptions): EditPlan {
     setAside,
     knownEventIds,
   });
+
+  // The mirror of the excluded-asset filter above, and it was missing entirely.
+  //
+  // `constraints.required_assets` — "assets that must appear at least once" —
+  // sits in the same object as `excluded_assets`, in the worked example's own
+  // context.yaml, and was read by nothing. Verified: setting it to `[asset_002]`
+  // produced a cut using asset_001 four times and asset_003 once, and
+  // `oea review` said "nothing to report".
+  //
+  // The validator now reports a required asset that never made the cut, and this
+  // is what lets the planner satisfy it — exactly the argument the exclusion
+  // comment above makes in reverse. Only the best candidate from each asset is
+  // promoted: "must appear at least once" is a floor, not an instruction to take
+  // everything from that recording.
+  for (const assetId of ir.context.constraints.required_assets) {
+    const fromAsset = candidates.filter((candidate) =>
+      candidate.event.source_ranges.some((range) => range.asset_id === assetId),
+    );
+    if (fromAsset.length === 0 || fromAsset.some((candidate) => candidate.required)) continue;
+    const best = fromAsset.reduce((a, b) => (b.value > a.value ? b : a));
+    best.required = true;
+    best.directive = { ...best.directive, required: true };
+    rationale.push({
+      event_id: best.event.id,
+      decision: 'locked',
+      reason: `${assetId} must appear at least once`,
+      score: best.value,
+      skill_rule_ids: best.directive.matched_rule_ids,
+      tags: best.directive.tags,
+    });
+  }
 
   if (candidates.length === 0) {
     // Say what did it, because the answer decides what the user should do next
@@ -1074,6 +1137,23 @@ function transitionFor(
   return skill.defaults.default_transition;
 }
 
+/**
+ * How big a clip is *on screen*, which is not always how it is stored.
+ *
+ * A phone shooting portrait writes a 1920x1080 frame and a 90-degree display
+ * matrix beside it, and every player honours the matrix. Reading `width` and
+ * `height` alone therefore reports a vertical recording as landscape.
+ */
+function displaySize(asset: { width?: number; height?: number; rotation?: number }): {
+  width: number;
+  height: number;
+} {
+  const width = asset.width ?? 0;
+  const height = asset.height ?? 0;
+  const turned = asset.rotation === 90 || asset.rotation === 270 || asset.rotation === -90;
+  return turned ? { width: height, height: width } : { width, height };
+}
+
 function buildSequenceSpec(
   ir: EditorialIR,
   targetDurationMs: number,
@@ -1082,16 +1162,32 @@ function buildSequenceSpec(
 ): SequenceSpec {
   // Match the material rather than imposing a format: a vertical project should
   // not silently become sixteen by nine.
-  const reference = [...ir.assets].sort(
-    (a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0),
-  )[0];
+  //
+  // Which it did. `rotation` has been probed and stored since ingest was
+  // written and was read by nothing, here or anywhere else, so the sequence took
+  // the *coded* dimensions — and a phone-shot portrait project came out
+  // 1920x1080, the exact outcome the line above says must not happen. Verified
+  // on a real file with a 90-degree display matrix: assets.json recorded
+  // `width 1920, height 1080, rotation 90` and the plan's sequence was
+  // 1920x1080.
+  //
+  // The sort key has to use the display size too. Ranking by coded area picks
+  // the same asset either way, but only because the two differ by a transpose;
+  // ranking by the number that is then *returned* is what keeps the two halves
+  // of this function from disagreeing.
+  const reference = [...ir.assets].sort((a, b) => {
+    const left = displaySize(a);
+    const right = displaySize(b);
+    return right.width * right.height - left.width * left.height;
+  })[0];
+  const display = reference ? displaySize(reference) : undefined;
 
   return {
     name: `${ir.project.title} — ${Math.round(targetDurationMs / 1000)}s`,
     target_duration_ms: targetDurationMs,
     tolerance_ms: toleranceMs,
-    width: overrides?.width ?? reference?.width ?? 1920,
-    height: overrides?.height ?? reference?.height ?? 1080,
+    width: overrides?.width ?? (display?.width || undefined) ?? 1920,
+    height: overrides?.height ?? (display?.height || undefined) ?? 1080,
     frame_rate: overrides?.frame_rate ?? reference?.fps ?? 30,
     frame_rate_num: overrides?.frame_rate_num ?? reference?.fps_num ?? 30,
     frame_rate_den: overrides?.frame_rate_den ?? reference?.fps_den ?? 1,

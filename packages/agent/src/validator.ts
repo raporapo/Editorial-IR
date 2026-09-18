@@ -218,6 +218,23 @@ export function validatePlan(plan: unknown, options: ValidateOptions = {}): Vali
       }
     }
 
+    // The other half of the same constraint, which had no half at all.
+    // `required_assets` — "assets that must appear at least once" — sits beside
+    // `excluded_assets` in the same object, in the worked example's own
+    // context.yaml, and nothing read it. Verified: setting
+    // `required_assets: [asset_002]` produced a cut using asset_001 four times
+    // and asset_003 once, with `oea review` reporting "nothing to report".
+    for (const assetId of ir.context.constraints.required_assets) {
+      if (!editPlan.tracks.video.some((o) => o.source_asset_id === assetId)) {
+        issues.push({
+          code: 'required_asset_missing',
+          severity: 'error',
+          message: `${assetId} must appear at least once and is not in the cut`,
+          asset_id: assetId,
+        });
+      }
+    }
+
     if (editPlan.ir_fingerprint && ir.fingerprint && editPlan.ir_fingerprint !== ir.fingerprint) {
       issues.push({
         code: 'stale_ir_fingerprint',

@@ -27,6 +27,7 @@ export const VALIDATION_CODES = [
   'essential_event_missing',
   'excluded_event_present',
   'excluded_asset_present',
+  'required_asset_missing',
   'duration_out_of_tolerance',
   'below_minimum_speech_share',
   'clip_too_short',
