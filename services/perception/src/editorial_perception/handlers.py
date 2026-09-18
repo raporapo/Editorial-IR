@@ -42,7 +42,7 @@ def handle_health(params: dict[str, Any], session: Session) -> dict[str, Any]:
             "analyze_audio": True,
             "transcribe": _importable("faster_whisper"),
             "embed_frames": visual.available(),
-            "ocr": _importable("rapidocr_onnxruntime"),
+            "ocr": ocr_backend.available(),
             "describe": bool(
                 os.environ.get("OEA_VLM_BASE_URL") and os.environ.get("OEA_VLM_MODEL")
             ),
@@ -126,6 +126,10 @@ def _stage_models() -> dict[str, str]:
     # name that was asked for: an unloadable model falls back to hashing, and
     # the cache must not serve one stage's vectors under the other's key.
     models["embed_text"] = text_embedding.describe()
+    if ocr_backend.available():
+        # The version, not the word "ocr". The cache keys on this, so a
+        # placeholder meant an upgraded reader served the old reader's text.
+        models["ocr"] = ocr_backend.describe()
     tagger = audio_tags.describe()
     if tagger:
         models["analyze_audio"] = tagger

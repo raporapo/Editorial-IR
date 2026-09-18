@@ -166,7 +166,7 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
         : {}),
       ...(has('detect_shots') ? { shots: new WorkerShotDetector(client) } : {}),
       ...(has('analyze_audio') ? { audio: new WorkerAudioModel(client) } : {}),
-      ...(has('ocr') ? { ocr: new WorkerOcrModel(client) } : {}),
+      ...(has('ocr') ? { ocr: new WorkerOcrModel(client, named('ocr', 'ocr')) } : {}),
       // A worker-backed closer look is the base model only when it runs here.
       // The base pass goes over *every* event, and the worker's `describe` is an
       // HTTP call to whatever OEA_VLM_BASE_URL names — so pointing the worker at

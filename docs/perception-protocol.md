@@ -45,7 +45,7 @@ take down a run that was otherwise fine.
 | `embed_frames`  | frame vectors and zero-shot labels                                                                          |
 | `ocr`           | on-screen text                                                                                              |
 | `describe`      | the multimodal look at one event                                                                            |
-| `embed_text`    | text vectors                                                                                                |
+| `embed_text`    | text vectors, from the sentence encoder or from the vision model's own text tower                           |
 | `shutdown`      | reply and exit                                                                                              |
 
 ## Replies
@@ -71,6 +71,51 @@ so a producer in another language writes `null` for a field it has no value for.
 Both are accepted and normalised to absence. The shipped worker omits them
 anyway, because saying nothing is clearer than saying null — but the consumer
 does not depend on that politeness.
+
+## Getting the weights
+
+```
+pnpm models list          # what there is, how big, under which licence
+pnpm models get e5-large  # download, check every sha256, unpack, print the export line
+pnpm models check         # re-hash what is on disk
+```
+
+Each entry carries a URL that was fetched, a digest computed from what came
+back, a byte count and a licence. A mismatch deletes the download rather than
+leaving something plausible on disk — a wrong file that stays is worse than no
+file, because the next run finds it, skips the download and loads it.
+
+The digests are the point rather than a formality. The model is what decides
+every vector the project produces, its name goes into the cache key and into the
+provenance record of a document meant to be shared, and a name like
+"multilingual-e5-large" covers a dozen exports with different numerics. Only the
+hash says which one ran.
+
+| id             | stage           | size   | licence                       |
+| -------------- | --------------- | ------ | ----------------------------- |
+| `clip-vit-b32` | `embed_frames`  | 607 MB | MIT                           |
+| `e5-large`     | `embed_text`    | 1.3 GB | MIT                           |
+| `minilm-l6`    | `embed_text`    | 83 MB  | Apache-2.0 — **English only** |
+| `ced-tiny`     | `analyze_audio` | 29 MB  | GPL-3.0 — see below           |
+
+`minilm-l6` is the small option and it is not a multilingual one. Measured after
+provisioning it with this script and loading it through the project's own
+encoder: `cos(夜景, "night view of the city")` = 0.347 while
+`cos(夜景, "料理を食べている")` = 0.502. It ranks the wrong one higher, which is the
+exact failure `e5-large` is there to avoid.
+
+**Transcription is not in the table**, and that is a real gap rather than an
+omission. `faster-whisper` loads CTranslate2 weights, and the only hosts that
+publish them are huggingface.co and its mirrors. Where those are reachable
+faster-whisper downloads them itself on first use and there is nothing to do.
+Where they are not — a policy that blocks model hubs is ordinary inside
+companies — copy a converted directory in by hand and point `OEA_ASR_MODEL` at
+it. No PyPI package ships one, and converting needs torch and transformers,
+which this project deliberately does not install.
+
+Two stages need nothing: `ocr` ships its three PaddleOCR models inside the
+`rapidocr-onnxruntime` wheel, and `describe` and the judgement backend are HTTP
+endpoints rather than files.
 
 ## Audio event tagging, and the licence you have to pick
 
@@ -170,6 +215,24 @@ Answered by importing rather than by claiming. A capability that says yes and
 then fails on first use is worse than one that admits it is missing, because the
 compiler is built to degrade around a missing stage and can only do that if it is
 told the truth.
+
+Two of these deserve a note because they look like one capability and are two:
+
+- **`embed_frames` and `embed_text_visual`.** A CLIP export with only
+  `visual.onnx` embeds frames perfectly well and cannot encode a query into the
+  space those vectors live in. Nothing else can either — only the model's own
+  text tower puts a sentence beside a frame — so without it the `visual` aspect
+  of the index holds vectors that no query can reach, and search falls back to
+  matching its labels as words. That is a real state a worker can be in, so it
+  is a separate capability rather than an assumption.
+- **`stage_query_languages`.** CLIP's and SigLIP-base's text towers are
+  English-only. Measured on CLIP ViT-B/32: six frames against six English
+  descriptions scored 6/6 top-1, and the same six concepts asked in Japanese
+  scored 4/6 with the margins at noise level. A Japanese query does not fail
+  against that tower — it returns a confident ranking of noise — so the worker
+  reports `{"embed_text_visual": "en"}` and the client declines instead of
+  answering badly. A checkpoint whose name says it is multilingual reports
+  `multi`.
 
 ## The caller wires only what the worker has
 

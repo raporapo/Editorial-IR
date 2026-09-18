@@ -144,8 +144,16 @@ export class WorkerAudioModel implements AudioModel {
 }
 
 export class WorkerOcrModel implements OcrModel {
-  readonly identity = identity('ocr');
-  constructor(private readonly client: PythonWorkerClient) {}
+  readonly identity: ModelIdentity;
+  constructor(
+    private readonly client: PythonWorkerClient,
+    // The reader's version, which only the worker knows. This was the literal
+    // string 'ocr', and the perception cache keys on it — so upgrading rapidocr
+    // changed the text it reads and served the old text from cache anyway.
+    model = 'ocr',
+  ) {
+    this.identity = identity(model);
+  }
   async ocr(params: OcrParams): Promise<OcrResult> {
     return this.client.request('ocr', params, { timeoutMs: LONG_TIMEOUT_MS });
   }
