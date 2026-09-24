@@ -205,6 +205,10 @@ export const PlanStats = obj({
   duration_error_ms: z.int(),
   /** Fraction of source material retained, in [0,1]. */
   compression_ratio: UnitScore,
+  /**
+   * Distinct events in the cut. Not the clip count: a take with its pauses
+   * taken out is several clips (`continues_previous`) and one event.
+   */
   events_selected: z.int().min(0),
   events_available: z.int().min(0),
   /** Mean `story_importance` of what was kept. */

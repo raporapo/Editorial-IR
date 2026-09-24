@@ -41,6 +41,8 @@ export const VALIDATION_CODES = [
   'speed_not_supported',
   'plan_schema_invalid',
   'sequence_mismatch',
+  'source_audio_missing',
+  'invalid_continuation',
 ] as const;
 
 export const ValidationCode = z.enum(VALIDATION_CODES).meta({ id: 'ValidationCode' });

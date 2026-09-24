@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import {
   EditPlan as EditPlanSchema,
+  hasAudioStream,
   operationTimelineDuration,
   operationTimelineEnd,
   operationsInOrder,
@@ -107,7 +108,15 @@ export function validatePlan(plan: unknown, options: ValidateOptions = {}): Vali
         operation_id: operation.operation_id,
         asset_id: operation.source_asset_id,
       });
-    } else if (asset && asset.duration_ms > 0 && operation.source_out_ms > asset.duration_ms) {
+    } else if (
+      asset &&
+      // A photograph is the same at every instant, so a still held for three
+      // seconds reads 0-3000 of a file whose duration is nothing, and that is
+      // valid by construction rather than by the accident of a zero duration.
+      asset.kind !== 'image' &&
+      asset.duration_ms > 0 &&
+      operation.source_out_ms > asset.duration_ms
+    ) {
       issues.push({
         code: 'range_out_of_bounds',
         severity: 'error',
@@ -127,6 +136,51 @@ export function validatePlan(plan: unknown, options: ValidateOptions = {}): Vali
         event_id: operation.event_id,
       });
     }
+
+    // Sound asked of a file that has none. The export then links an audio
+    // stream that does not exist: the probe's drone clip, with no audio track,
+    // came out with two audio clips in Premiere and one in OTIO. A warning,
+    // because the picture is fine and an adapter can leave the sound out.
+    if (asset && operation.use_source_audio && !hasAudioStream(asset)) {
+      issues.push({
+        code: 'source_audio_missing',
+        severity: 'warning',
+        message: `${operation.operation_id} uses the sound of ${asset.file_name}, which has none`,
+        operation_id: operation.operation_id,
+        asset_id: asset.id,
+      });
+    }
+  }
+
+  // ---- jump cuts -----------------------------------------------------------
+  // A clip that says it continues the one before is read differently by
+  // everything downstream: the reviewer does not call it too short or ask what
+  // context it is missing, and an adapter never puts a dissolve into it. So it
+  // has to be true — the same take of the same recording, later in it, and cut
+  // hard — or those allowances cover a real jump.
+  const mainOrder = operationsInOrder(editPlan);
+  for (const [index, operation] of mainOrder.entries()) {
+    if (!operation.continues_previous) continue;
+    const previous = mainOrder[index - 1];
+    const problem =
+      previous === undefined || previous.track !== operation.track
+        ? 'nothing comes before it on its track'
+        : previous.source_asset_id !== operation.source_asset_id ||
+            previous.event_id !== operation.event_id
+          ? `${previous.operation_id} is a different moment`
+          : operation.source_in_ms < previous.source_out_ms
+            ? `it starts before ${previous.operation_id} ends in the source`
+            : (operation.transition_in && operation.transition_in.type !== 'hard_cut') ||
+                (previous.transition_out && previous.transition_out.type !== 'hard_cut')
+              ? 'a jump cut is a hard cut, and this one has a transition'
+              : undefined;
+    if (problem === undefined) continue;
+    issues.push({
+      code: 'invalid_continuation',
+      severity: 'warning',
+      message: `${operation.operation_id} says it continues the clip before it, but ${problem}`,
+      operation_id: operation.operation_id,
+    });
   }
 
   // ---- media ---------------------------------------------------------------
@@ -265,7 +319,7 @@ export function validatePlan(plan: unknown, options: ValidateOptions = {}): Vali
       severity: 'warning',
       message: capped
         ? `the cut is ${formatSeconds(duration)} against a target of ${formatSeconds(target)}: ` +
-          `${editPlan.tracks.video.length} moment(s) at this skill's ${formatSeconds(
+          `${momentsIn(editPlan)} moment(s) at this skill's ${formatSeconds(
             options.skill?.defaults.max_clip_duration_ms ?? 0,
           )} limit cannot fill it. Analyse more material, raise the limit, or aim shorter.`
         : `the cut is ${formatSeconds(duration)} against a target of ${formatSeconds(target)}`,
@@ -428,5 +482,15 @@ function maximumReachableMs(
 ): number | undefined {
   const cap = skill?.defaults.max_clip_duration_ms;
   if (cap === undefined || cap <= 0) return undefined;
-  return editPlan.tracks.video.length * cap;
+  return momentsIn(editPlan) * cap;
+}
+
+/**
+ * How many moments a plan holds: its clips, with the pieces of a take that had
+ * its pauses taken out counted once. The skill's clip limit is a limit on a
+ * moment, and counting each piece against it made the longest possible cut of a
+ * talking-head plan look several times longer than it could be.
+ */
+function momentsIn(editPlan: EditPlan): number {
+  return editPlan.tracks.video.filter((operation) => !operation.continues_previous).length;
 }
