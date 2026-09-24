@@ -1,4 +1,5 @@
 import {
+  chapterById,
   compareText,
   EDIT_PLAN_VERSION,
   EditorialError,
@@ -13,6 +14,7 @@ import {
   type MaterialKind,
   type MediaAsset,
   type ObservationTimeline,
+  type PlanMarker,
   type PlanRationale,
   type SemanticEvent,
   type SequenceSpec,
@@ -466,7 +468,7 @@ export function planEdit(options: PlanOptions): EditPlan {
       audio: [{ type: 'source_audio', track: 0, gain_db: 0 }],
       text: [],
     },
-    markers: [],
+    markers: chapterMarkers(operations, ir),
     intent: {
       ...(skill.intent.opening ? { opening: skill.intent.opening } : {}),
       ...(skill.intent.middle ? { middle: skill.intent.middle } : {}),
@@ -1610,6 +1612,56 @@ function clipsFor(
 
 function total(spans: readonly TrimWindow[]): number {
   return spans.reduce((sum, span) => sum + (span.end_ms - span.start_ms), 0);
+}
+
+/**
+ * A marker where each chapter begins in the cut, named as the IR names it.
+ *
+ * Chapters exist in capture time; this is where each one starts in the finished
+ * piece, which is the only place an editor or a viewer can use it. Written only
+ * when the cut spans two chapters or more — one marker on a one-chapter cut says
+ * nothing. A chapter the cut returns to (a hook lifted to the front) is marked
+ * again where it resumes, because each run is somewhere a viewer can jump to.
+ *
+ * Two chapters in a row with the same name are one marker. The IR keeps them
+ * apart for a reason of its own — an hour between two visits to the same place
+ * — and in a three-minute cut that reason is gone: the worked example's travel
+ * vlog marked "USJ" at 0:00 and again at 0:17, and its short marked it three
+ * times in its first seven seconds. What is left has to be two markers or more
+ * for the same reason a one-chapter cut gets none: the probe's edited programme,
+ * analysed offline, has two chapters both called "no speech or on-screen text",
+ * and a single marker of that name at 0:00 told an editor nothing.
+ */
+function chapterMarkers(operations: readonly VideoOperation[], ir: EditorialIR): PlanMarker[] {
+  const chapterOfEvent = new Map(ir.events.map((event) => [event.id, event.chapter_id]));
+  const main = operations
+    .filter((operation) => operation.track === 0)
+    .sort((a, b) => a.timeline_start_ms - b.timeline_start_ms);
+  const chapterOf = (operation: VideoOperation): string | undefined =>
+    operation.event_id === undefined ? undefined : chapterOfEvent.get(operation.event_id);
+
+  const spanned = new Set(main.map(chapterOf).filter((id) => id !== undefined));
+  if (spanned.size < 2) return [];
+
+  const markers: PlanMarker[] = [];
+  let previous: string | undefined;
+  for (const [index, operation] of main.entries()) {
+    const chapterId = chapterOf(operation);
+    const starts = index === 0 || chapterId !== previous;
+    previous = chapterId;
+    if (!starts || chapterId === undefined) continue;
+    const chapter = chapterById(ir, chapterId);
+    if (!chapter) continue;
+    const name = chapter.title.value.trim() || chapter.id;
+    if (markers.at(-1)?.name === name) continue;
+    markers.push({
+      timeline_ms: operation.timeline_start_ms,
+      name,
+      kind: 'chapter',
+      ...(operation.event_id ? { event_id: operation.event_id } : {}),
+    });
+  }
+  return markers.length < 2 ? [] : markers;
 }
 
 function selectionReason(
