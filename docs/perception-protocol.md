@@ -72,6 +72,65 @@ Both are accepted and normalised to absence. The shipped worker omits them
 anyway, because saying nothing is clearer than saying null — but the consumer
 does not depend on that politeness.
 
+## What `probe` says and what `prepare` makes
+
+Both runtimes implement these two, rule for rule — `packages/perception/src/ffmpeg/`
+and `media.py` — because which one runs is a deployment detail and an asset must
+not change with it. `scripts/check-media.mjs` runs the worker's against media it
+synthesises; `packages/perception/test/media-layer.test.ts` holds the two to the
+same answers.
+
+**`probe`** describes the first _real_ video stream. Album art in an MP3 or M4A
+is a one-frame stream marked `attached_pic` and is left out, so a podcast is not
+600x600 video. A still reports its size and no frame rate: ffmpeg says 25/1 for
+every JPEG, and that 25 once became a 30 fps project's sequence rate.
+
+- `fps_num/fps_den` is the **nominal** rate, `r_frame_rate` — what the camera was
+  set to and what an editor conforms to. `avg_fps_num/avg_fps_den` is the
+  average. A declared rate above 240 is a container's clock, not a rate: the
+  average stands in for it when that is plausible, and otherwise there is none.
+- `variable_frame_rate` compares the rate of the frames actually in the file
+  with the nominal rate, at 1%. An MP4 or MOV lists its frames, and its average
+  is taken over their own durations; the count over the stream's duration is not
+  used, because a clip trimmed with `-c copy` keeps frames its edit list cuts off
+  and read as 32.2 fps at 30. Matroska, WebM and MPEG-TS list nothing and
+  declare the same rate twice whatever their frames do, so their packets are
+  counted, without decoding, over the picture stream's own length (its
+  `DURATION` tag) — not the file's, which runs on as long as the sound does and
+  made a constant-rate recording "variable".
+- `audio_streams` lists every audio stream; `index` is the position among audio
+  streams, what `-map 0:a:<index>` means. Empty is "this file has no sound".
+
+**`prepare`** reads the file's streams itself and makes each derivative on its
+own: one that fails is reported in `failed` and the others are still made — a
+video with no audio track used to lose its frames to the audio step's error.
+
+| derivative | named                                     | made how                                                     |
+| ---------- | ----------------------------------------- | ------------------------------------------------------------ |
+| proxy      | `proxy-480p-cfr30.mp4`, `…cfr30000-1001…` | constant rate at the nominal rate (60 when none); video only |
+| audio      | `audio-a1.wav`                            | one named stream, 16 kHz mono, gaps in its timestamps filled |
+| frames     | `frames-1fps/00000001.jpg` …              | by 1-based index, source resolution; `00000001.jpg` is 0 ms  |
+
+Everything is named after what makes it different and written under a temporary
+name, then renamed into place, so a work directory reused by a later run — or by
+the other runtime — never serves a derivative made another way, and a run killed
+halfway never leaves a truncated file for the next one to trust.
+
+With several audio streams and no `audio_stream_index`, each is extracted and
+measured with the audio stage's own energy analysis, and the one with the largest
+share of speech hops is kept, then the louder, then the earlier. The result says
+which and why (`"most speech of 2 (0.47 vs 0.00)"`), and the measurements are
+kept in `audio-streams.json` beside the WAVs. ffmpeg's own default is the stream
+with the most channels — a camera's stereo room tone, not the mono lavalier on
+its second track. `transcribe` and `analyze_audio` accept `audio_stream_index`
+and need not read it: it is there so the stream is part of the cache key, which
+leaves every path out.
+
+A frame a model is asked about at a moment is named `at-<ms>ms.jpg`, and never
+the eight bare digits prepare numbers its frames with. The two once shared a
+directory, and a moment at 1000 ms was read from prepare's frame 1000 — the
+picture at 999 s.
+
 ## Getting the weights
 
 ```

@@ -54,14 +54,16 @@ export const PrepareParams = obj({
   /** Frames per second to sample for visual analysis. 0 disables frame sampling. */
   frame_fps: z.number().min(0).default(1),
   /**
-   * Which audio stream to extract, by container index. Omitted: the worker picks
-   * the one with the most speech and says why in the result.
+   * Which audio stream to extract, by position among the file's audio streams
+   * (`-map 0:a:<index>`). Omitted: the preparer picks the one with the most
+   * speech and says why in the result. Ignored when the file has one or none.
    */
   audio_stream_index: z.int().min(0).optional(),
   /**
-   * Encode the proxy at a constant frame rate. On by default, because a
-   * variable-rate proxy makes "the frame at 12.4 s" a different frame in every
-   * tool that decodes it, and every timestamp downstream is taken from the proxy.
+   * Encode the proxy at a constant frame rate, the file's nominal one. On unless
+   * this is `false`, because a variable-rate proxy makes "the frame at 12.4 s" a
+   * different frame in every tool that decodes it, and every timestamp
+   * downstream is taken from the proxy.
    */
   constant_frame_rate: z.boolean().optional(),
 }).meta({ id: 'PrepareParams' });
@@ -75,6 +77,15 @@ export const TranscribeParams = obj({
   vocabulary: z.array(z.string()).default([]),
   word_timestamps: z.boolean().default(true),
   diarize: z.boolean().default(false),
+  /**
+   * Which of the file's audio streams `audio_path` holds, when prepare chose one.
+   *
+   * No transcriber reads it. It is here because the cache key is built from the
+   * parameters with every path left out, so without it a transcript of a
+   * camera's room tone and a transcript of its lavalier were the same entry, and
+   * whichever was made first was served for both.
+   */
+  audio_stream_index: z.int().min(0).optional(),
 }).meta({ id: 'TranscribeParams' });
 export type TranscribeParams = z.infer<typeof TranscribeParams>;
 
@@ -140,6 +151,8 @@ export const AnalyzeAudioParams = obj({
   silence_threshold_db: z.number().default(-40),
   /** Classify laughter, applause, music and so on. Needs a tagging model. */
   classify_events: z.boolean().default(true),
+  /** Which audio stream `audio_path` holds; for the cache key, as in `TranscribeParams`. */
+  audio_stream_index: z.int().min(0).optional(),
 }).meta({ id: 'AnalyzeAudioParams' });
 export type AnalyzeAudioParams = z.infer<typeof AnalyzeAudioParams>;
 
@@ -301,10 +314,24 @@ export const HealthResult = obj({
 }).meta({ id: 'HealthResult' });
 export type HealthResult = z.infer<typeof HealthResult>;
 
+/**
+ * What a container says about a file, and nothing that needs decoding it.
+ *
+ * The picture fields describe the first *real* video stream. An MP3 or M4A with
+ * album art carries the art as a one-frame video stream marked `attached_pic`,
+ * and reading it as the picture recorded a podcast as 600x600 `mjpeg` video.
+ * A still reports its size and no frame rate: ffmpeg's image reader invents 25
+ * fps for every picture, and that 25 became the frame rate of a 30 fps project.
+ */
 export const ProbeResult = obj({
   duration_ms: Milliseconds,
   width: jsonOptional(z.int().min(0)),
   height: jsonOptional(z.int().min(0)),
+  /**
+   * The nominal rate (`r_frame_rate`): what the camera was set to, and what an
+   * NLE conforms the file to. Not the measured average, which for a phone clip
+   * that dropped frames is a rate nobody chose.
+   */
   fps_num: jsonOptional(z.int().min(0)),
   fps_den: jsonOptional(z.int().min(1)),
   video_codec: jsonOptional(z.string()),
@@ -315,7 +342,11 @@ export const ProbeResult = obj({
   bit_rate: jsonOptional(z.int().min(0)),
   rotation: jsonOptional(z.int()),
   creation_time: jsonOptional(z.string()),
-  /** Every audio stream, in container order. Empty for a file with none. */
+  /**
+   * Every audio stream, in container order. Empty for a file with none, which
+   * is how "no sound" is said rather than left to a missing `audio_codec`.
+   * `index` is the position among audio streams, as `-map 0:a:<index>` means it.
+   */
   audio_streams: jsonOptional(
     z.array(
       obj({
@@ -331,20 +362,50 @@ export const ProbeResult = obj({
   /** `avg_frame_rate` as a rational, which differs from the nominal rate in a VFR file. */
   avg_fps_num: jsonOptional(z.int().min(0)),
   avg_fps_den: jsonOptional(z.int().min(1)),
+  /**
+   * Whether the frames actually in the file run at a rate other than the nominal
+   * one, by more than 1%, against `r_frame_rate`. The measured rate is the
+   * container's own average where it lists its frames (MP4, MOV) — the count
+   * over the stream's duration is wrong for a clip trimmed with `-c copy`, whose
+   * edit list shortens one and not the other — and the packets counted over the
+   * picture's own length where it lists none, because there the average is only
+   * declared: a variable-rate WebM declares 30/1 for both with 132 frames in 8 s.
+   */
   variable_frame_rate: jsonOptional(z.boolean()),
   metadata: z.record(z.string(), z.unknown()).default({}),
 }).meta({ id: 'ProbeResult' });
 export type ProbeResult = z.infer<typeof ProbeResult>;
+
+/** The derivatives prepare makes, each of which can fail without the others. */
+export const PreparedDerivative = z.enum(['proxy', 'audio', 'frames']).meta({
+  id: 'PreparedDerivative',
+});
+export type PreparedDerivative = z.infer<typeof PreparedDerivative>;
 
 export const PrepareResult = obj({
   proxy_path: jsonOptional(z.string()),
   audio_path: jsonOptional(z.string()),
   frames_dir: jsonOptional(z.string()),
   frame_timestamps_ms: z.array(Milliseconds).default([]),
-  /** The audio stream extracted, by container index, when the file had any. */
+  /**
+   * How many audio streams the file has. `0` means it has no sound: nothing to
+   * transcribe and nothing to measure, and not a failure of anything.
+   */
+  audio_stream_count: jsonOptional(z.int().min(0)),
+  /** The audio stream extracted, by position among audio streams, when there was any. */
   audio_stream_index: jsonOptional(z.int().min(0)),
   /** Why that one: "the only one", "most speech of 2 (0.61 vs 0.04)", "asked for". */
   audio_stream_reason: jsonOptional(z.string()),
+  /**
+   * Derivatives that could not be made, each on its own.
+   *
+   * They were one all-or-nothing call: audio was extracted before frames, so a
+   * video with no audio track lost its frames to the audio step's error, and
+   * everything the proxy had already produced went with them. Now each is tried
+   * whatever happened to the others, and what failed is said here rather than
+   * thrown.
+   */
+  failed: jsonOptional(z.array(obj({ derivative: PreparedDerivative, reason: z.string() }))),
 }).meta({ id: 'PrepareResult' });
 export type PrepareResult = z.infer<typeof PrepareResult>;
 

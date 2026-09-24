@@ -1181,12 +1181,30 @@ function buildSequenceSpec(
   // the same asset either way, but only because the two differ by a transpose;
   // ranking by the number that is then *returned* is what keeps the two halves
   // of this function from disagreeing.
-  const reference = [...ir.assets].sort((a, b) => {
-    const left = displaySize(a);
-    const right = displaySize(b);
-    return right.width * right.height - left.width * left.height;
-  })[0];
+  //
+  // And only video decides. A photo is placed into a sequence, it does not
+  // define one: stills were ranked with everything else, so one 4032x3024 phone
+  // photo beside a 1280x720 clip made the sequence 4032x3024 — at 25 fps, the
+  // rate ffmpeg reports for every picture. An audio file has no picture to
+  // match, and its album art is not one. With no video at all, the defaults.
+  const reference = ir.assets
+    .filter((asset) => asset.kind === 'video' && (asset.width ?? 0) > 0)
+    .sort((a, b) => {
+      const left = displaySize(a);
+      const right = displaySize(b);
+      return right.width * right.height - left.width * left.height || compareText(a.id, b.id);
+    })[0];
   const display = reference ? displaySize(reference) : undefined;
+  // The rate travels as one: a reference with no rational of its own must not
+  // pair its float with the default's numerator.
+  const rate =
+    reference?.fps_num && reference.fps_den
+      ? {
+          fps: reference.fps_num / reference.fps_den,
+          num: reference.fps_num,
+          den: reference.fps_den,
+        }
+      : { fps: 30, num: 30, den: 1 };
 
   return {
     name: `${ir.project.title} — ${Math.round(targetDurationMs / 1000)}s`,
@@ -1194,9 +1212,9 @@ function buildSequenceSpec(
     tolerance_ms: toleranceMs,
     width: overrides?.width ?? (display?.width || undefined) ?? 1920,
     height: overrides?.height ?? (display?.height || undefined) ?? 1080,
-    frame_rate: overrides?.frame_rate ?? reference?.fps ?? 30,
-    frame_rate_num: overrides?.frame_rate_num ?? reference?.fps_num ?? 30,
-    frame_rate_den: overrides?.frame_rate_den ?? reference?.fps_den ?? 1,
+    frame_rate: overrides?.frame_rate ?? rate.fps,
+    frame_rate_num: overrides?.frame_rate_num ?? rate.num,
+    frame_rate_den: overrides?.frame_rate_den ?? rate.den,
     sample_rate: overrides?.sample_rate ?? 48_000,
   };
 }

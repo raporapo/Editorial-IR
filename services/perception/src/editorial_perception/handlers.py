@@ -166,12 +166,17 @@ def handle_probe(params: dict[str, Any], session: Session) -> dict[str, Any]:
 
 
 def handle_prepare(params: dict[str, Any], session: Session) -> dict[str, Any]:
+    asked = params.get("audio_stream_index")
     return prepare(
         _require(params, "path"),
         _require(params, "work_dir"),
         proxy_height=int(params.get("proxy_height", 480)),
         extract_audio=bool(params.get("extract_audio", True)),
         frame_fps=float(params.get("frame_fps", 1.0)),
+        audio_stream_index=None if asked is None else int(asked),
+        # Constant unless asked otherwise, as the contract says: the proxy is
+        # what every timestamp downstream is taken from.
+        constant_frame_rate=params.get("constant_frame_rate") is not False,
     )
 
 

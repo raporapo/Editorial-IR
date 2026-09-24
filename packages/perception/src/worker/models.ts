@@ -31,6 +31,7 @@ import type {
   VisualEmbeddingModel,
 } from '../types.js';
 import type { PythonWorkerClient } from './client.js';
+import { PROBE_VERSION } from '../ffmpeg/probe.js';
 
 /**
  * Model implementations that delegate to the Python worker.
@@ -54,7 +55,10 @@ function identity(model: string, extra: Partial<ModelIdentity> = {}): ModelIdent
 const LONG_TIMEOUT_MS = 30 * 60_000;
 
 export class WorkerMediaProbe implements MediaProbe {
-  readonly identity = identity('ffprobe');
+  // The same version as the TypeScript probe, because it is the same mapping:
+  // the rate became the nominal one and every audio stream is listed, and a
+  // probe cached before that would otherwise be served for good.
+  readonly identity = identity('ffprobe', { modelVersion: PROBE_VERSION });
   constructor(private readonly client: PythonWorkerClient) {}
   async probe(path: string): Promise<ProbeResult> {
     return this.client.request('probe', { path }, { timeoutMs: 120_000 });

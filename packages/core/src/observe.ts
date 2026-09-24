@@ -5,6 +5,7 @@ import {
   AnalyzeVideoParams,
   SCENE_SENSITIVITY,
   compareText,
+  hasAudioStream,
   EMPTY_OBSERVATIONS,
   PIPELINE_VERSION,
   seqId,
@@ -142,31 +143,91 @@ export async function observeAssets(
   const frameFps = options.frameFps ?? 1;
 
   // ---- prepare -------------------------------------------------------------
+  // A still is its own proxy and its own only frame, at 0 ms. Nothing is made
+  // from it, so nothing is asked of the preparer; recording it here is what lets
+  // every stage below find a still's picture the way it finds a video's.
+  for (const asset of ordered) {
+    if (asset.kind !== 'image') continue;
+    derived.set(asset.id, {
+      proxy_path: absolutePath(asset, options.projectRoot),
+      frame_timestamps_ms: [0],
+    });
+  }
+  // Assets whose prepare threw outright. Its failure is recorded; the stages
+  // that read prepared audio must not then fall back to the original file.
+  const unprepared = new Set<string>();
   if (options.suite.preparer) {
     const preparer = options.suite.preparer;
     const runId = options.runs.fromIdentity('ingest', preparer.identity);
     void runId;
     let done = 0;
     for (const asset of ordered) {
+      if (asset.kind === 'image') continue;
       options.onProgress?.('prepare', asset.file_name, done++, ordered.length);
       await attempt('prepare', asset.id, async () => {
         const workDir = join(options.workDir, asset.sha256.slice(0, 12));
         mkdirSync(workDir, { recursive: true });
-        derived.set(
-          asset.id,
-          await preparer.prepare({
-            path: absolutePath(asset, options.projectRoot),
-            work_dir: workDir,
-            proxy_height: asset.kind === 'video' ? 480 : 0,
-            extract_audio: asset.kind !== 'image',
-            frame_fps: asset.kind === 'video' ? frameFps : 0,
-          }),
-        );
+        const prepared = await preparer.prepare({
+          path: absolutePath(asset, options.projectRoot),
+          work_dir: workDir,
+          proxy_height: asset.kind === 'video' ? 480 : 0,
+          // Only when there is sound to extract. A drone clip with no audio
+          // track failed here, and the failure took its frames down with it.
+          extract_audio: hasAudioStream(asset),
+          frame_fps: asset.kind === 'video' ? frameFps : 0,
+        });
+        derived.set(asset.id, prepared);
+        // Each derivative fails on its own now, and each failure is still one:
+        // recorded, so this analysis is not stored as complete and the next run
+        // tries again.
+        for (const failure of prepared.failed ?? []) {
+          failures.push({
+            stage: 'prepare',
+            assetId: asset.id,
+            reason: `${failure.derivative}: ${failure.reason}`,
+          });
+        }
       });
+      if (!derived.has(asset.id)) unprepared.add(asset.id);
     }
   } else {
     unavailable.push({ stage: 'prepare', reason: 'no model is configured for it' });
   }
+
+  /**
+   * What the speech and audio stages read for an asset, or nothing.
+   *
+   * Nothing, not a failure, for a file with no sound: it has no transcript to
+   * miss. Nothing, too, when extraction was tried and failed — that failure is
+   * already recorded, and the fallback below would hand an .mp4 to a reader of
+   * WAV files, which is how one silent drone clip produced three failures. The
+   * original itself only when no preparer made files at all: a real transcriber
+   * reads it, and a replayed fixture is keyed by its name.
+   */
+  const audioSource = (
+    asset: MediaAsset,
+  ): { path: string; streamIndex?: number; reason?: string } | undefined => {
+    if (!hasAudioStream(asset)) return undefined;
+    const prepared = derived.get(asset.id);
+    if (prepared?.audio_path) {
+      // Named only when there was a choice to make. A single-stream file's key
+      // is the key it always had, so its cached transcript is still found.
+      const chosen = (prepared.audio_stream_count ?? 0) > 1;
+      return {
+        path: prepared.audio_path,
+        ...(chosen && prepared.audio_stream_index !== undefined
+          ? { streamIndex: prepared.audio_stream_index }
+          : {}),
+        ...(chosen && prepared.audio_stream_reason !== undefined
+          ? { reason: prepared.audio_stream_reason }
+          : {}),
+      };
+    }
+    if (prepared?.audio_stream_count === 0) return undefined;
+    if (unprepared.has(asset.id)) return undefined;
+    if (prepared?.failed?.some((failure) => failure.derivative === 'audio')) return undefined;
+    return { path: absolutePath(asset, options.projectRoot) };
+  };
 
   // ---- speech --------------------------------------------------------------
   if (options.suite.speech) {
@@ -175,22 +236,21 @@ export async function observeAssets(
     await scheduler.withModel('speech', async () => {
       let done = 0;
       for (const asset of ordered) {
-        if (asset.kind === 'image') continue;
-        // Extracted audio when there is some; otherwise the media itself, which
-        // every real transcriber can read and which is what a replayed fixture
-        // is keyed by.
-        const audioPath =
-          derived.get(asset.id)?.audio_path ?? absolutePath(asset, options.projectRoot);
+        const source = audioSource(asset);
+        if (!source) continue;
         options.onProgress?.('transcribe', asset.file_name, done++, ordered.length);
 
         const params = {
-          audio_path: audioPath,
+          audio_path: source.path,
           ...(options.context?.editing_goal.language
             ? { language: options.context.editing_goal.language }
             : {}),
           vocabulary: options.context?.background.vocabulary ?? [],
           word_timestamps: true,
           diarize: false,
+          // In the key, because the path is not: a transcript of one stream
+          // must never be served for another.
+          ...(source.streamIndex === undefined ? {} : { audio_stream_index: source.streamIndex }),
         };
         let result: Awaited<ReturnType<typeof speech.transcribe>> | undefined;
         await attempt('speech', asset.id, async () => {
@@ -267,16 +327,16 @@ export async function observeAssets(
     const runId = options.runs.fromIdentity('audio', audio.identity);
     let done = 0;
     for (const asset of ordered) {
-      if (asset.kind === 'image') continue;
-      const audioPath =
-        derived.get(asset.id)?.audio_path ?? absolutePath(asset, options.projectRoot);
+      const source = audioSource(asset);
+      if (!source) continue;
       options.onProgress?.('audio', asset.file_name, done++, ordered.length);
 
       const params = {
-        audio_path: audioPath,
+        audio_path: source.path,
         hop_ms: options.audioHopMs ?? 100,
         silence_threshold_db: -40,
         classify_events: true,
+        ...(source.streamIndex === undefined ? {} : { audio_stream_index: source.streamIndex }),
       };
       let result: Awaited<ReturnType<typeof audio.analyzeAudio>> | undefined;
       await attempt('audio', asset.id, async () => {
@@ -307,6 +367,8 @@ export async function observeAssets(
         hop_ms: result.hop_ms,
         rms_db: result.rms_db,
         ...(result.speech_prob === undefined ? {} : { speech_prob: result.speech_prob }),
+        ...(source.streamIndex === undefined ? {} : { stream_index: source.streamIndex }),
+        ...(source.reason === undefined ? {} : { stream_reason: source.reason }),
         model_run_id: runId,
       });
     }
@@ -398,7 +460,7 @@ export async function observeAssets(
       let done = 0;
       for (const asset of ordered) {
         const prepared = derived.get(asset.id);
-        const timestamps = frameTimestamps(prepared, shots, asset.id);
+        const timestamps = frameTimestamps(prepared, shots, asset);
         if (timestamps.length === 0) continue;
         options.onProgress?.('visual', asset.file_name, done++, ordered.length);
 
@@ -410,8 +472,12 @@ export async function observeAssets(
           // produced. The words are the user's own; see `labelVocabulary`.
           label_vocabulary: vocabulary,
           // Never beside the media: the worker's fallback was to write a
-          // `_frames` folder into whatever directory the footage lives in.
-          ...(prepared?.frames_dir ? { frames_dir: prepared.frames_dir } : {}),
+          // `_frames` folder into whatever directory the footage lives in. And
+          // never prepare's frames directory either, where files are named by
+          // index: a frame asked for at 1000 ms was looked for as
+          // `00001000.jpg`, which in a twenty-minute file is prepare's frame
+          // 1000 — the picture at 999 s — found already there, and embedded.
+          frames_dir: join(options.workDir, asset.sha256.slice(0, 12), 'visual-frames'),
         };
         let result: Awaited<ReturnType<typeof visual.embedFrames>> | undefined;
         await attempt('visual', asset.id, async () => {
@@ -457,7 +523,7 @@ export async function observeAssets(
         // detector found in its compression noise. OCR does not feed
         // segmentation, so this moves no boundary.
         const { kept: timestamps, dropped } = thinTimestamps(
-          representativeFrames(shots, asset.id),
+          pictureTimestamps(shots, asset),
           inactive,
           asset.id,
         );
@@ -594,13 +660,27 @@ export function framePathFor(
 function frameTimestamps(
   prepared: PrepareResult | undefined,
   shots: readonly Shot[],
-  assetId: string,
+  asset: Pick<MediaAsset, 'id' | 'kind'>,
 ): number[] {
   // Prefer one frame per shot: it is the frame that represents a decision the
   // camera operator made, rather than an arbitrary sample.
-  const perShot = representativeFrames(shots, assetId);
+  const perShot = pictureTimestamps(shots, asset);
   if (perShot.length > 0) return perShot;
   return prepared?.frame_timestamps_ms ?? [];
+}
+
+/**
+ * The moments of an asset worth looking at: one per shot, or for a still, the
+ * still. Photos were registered and then never looked at — no frame, no OCR —
+ * so a sign reading "Kyoto station" in a picture of it was invisible to search
+ * and to every description.
+ */
+function pictureTimestamps(
+  shots: readonly Shot[],
+  asset: Pick<MediaAsset, 'id' | 'kind'>,
+): number[] {
+  if (asset.kind === 'image') return [0];
+  return representativeFrames(shots, asset.id);
 }
 
 function representativeFrames(shots: readonly Shot[], assetId: string): number[] {

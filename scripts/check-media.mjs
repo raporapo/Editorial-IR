@@ -35,6 +35,16 @@
  *   detect_shots   0-2000, 2000-4000, 4000-6000 — the splice times exactly
  *   prepare        proxy 854x480, audio 16000Hz mono 16-bit, 6 frames at 1fps
  *   analyze_audio  silence 0-2000, speech 2000-4000, silence 4000-6100
+ *   two tracks     a:0 stereo room tone 0 of 61 hops speech, median -44.19dB;
+ *                  a:1 mono bursts 30 of 61, median -70.16dB — so the median
+ *                  alone would have picked the room; "most speech of 2
+ *                  (0.49 vs 0.00)"
+ *   vfr            30/1 nominal, 70/3 average, 140 frames; proxy 180 at 30/1
+ *   album art      mjpeg 300x300 at 90000/1, attached_pic: no picture
+ *   matroska       30/1, 90 packets; the picture's DURATION tag 3.000s, the
+ *                  file 4.021s
+ *   trimmed        stream-copied: 101 frames in 3.134s (32.2 fps by count),
+ *                  average 30/1
  *
  * Two of those need explaining.
  *
@@ -215,10 +225,100 @@ function synthesise(dir) {
     still,
   ]);
 
-  for (const path of [cuts, still]) {
+  // A camera with a lavalier on its second track. The first is stereo room
+  // tone — steady pink noise, no dynamic range, so the energy analysis finds no
+  // speech in it by construction — and the second is mono tone bursts, a second
+  // on and a second off. ffmpeg's own default is the stream with the most
+  // channels, which is the room: that is what was transcribed before streams
+  // were chosen, and five spoken sentences came back as none.
+  const tracks = join(dir, 'tracks.mp4');
+  run('ffmpeg', [
+    ...words(`
+      -hide_banner -loglevel error -y
+      -fflags +bitexact -flags:v +bitexact -flags:a +bitexact
+      -f lavfi -i smptebars=size=640x360:rate=30:duration=6,format=yuv420p
+      -f lavfi -i anoisesrc=color=pink:seed=3:amplitude=0.05:sample_rate=48000:duration=6
+      -f lavfi -i aevalsrc='0.4*sin(2*PI*440*t)*lt(mod(t,2),1)':s=48000:d=6
+      -filter_complex [1:a]aformat=channel_layouts=stereo[room];[2:a]aformat=channel_layouts=mono[lav]
+      -map 0:v -map [room] -map [lav]
+      -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p -g 30
+      -c:a aac -b:a 96k -ar 48000
+      -movflags +faststart
+    `),
+    tracks,
+  ]);
+
+  // A phone clip that dropped frames: 30 fps nominal, every third frame kept
+  // between 2 s and 4 s, written variable-rate. Measured: 140 frames in 6 s,
+  // `avg_frame_rate` 70/3. The average was the asset's rate and so the
+  // sequence's, and nothing said the file was variable at all.
+  const vfr = join(dir, 'vfr.mp4');
+  run('ffmpeg', [
+    ...words(`
+      -hide_banner -loglevel error -y
+      -fflags +bitexact -flags:v +bitexact
+      -f lavfi -i testsrc2=size=640x360:rate=30:duration=6
+      -vf select='if(between(t,2,4),not(mod(n,3)),1)',format=yuv420p
+      -fps_mode vfr
+      -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p -g 30
+      -movflags +faststart
+    `),
+    vfr,
+  ]);
+
+  // Sound with album art: the art is a one-frame video stream marked
+  // `attached_pic`, declaring 90000/1, and it was read as the picture.
+  const cover = join(dir, 'cover.m4a');
+  run('ffmpeg', [
+    ...words(`
+      -hide_banner -loglevel error -y
+      -fflags +bitexact -flags:v +bitexact -flags:a +bitexact
+      -f lavfi -i sine=frequency=330:sample_rate=48000:duration=2
+      -f lavfi -i smptebars=size=300x300:rate=1:duration=1,format=yuvj420p
+      -map 0:a -map 1:v
+      -c:a aac -b:a 64k -c:v mjpeg -frames:v 1 -disposition:v:0 attached_pic
+    `),
+    cover,
+  ]);
+
+  // A constant 30 fps recording in Matroska whose sound runs a second past its
+  // picture, as a screen recorder that stops the picture first writes it.
+  // Matroska keeps no frame count, so the packets are counted — and they were
+  // counted over the file's length rather than the picture's — measured, 90
+  // packets over 4.021 s, 22.4 fps and "variable" for a file with not one
+  // irregular frame in it.
+  const screen = join(dir, 'screen.mkv');
+  run('ffmpeg', [
+    ...words(`
+      -hide_banner -loglevel error -y
+      -fflags +bitexact -flags:v +bitexact -flags:a +bitexact
+      -f lavfi -i testsrc2=size=640x360:rate=30:duration=3,format=yuv420p
+      -f lavfi -i sine=frequency=440:sample_rate=48000:duration=4
+      -map 0:v -map 1:a
+      -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p -g 30
+      -c:a aac -b:a 64k
+    `),
+    screen,
+  ]);
+
+  // The first clip trimmed the way a phone's own trim and every lossless cutter
+  // export: stream-copied from between two keyframes, so the file keeps the
+  // frames back to the keyframe and an edit list hides them. The frame count
+  // over the stream's duration was then more than the rate — measured on such a
+  // cut, 131 frames in 4.067 s, 32.2 fps at 30 — and a constant-rate clip was
+  // called variable.
+  const trimmed = join(dir, 'trimmed.mp4');
+  run('ffmpeg', [
+    ...words('-hide_banner -loglevel error -y -fflags +bitexact -ss 1.3 -i'),
+    cuts,
+    ...words('-t 3 -c copy'),
+    trimmed,
+  ]);
+
+  for (const path of [cuts, still, tracks, vfr, cover, screen, trimmed]) {
     console.log(`  ${basename(path)}  sha256:${sha256(path)}`);
   }
-  return { cuts, still };
+  return { cuts, still, tracks, vfr, cover, screen, trimmed };
 }
 
 // ----------------------------------------------------------------- the worker
@@ -364,7 +464,7 @@ async function main() {
 
   try {
     console.log('synthesising');
-    const { cuts, still } = synthesise(dir);
+    const { cuts, still, tracks, vfr, cover, screen, trimmed } = synthesise(dir);
     worker = new Worker(python);
 
     console.log('probe');
@@ -636,9 +736,161 @@ async function main() {
       );
     }
 
-    const nulls = [probed, silentFile, detected, prepared, audio].flatMap((result) =>
-      nullsIn(result),
+    console.log('streams, rates and silence');
+    const trackProbe = await worker.request('probe', { path: tracks });
+    check(
+      'lists every audio stream, by its place among the audio streams',
+      JSON.stringify(trackProbe.audio_streams?.map((s) => [s.index, s.channels])) ===
+        JSON.stringify([
+          [0, 2],
+          [1, 1],
+        ]),
+      JSON.stringify(trackProbe.audio_streams),
     );
+    // Generic handler names are what the muxer writes when nobody named a track;
+    // reported as titles, both tracks were called "SoundHandler".
+    check(
+      'does not call an unnamed track "SoundHandler"',
+      (trackProbe.audio_streams ?? []).every((s) => s.title === undefined),
+      JSON.stringify(trackProbe.audio_streams),
+    );
+    const trackWork = join(dir, 'tracks-work');
+    const chosen = await worker.request('prepare', { path: tracks, work_dir: trackWork });
+    check(
+      'listens to the stream with the speech, not the one with more channels',
+      chosen.audio_stream_index === 1 && basename(chosen.audio_path ?? '') === 'audio-a1.wav',
+      `${chosen.audio_stream_index} ${chosen.audio_path}`,
+    );
+    check(
+      'says why, with the numbers',
+      /^most speech of 2 \(0\.\d\d vs 0\.00\)$/.test(chosen.audio_stream_reason ?? ''),
+      chosen.audio_stream_reason,
+    );
+    check(
+      'names every extracted stream after itself',
+      existsSync(join(trackWork, 'audio-a0.wav')) && existsSync(join(trackWork, 'audio-a1.wav')),
+      readdirSync(trackWork).join(' '),
+    );
+    const asked = await worker.request('prepare', {
+      path: tracks,
+      work_dir: trackWork,
+      audio_stream_index: 0,
+    });
+    check(
+      'takes the stream it is asked for',
+      asked.audio_stream_index === 0 && asked.audio_stream_reason === 'asked for',
+      JSON.stringify(asked),
+    );
+
+    const vfrProbe = await worker.request('probe', { path: vfr });
+    check(
+      'gives a phone clip the rate it was set to',
+      vfrProbe.fps_num === 30 && vfrProbe.fps_den === 1,
+      `${vfrProbe.fps_num}/${vfrProbe.fps_den}`,
+    );
+    check(
+      'keeps the measured average beside it, and says the rate varies',
+      vfrProbe.avg_fps_num === 70 &&
+        vfrProbe.avg_fps_den === 3 &&
+        vfrProbe.variable_frame_rate === true,
+      JSON.stringify(vfrProbe),
+    );
+    check('does not call a constant-rate file variable', probed.variable_frame_rate === false);
+    const trimmedProbe = await worker.request('probe', { path: trimmed });
+    check(
+      'does not call a clip trimmed without re-encoding variable-rate',
+      trimmedProbe.fps_num === 30 && trimmedProbe.variable_frame_rate === false,
+      JSON.stringify(trimmedProbe),
+    );
+    const screenProbe = await worker.request('probe', { path: screen });
+    check(
+      'counts a Matroska picture over its own length, not the sound that outlasts it',
+      screenProbe.fps_num === 30 &&
+        screenProbe.fps_den === 1 &&
+        screenProbe.variable_frame_rate === false,
+      JSON.stringify(screenProbe),
+    );
+    const vfrPrepared = await worker.request('prepare', {
+      path: vfr,
+      work_dir: join(dir, 'vfr-work'),
+      extract_audio: false,
+      frame_fps: 0,
+    });
+    const vfrProxy = JSON.parse(
+      run('ffprobe', [
+        ...words('-v error -select_streams v:0 -show_entries'),
+        'stream=r_frame_rate,avg_frame_rate,nb_frames',
+        ...words('-print_format json'),
+        vfrPrepared.proxy_path,
+      ]),
+    ).streams[0];
+    // 180 frames at 30/1 for 6 s: the dropped ones repeated, so the frame at a
+    // time is the same frame in every tool that decodes the proxy.
+    check(
+      'makes the proxy constant-rate at the nominal rate, on purpose',
+      basename(vfrPrepared.proxy_path) === 'proxy-480p-cfr30.mp4' &&
+        vfrProxy.r_frame_rate === '30/1' &&
+        vfrProxy.avg_frame_rate === '30/1' &&
+        vfrProxy.nb_frames === '180',
+      JSON.stringify(vfrProxy),
+    );
+
+    const coverProbe = await worker.request('probe', { path: cover });
+    check(
+      'does not take album art for the picture',
+      coverProbe.width === undefined &&
+        coverProbe.video_codec === undefined &&
+        coverProbe.fps_num === undefined &&
+        coverProbe.audio_codec === 'aac',
+      JSON.stringify(coverProbe),
+    );
+    const coverPrepared = await worker.request('prepare', {
+      path: cover,
+      work_dir: join(dir, 'cover-work'),
+      proxy_height: 480,
+      frame_fps: 1,
+    });
+    check(
+      'makes no proxy and no frames of album art',
+      coverPrepared.proxy_path === undefined &&
+        coverPrepared.frames_dir === undefined &&
+        coverPrepared.audio_path !== undefined,
+      JSON.stringify(coverPrepared),
+    );
+
+    // A video with no audio track: the audio step used to run first, fail, and
+    // take the frames down with it.
+    const silentPrepared = await worker.request('prepare', {
+      path: still,
+      work_dir: join(dir, 'still-work'),
+    });
+    check(
+      'prepares a video with no audio track without a failure',
+      silentPrepared.audio_stream_count === 0 &&
+        silentPrepared.audio_path === undefined &&
+        silentPrepared.failed === undefined,
+      JSON.stringify(silentPrepared),
+    );
+    check(
+      'still makes its frames',
+      silentPrepared.frame_timestamps_ms?.length === 3,
+      JSON.stringify(silentPrepared.frame_timestamps_ms),
+    );
+
+    const nulls = [
+      probed,
+      silentFile,
+      detected,
+      prepared,
+      audio,
+      trackProbe,
+      chosen,
+      vfrProbe,
+      vfrPrepared,
+      coverProbe,
+      coverPrepared,
+      silentPrepared,
+    ].flatMap((result) => nullsIn(result));
     check('sends no nulls', nulls.length === 0, nulls.join(', '));
 
     await worker.stop();
