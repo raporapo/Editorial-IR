@@ -126,6 +126,81 @@ questions about an event rather than nineteen times. A contact sheet is one
 image rather than twelve. Both are the same trick: per-call overhead is a real
 cost on a hosted model, and the answer is no worse.
 
+## 5. Do not ask about footage where nothing happens
+
+A lens cap, a camera left running on a table, a tripod on an empty car park, a
+screen recording nobody is touching: each costs as much to describe and judge as
+the best moment of the day, and there is nothing in it to find. So the analysis
+measures where the footage is **still and silent** and does not pay a model to
+look there.
+
+**What it never does is change a time value.** Nothing is cut, trimmed or
+re-encoded. Event boundaries are decided before the mask is consulted and
+without it, and every source range and every timecode in a plan is the same
+number whether the mask applied or not. `tests/activity-mask.test.ts` compiles
+the same project both ways and demands that every event, source range and
+chapter is identical.
+
+### How stillness is measured
+
+A 64x36 greyscale decode of the proxy at five samples a second, compared frame
+to frame, taking the largest mean difference of any cell of a 3x4 grid. Both
+choices are measured, not chosen:
+
+| footage                                    | largest cell difference (grey levels) |
+| ------------------------------------------ | ------------------------------------- |
+| a still frame with phone-like sensor grain | 0.14-0.19                             |
+| an empty car park under a traffic camera   | about 0.3                             |
+| people sitting still in conversation       | 0.5-0.75                              |
+| anything actually moving                   | well above 0.5                        |
+
+The threshold is 0.5, held for at least three seconds. Downscaling first is what
+separates grain from motion — grain is independent per pixel and averages away
+over a 30x30 block, a person does not — and the largest cell rather than the
+frame mean keeps a person crossing one corner of a wide shot counted as motion.
+It costs about 1% of real time on a 480p proxy, runs in both runtimes, and the
+two agree to the last rounding digit (a test compares them).
+
+### Both conditions, never one
+
+Silence alone is not enough: 65-73% of every test file here is silent, and a
+silent drone shot is what a travel edit is made of. Stillness alone is not
+enough either: someone talking to a locked-off camera is still, and is the
+content. Only the intersection is skipped, and on real footage it is rare —
+none of any edited programme, none of people in conversation, the empty
+stretches of a traffic camera between cars.
+
+Silence has to be real silence. The silence detector is relative to each file,
+so under a music bed the gaps in a narration read as silent while the music plays
+on; here a silence also has to sit under -45 dBFS, where room tone is and music,
+traffic and crowds are not. A muted track that the relative detector ignores by
+design is caught by an absolute floor of -60 dBFS, and a file with no audio track
+at all is silent by construction. Words the transcriber heard override the level
+meter. Darkness alone is not stillness: a city at night is dark, and it is often
+the ending.
+
+Anything not measured is treated as active. A missing measurement costs tokens;
+it never costs a moment.
+
+### What is not asked
+
+- An event still and silent throughout (half a second of margin at each edge,
+  half a second more allowed) is described and judged by the rules instead of
+  the base models, and is never sent for a closer look. Judgement is the large
+  half: 1,564 input tokens per event in the table above.
+- Frames for a closer look at any other event, and OCR reads, are taken once
+  per still span rather than once per sample inside it.
+- Frame vectors are **not** thinned. Segmentation reads one per shot, and
+  thinning them would move event boundaries — the one thing this may never do.
+- An event the user has annotated is always asked about, however still it is.
+
+The IR records it in `quality.savings` — footage judged still and silent, calls
+not made, frames not sent, and tokens avoided as an estimate from what the calls
+that were made actually measured. It is kept apart from `stand_ins` on purpose:
+a model that was there and was not asked is not a model that failed, and a
+project with long still stretches does not read as degraded. The rules'
+judgements carry their own model run, so the IR never claims the model answered.
+
 ## Three ways to run it
 
 ```text
