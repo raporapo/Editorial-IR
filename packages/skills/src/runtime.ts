@@ -72,6 +72,12 @@ export class SkillRuntime {
     let bias = 0;
     let multiplier = 1;
     let avoidAggressiveCutting = false;
+    // What the rules said about the two per-skill policies, if anything. A rule
+    // that says `true` sticks like the other flags; one that says `false` turns
+    // the skill's default off for the events it matches — "never tighten the
+    // vows" in a skill that takes pauses out of everything else.
+    let keepWholeSaid: boolean | undefined;
+    let removeSilencesSaid: boolean | undefined;
 
     for (const rule of this.rules) {
       if (!evaluateCondition(rule.when, facts)) continue;
@@ -95,8 +101,12 @@ export class SkillRuntime {
       if (action.as_b_roll) directive.as_b_roll = true;
       if (action.preserve_reaction) directive.preserve_reaction = true;
       if (action.prefer_higher_quality_only) directive.prefer_higher_quality_only = true;
-      if (action.keep_whole) directive.keep_whole = true;
-      if (action.remove_silences) directive.remove_silences = true;
+      if (action.keep_whole !== undefined) {
+        keepWholeSaid = keepWholeSaid === true || action.keep_whole;
+      }
+      if (action.remove_silences !== undefined) {
+        removeSilencesSaid = removeSilencesSaid === true || action.remove_silences;
+      }
       if (action.avoid_aggressive_cutting) avoidAggressiveCutting = true;
 
       // Last matching rule wins for a single-valued field, and rules are ordered
@@ -143,6 +153,30 @@ export class SkillRuntime {
     if (directive.min_duration_ms > directive.max_duration_ms) {
       directive.max_duration_ms = directive.min_duration_ms;
     }
+
+    // The two policies a skill states once rather than per rule, resolved here so
+    // the directive says what happens to this event and the planner reads only
+    // directives. Both were accepted by the schema and read by nothing: a skill
+    // author who wrote `remove_silences: true` got neither an error nor a pause
+    // taken out.
+    //
+    // `keep_whole: auto` is for a clip the user already chose and trimmed, and
+    // only when it fits the skill's clip limit: a style whose clips never run
+    // past three and a half seconds trims an eight-second clip rather than being
+    // overruled by it. The limit, not a rule's narrower ceiling for this kind of
+    // moment — measured on the probe's folder of phone clips under travel-vlog,
+    // the rules' four-second caps on wordless and dead-air moments still cut two
+    // of eight clips short, one of them mid-sentence. The user trimmed the clip;
+    // that is the stronger statement about how long this moment is. Trimming
+    // them at all had cut the first syllable off two (0.5-4.5 s of a clip whose
+    // speech began at 0.4 s).
+    const wholeByDefault =
+      this.skill.defaults.keep_whole === 'always' ||
+      (this.skill.defaults.keep_whole === 'auto' &&
+        facts.material === 'clip' &&
+        facts.duration_ms <= this.skill.defaults.max_clip_duration_ms);
+    directive.keep_whole = keepWholeSaid ?? wholeByDefault;
+    directive.remove_silences = removeSilencesSaid ?? this.skill.defaults.remove_silences;
 
     if (this.skill.constraints.forbid_roles.includes(directive.role)) directive.dropped = true;
 

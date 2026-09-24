@@ -1,0 +1,78 @@
+name: cut-down
+version: 0.1.0
+extends: [base-editor]
+description: >-
+  A shorter version of something already edited. Keeps the programme's order,
+  cuts only where it already cut, keeps its sound, and opens each section on
+  the card that introduced it.
+license: Apache-2.0
+
+defaults:
+  min_clip_duration_ms: 1500
+  max_clip_duration_ms: 8000
+  # The edit's own cut points, whatever the material was classified as: this
+  # skill is for an edited programme, and a cut three frames off one of its edits
+  # leaves a flash of the neighbouring shot.
+  snap_to_cuts: always
+  # Far enough to reach a cut 800 ms away — the one remnant the probe's
+  # programme left that is too long to be a flash and too short to be a shot a
+  # viewer takes in — and short of the shortest median shot measured in edited
+  # programmes (1.7 s), so an edge never jumps a whole shot to find a cut.
+  snap_window_ms: 1000
+
+arc:
+  ordering: chronological
+  segments:
+    - name: opening
+      budget: 0.15
+      prefer_roles: [setup, context]
+    - name: middle
+      budget: 0.65
+      prefer_roles: [build_up, payoff, reaction, climax]
+    - name: ending
+      budget: 0.2
+      prefer_roles: [resolution, ending]
+
+intent:
+  opening: as the programme opens
+  middle: its best moments, in its order
+  ending: as the programme ends
+
+rules:
+  # Replaces the base rule of the same id, switching it off. In a finished
+  # programme a shot with no words in it still has the programme's sound under
+  # it — its music, its atmosphere — and muting it is the one thing a cut-down
+  # must not do. Nor is it kept short: in a programme cut to music nearly every
+  # moment is wordless, and the base rule's four-second cap then applies to all
+  # of them. Measured on the probe's edited programme, analysed with a
+  # transcriber that heard no words over the music bed: every event matched,
+  # and a 30-second cut-down came in at 14.5 s with the rest of the programme
+  # unused. The base rule's own guard (`not: { material: edited }`) covers
+  # material classified as edited; this covers the rest of what is fed to a
+  # skill that is only for edited material.
+  - id: use-quiet-picture-as-b-roll
+    description: A wordless shot keeps the programme's sound, and its length.
+    when:
+      b_roll_candidate_probability: '>0.7'
+      has_speech: false
+    action:
+      tag: [programme-sound]
+
+  # Chapters in an edited programme begin at its title cards and cuts to black,
+  # so the first event of a chapter is the card and what it introduces. A
+  # section that makes the cut should open the way the programme opened it.
+  - id: open-each-section-on-its-card
+    description: A section keeps the card that introduces it.
+    when:
+      chapter_position: first
+    action:
+      prefer: 0.3
+      minimum_duration_sec: 2.5
+
+  # Burned-in subtitles run three seconds or so and cross the programme's cuts;
+  # a clip that ends a second into one shows half a sentence on screen.
+  - id: let-a-subtitle-finish
+    when:
+      has_subtitles: true
+    action:
+      minimum_duration_sec: 3.0

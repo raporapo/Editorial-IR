@@ -1,0 +1,80 @@
+name: clip-reel
+version: 0.1.0
+extends: [base-editor]
+description: >-
+  A folder of clips the user already chose and trimmed, strung together in the
+  order they were taken. Every clip is used whole or not at all.
+license: Apache-2.0
+
+defaults:
+  min_clip_duration_ms: 1000
+  # As long as a file can be and still be read as a clip the user trimmed
+  # (CLIP_MAX_MS in core's materials.ts: phone clips and social cuts run a few
+  # seconds to a quarter of a minute), so no clip is too long to be kept whole.
+  max_clip_duration_ms: 15000
+  keep_whole: auto
+
+arc:
+  # One segment: an arc budgets time by position, and with whole clips of three
+  # to fifteen seconds a three-part budget leaves one part short by most of a
+  # clip and spends the rest filling another.
+  ordering: chronological
+  segments:
+    - name: reel
+      budget: 1
+
+intent:
+  opening: the first clip
+  middle: the rest, in order
+  ending: the last
+
+rules:
+  # The base rules below shorten or discard material by what it looks like.
+  # A clip the user chose and trimmed was already judged — by the person who
+  # shot it — so here each applies only to material that is not such a clip.
+  # Measured on the probe's folder of eight phone clips with no model: the
+  # duplicate rule dropped six of them as "another take of the same thing",
+  # because with no transcript every clip was described the same way.
+  - id: suppress-duplicates
+    description: Keep the best take, not every take — unless the user chose both.
+    when:
+      redundancy: '>0.8'
+      not:
+        material: clip
+    action:
+      prefer_higher_quality_only: true
+      avoid: 0.2
+
+  - id: drop-empty-filler
+    description: Nothing said, nothing felt, nothing shown — and nobody chose it.
+    priority: 50
+    when:
+      narrative_role: filler
+      story_importance: '<0.3'
+      not:
+        material: clip
+    action:
+      drop: true
+
+  - id: trim-dead-air
+    description: A long silent stretch can be shortened, when it is not a clip the user trimmed.
+    when:
+      contains_dead_air_probability: '>0.6'
+      has_speech: false
+      not:
+        material: clip
+    action:
+      maximum_duration_sec: 4.0
+
+  - id: use-quiet-picture-as-b-roll
+    description: >-
+      A wordless clip keeps its sound: the user trimmed it with the sound it
+      has. Other quiet picture is b-roll, as in the base skill.
+    when:
+      b_roll_candidate_probability: '>0.7'
+      has_speech: false
+      not:
+        material: [clip, edited, audio_only]
+    action:
+      as_b_roll: true
+      maximum_duration_sec: 4.0

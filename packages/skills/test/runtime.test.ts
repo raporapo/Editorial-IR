@@ -57,6 +57,8 @@ describe('the built-in skill library', () => {
   it('ships the skills the documentation promises', () => {
     expect(registry.list().map((s) => s.name)).toEqual([
       'base-editor',
+      'clip-reel',
+      'cut-down',
       'memory-film',
       'shorts',
       'talking-head',

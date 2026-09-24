@@ -181,9 +181,17 @@ export const SkillAction = obj({
   place_at: z.enum(['opening', 'ending']).optional(),
   /** Use as picture only; drop its own sound. */
   as_b_roll: z.boolean().optional(),
-  /** Use the event's material whole rather than trimming inside it. */
+  /**
+   * Use the event's material whole rather than trimming inside it. `false`
+   * turns the skill's `keep_whole` default off for the events the rule matches;
+   * a `true` from any rule outranks it.
+   */
   keep_whole: z.boolean().optional(),
-  /** Take the pauses out of this event's speech, as jump cuts. */
+  /**
+   * Take the pauses out of this event's speech, as jump cuts. `false` turns the
+   * skill's `remove_silences` default off for the events the rule matches; a
+   * `true` from any rule outranks it.
+   */
   remove_silences: z.boolean().optional(),
   /** Free tags, carried into the plan's rationale. */
   tag: z.array(z.string()).optional(),
@@ -256,7 +264,7 @@ export const SkillDefaults = obj({
   /** How far a cut point may move while snapping. */
   snap_window_ms: Milliseconds.default(600),
   default_transition: Transition.default({ type: 'hard_cut', duration_ms: 0 }),
-  /** Transition used where the place changes between clips. */
+  /** Transition used where the cut moves from one chapter to the next. */
   chapter_transition: Transition.optional(),
   /** How long a photograph stays on screen. */
   still_duration_ms: Milliseconds.default(3000),
@@ -264,6 +272,10 @@ export const SkillDefaults = obj({
    * Whether a pre-trimmed clip is used whole. `auto` keeps a clip whole when the
    * material is a clip the user already chose and it fits the clip limits: they
    * trimmed it on their phone, and trimming it again cuts their first syllable.
+   * `always` keeps every event whole; `never` turns `auto` off. A rule's
+   * `keep_whole` action and the user's asset-level `merge` annotation keep an
+   * event whole whatever this says. Whole means whole or not at all: a clip
+   * longer than the room left is left out rather than shortened.
    */
   keep_whole: z.enum(['auto', 'always', 'never']).default('auto'),
   /**
@@ -271,10 +283,20 @@ export const SkillDefaults = obj({
    * edited material only: cutting an edited programme a few frames off its own
    * edit leaves a flash of the neighbouring shot. Raw footage has shot
    * boundaries too — camera moves — and snapping to those would move cuts that
-   * are right.
+   * are right. An edge moves to a cut within `snap_window_ms`, and never keeps
+   * less than 400 ms of a neighbouring shot; it never moves into a word.
    */
   snap_to_cuts: z.enum(['auto', 'always', 'never']).default('auto'),
-  /** Take pauses out of long speech as jump cuts. Changes durations, by design. */
+  /**
+   * Take pauses out of long speech as jump cuts. Changes durations, by design.
+   *
+   * A pause is silence by the same measure as the activity mask's, or a gap
+   * between timed words; never part of a word, and never a gap over music. A
+   * pause inside a clip comes out less `silence_handle_ms` at each side; dead
+   * air at either edge of a clip comes out to the edge, less the handle beside
+   * the words. Never from a clip kept whole, a photograph, a clip with nobody
+   * speaking in it, or a clip whose sound is not used.
+   */
   remove_silences: z.boolean().default(false),
   /** Shortest pause that is taken out when removing silences. */
   min_removed_silence_ms: Milliseconds.default(700),
@@ -292,7 +314,14 @@ export const SkillConstraints = obj({
   forbid_roles: z.array(NarrativeRole).default([]),
   /** Minimum share of the target duration that must carry speech, in [0,1]. */
   min_speech_share: UnitScore.optional(),
-  /** Hard ceiling on clip count, for formats where fast cutting is wrong. */
+  /**
+   * Hard ceiling on how many moments the cut holds, for formats where fast
+   * cutting is wrong.
+   *
+   * Counted in events, not in clips: the pieces of one take with its pauses
+   * taken out (`remove_silences`) are one moment, joined by jump cuts, and count
+   * once. A cap on clips would make removing a pause cost the cut a whole moment.
+   */
   max_operations: z.int().min(1).optional(),
 }).meta({ id: 'SkillConstraints' });
 export type SkillConstraints = z.infer<typeof SkillConstraints>;
