@@ -3,8 +3,12 @@ import {
   coverage,
   seqId,
   type Chapter,
+  type MaterialProfile,
+  type MediaAsset,
   type SemanticEvent,
 } from '@editorial-ir/contracts';
+import { TITLE_CARD_MAX_MS } from './materials.js';
+import { isTimecodeLike } from './onscreen-text.js';
 
 /**
  * Grouping events into chapters.
@@ -18,7 +22,18 @@ import {
  * talked about.
  */
 export interface ChapterOptions {
-  /** A gap at least this long on the capture timeline starts a new chapter. */
+  /**
+   * A gap at least this long in real capture time starts a new chapter.
+   *
+   * Real time, from the files' own creation times, because the capture timeline
+   * lays files end to end one second apart: the old two-minute rule measured
+   * that second and could never fire. Half an hour sits between the two scales
+   * it has to tell apart: the worked example's three recordings — morning,
+   * midday, night — are three and seven hours apart, and the clips a phone
+   * takes at each stop of one walk are minutes apart. Anything between is a
+   * judgement, and this one errs toward fewer chapters, because a chapter per
+   * clip is no chapter.
+   */
   gapMs?: number;
   /** Fewest events a chapter may contain before it is folded into its neighbour. */
   minEvents?: number;
@@ -26,17 +41,34 @@ export interface ChapterOptions {
   maxChapters?: number;
 }
 
+/** What chapters need to know about the files the events came from. */
+export interface ChapterKnowledge {
+  assets?: readonly MediaAsset[];
+  materials?: readonly Pick<MaterialProfile, 'asset_id' | 'kind'>[];
+}
+
 const DEFAULTS: Required<ChapterOptions> = {
-  gapMs: 120_000,
+  gapMs: 30 * 60_000,
   minEvents: 2,
   maxChapters: 12,
 };
 
+interface Settings extends Required<ChapterOptions> {
+  assets: ReadonlyMap<string, MediaAsset>;
+  kinds: ReadonlyMap<string, string>;
+}
+
 export function buildChapters(
   events: readonly SemanticEvent[],
   options: ChapterOptions = {},
+  knowledge: ChapterKnowledge = {},
 ): { chapters: Chapter[]; assignments: Map<string, string> } {
-  const settings = { ...DEFAULTS, ...options };
+  const settings: Settings = {
+    ...DEFAULTS,
+    ...options,
+    assets: new Map((knowledge.assets ?? []).map((asset) => [asset.id, asset])),
+    kinds: new Map((knowledge.materials ?? []).map((profile) => [profile.asset_id, profile.kind])),
+  };
   const ordered = [...events].sort((a, b) => a.start_ms - b.start_ms);
   if (ordered.length === 0) return { chapters: [], assignments: new Map() };
 
@@ -54,7 +86,7 @@ export function buildChapters(
   if (current.length > 0) groups.push(current);
 
   groups = foldSmallGroups(groups, settings.minEvents);
-  groups = limitGroups(groups, settings.maxChapters);
+  groups = limitGroups(groups, settings);
 
   const assignments = new Map<string, string>();
   const chapters = groups.map((group, index) => {
@@ -86,14 +118,28 @@ export function buildChapters(
 function startsNewChapter(
   previous: SemanticEvent,
   event: SemanticEvent,
-  settings: Required<ChapterOptions>,
+  settings: Settings,
 ): boolean {
-  // A different recording is almost always a different moment of the day.
+  // A title card is the programme saying where its next part begins.
+  if (isTitleCard(event)) return true;
+
   const previousAsset = previous.source_ranges[0]?.asset_id;
   const eventAsset = event.source_ranges[0]?.asset_id;
-  if (previousAsset !== eventAsset) return true;
-
-  if (event.start_ms - previous.end_ms >= settings.gapMs) return true;
+  if (previousAsset !== eventAsset) {
+    // Where both files say when they were shot, the time between them decides,
+    // and a new file alone does not: every clip in a folder is a new file, and
+    // making each one a chapter made one-event groups that the fold below then
+    // collapsed into a single chapter for the whole folder.
+    const gap = captureGapMs(previousAsset, eventAsset, settings);
+    if (gap !== undefined) {
+      if (gap >= settings.gapMs) return true;
+    } else if (!(isShortPiece(previousAsset, settings) && isShortPiece(eventAsset, settings))) {
+      // With no times, a different recording is almost always a different
+      // moment of the day — except between clips and stills, which are pieces
+      // of one outing that the rules below can still divide.
+      return true;
+    }
+  }
 
   const previousPlaces = new Set(previous.entities.value.places);
   const places = event.entities.value.places;
@@ -106,17 +152,67 @@ function startsNewChapter(
   return shared < 0.1 && previous.event_type.value !== event.event_type.value;
 }
 
-/** A chapter of one event is a heading, not a chapter. */
+function isTitleCard(event: SemanticEvent | undefined): boolean {
+  return event?.segmentation.method === 'title_card';
+}
+
+function isShortPiece(assetId: string | undefined, settings: Settings): boolean {
+  const kind = assetId === undefined ? undefined : settings.kinds.get(assetId);
+  return kind === 'clip' || kind === 'still';
+}
+
+/**
+ * Real time between the end of one file and the start of the next, when both
+ * files say when they were shot. A photograph ends when it starts.
+ */
+function captureGapMs(
+  fromId: string | undefined,
+  toId: string | undefined,
+  settings: Settings,
+): number | undefined {
+  const from = fromId === undefined ? undefined : settings.assets.get(fromId);
+  const to = toId === undefined ? undefined : settings.assets.get(toId);
+  if (!from?.creation_time || !to?.creation_time) return undefined;
+  const fromStart = Date.parse(from.creation_time);
+  const toStart = Date.parse(to.creation_time);
+  if (!Number.isFinite(fromStart) || !Number.isFinite(toStart)) return undefined;
+  return toStart - (fromStart + from.duration_ms);
+}
+
+/** How far apart two neighbouring events are, in real time where it is known. */
+function gapBetween(previous: SemanticEvent, next: SemanticEvent, settings: Settings): number {
+  const previousAsset = previous.source_ranges[0]?.asset_id;
+  const nextAsset = next.source_ranges[0]?.asset_id;
+  if (previousAsset !== nextAsset) {
+    const real = captureGapMs(previousAsset, nextAsset, settings);
+    if (real !== undefined) return real;
+  }
+  return next.start_ms - previous.end_ms;
+}
+
+/**
+ * A chapter of one event is a heading, not a chapter.
+ *
+ * It joins the chapter before it — unless it opens on a title card, which heads
+ * what follows: folded backwards, a card became the last event of the chapter
+ * before and gave that chapter its name. A section the programme itself marked
+ * stays a chapter however short, and a card that is nothing but a card — its
+ * content split off by the user — takes the group after it.
+ */
 function foldSmallGroups(groups: SemanticEvent[][], minEvents: number): SemanticEvent[][] {
   if (groups.length <= 1) return groups;
   const folded: SemanticEvent[][] = [];
   for (const group of groups) {
     const previous = folded.at(-1);
-    if (group.length < minEvents && previous) previous.push(...group);
+    if (previous && isLoneCard(previous)) {
+      previous.push(...group);
+      continue;
+    }
+    if (group.length < minEvents && previous && !isTitleCard(group[0])) previous.push(...group);
     else folded.push([...group]);
   }
   // A short first group has no predecessor to join, so it joins what follows.
-  if (folded.length > 1 && folded[0]!.length < minEvents) {
+  if (folded.length > 1 && folded[0]!.length < minEvents && !isTitleCard(folded[0]![0])) {
     const [first, ...rest] = folded;
     rest[0]!.unshift(...first!);
     return rest;
@@ -124,18 +220,40 @@ function foldSmallGroups(groups: SemanticEvent[][], minEvents: number): Semantic
   return folded;
 }
 
-/** Merges at the weakest remaining boundary until the cap is met. */
-function limitGroups(groups: SemanticEvent[][], maxChapters: number): SemanticEvent[][] {
+/** A group that is one title card and nothing it introduces. */
+function isLoneCard(group: readonly SemanticEvent[]): boolean {
+  const only = group.length === 1 ? group[0] : undefined;
+  return isTitleCard(only) && only!.end_ms - only!.start_ms <= TITLE_CARD_MAX_MS;
+}
+
+/**
+ * Merges at the weakest remaining boundary until the cap is met.
+ *
+ * Weakest is the shortest gap, in real time where it is known. Inside one
+ * recording every gap is zero, and the first of them used to win every time, so
+ * one long recording with twenty changes of subject came out as chapters of
+ * [18, 2, 2, ...]: the first chapter swallowed the rest one by one. Of equal
+ * gaps the pair with the fewest events is joined, which keeps chapters even. A
+ * boundary at a title card is joined only when nothing else is left to join.
+ */
+function limitGroups(groups: SemanticEvent[][], settings: Settings): SemanticEvent[][] {
   let result = groups;
-  while (result.length > maxChapters) {
-    let weakest = 0;
-    let weakestGap = Infinity;
-    for (let i = 1; i < result.length; i++) {
-      const gap = result[i]![0]!.start_ms - result[i - 1]!.at(-1)!.end_ms;
-      if (gap < weakestGap) {
-        weakestGap = gap;
-        weakest = i;
+  while (result.length > settings.maxChapters) {
+    let weakest = -1;
+    for (const allowCards of [false, true]) {
+      let weakestGap = Infinity;
+      let weakestSize = Infinity;
+      for (let i = 1; i < result.length; i++) {
+        if (!allowCards && isTitleCard(result[i]![0])) continue;
+        const gap = gapBetween(result[i - 1]!.at(-1)!, result[i]![0]!, settings);
+        const size = result[i - 1]!.length + result[i]!.length;
+        if (gap < weakestGap || (gap === weakestGap && size < weakestSize)) {
+          weakestGap = gap;
+          weakestSize = size;
+          weakest = i;
+        }
       }
+      if (weakest > 0) break;
     }
     result = [
       ...result.slice(0, weakest - 1),
@@ -160,15 +278,25 @@ function dominantPlace(group: readonly SemanticEvent[]): string | undefined {
 /**
  * Names a chapter after whatever is most distinctive in it.
  *
- * In order: a place, then text that was on screen, then the thing seen most
- * often across its events, then the dominant event type. The order is a ranking
- * by how much a person would recognise: "USJ" beats "theme_park_gate", which
- * beats "meal", which beats the first line of dialogue.
+ * In order: the title card it opens on, a place, then text that was on screen,
+ * then the thing seen most often across its events, then the dominant event
+ * type. The order is a ranking by how much a person would recognise: the name
+ * the programme gave its own part beats anything inferred, "USJ" beats
+ * "theme_park_gate", which beats "meal", which beats the first line of dialogue.
  */
 function titleFor(group: readonly SemanticEvent[], place: string | undefined): string {
+  // Scene text only — subtitles are kept apart from it — and never a counter
+  // or a timecode burned into the picture, which named a folder of clips
+  // `90010:00:60` and a camera test `00:00:10.008`.
+  const readable = (event: SemanticEvent): string[] =>
+    event.observed.ocr.filter((text) => text.length >= 3 && !isTimecodeLike(text));
+
+  const card = isTitleCard(group[0]) ? readable(group[0]!)[0] : undefined;
+  if (card) return card.slice(0, 40);
+
   if (place) return place;
 
-  const onScreen = group.flatMap((event) => event.observed.ocr).filter((text) => text.length >= 3);
+  const onScreen = group.flatMap(readable);
   if (onScreen.length > 0) return onScreen[0]!.slice(0, 40);
 
   const labels = mostCommon(group.flatMap((event) => event.observed.visual_labels));

@@ -337,16 +337,19 @@
             "type": "string"
           },
           "additionalProperties": {
-            "type": "string",
-            "enum": [
-              "raw",
-              "edited",
-              "clip",
-              "screen_recording",
-              "audio_only",
-              "still"
-            ]
+            "$ref": "#/$defs/MaterialKind"
           }
+        },
+        "MaterialKind": {
+          "type": "string",
+          "enum": [
+            "raw",
+            "edited",
+            "clip",
+            "screen_recording",
+            "audio_only",
+            "still"
+          ]
         },
         "__schema24": {
           "default": [],
@@ -884,17 +887,6 @@
             "provenance"
           ],
           "additionalProperties": false
-        },
-        "MaterialKind": {
-          "type": "string",
-          "enum": [
-            "raw",
-            "edited",
-            "clip",
-            "screen_recording",
-            "audio_only",
-            "still"
-          ]
         },
         "__schema76": {
           "type": "string",
@@ -1528,7 +1520,8 @@
                 "similarity",
                 "user",
                 "asset",
-                "fixed"
+                "fixed",
+                "title_card"
               ]
             },
             "boundary_confidence": {
@@ -5750,16 +5743,19 @@
             "type": "string"
           },
           "additionalProperties": {
-            "type": "string",
-            "enum": [
-              "raw",
-              "edited",
-              "clip",
-              "screen_recording",
-              "audio_only",
-              "still"
-            ]
+            "$ref": "#/$defs/MaterialKind"
           }
+        },
+        "MaterialKind": {
+          "type": "string",
+          "enum": [
+            "raw",
+            "edited",
+            "clip",
+            "screen_recording",
+            "audio_only",
+            "still"
+          ]
         },
         "__schema16": {
           "default": [],
@@ -6663,10 +6659,10 @@
           "$ref": "#/$defs/__schema47"
         },
         {
-          "$ref": "#/$defs/__schema58"
+          "$ref": "#/$defs/__schema59"
         },
         {
-          "$ref": "#/$defs/__schema63"
+          "$ref": "#/$defs/__schema64"
         }
       ],
       "title": "PerceptionRequest",
@@ -7293,23 +7289,26 @@
             "ocr": {
               "$ref": "#/$defs/__schema51"
             },
-            "audio_tags": {
+            "subtitles": {
               "$ref": "#/$defs/__schema52"
             },
-            "visual_labels": {
+            "audio_tags": {
               "$ref": "#/$defs/__schema53"
             },
-            "previous_summary": {
+            "visual_labels": {
               "$ref": "#/$defs/__schema54"
             },
-            "next_summary": {
+            "previous_summary": {
               "$ref": "#/$defs/__schema55"
             },
-            "user_context": {
+            "next_summary": {
               "$ref": "#/$defs/__schema56"
             },
-            "language": {
+            "user_context": {
               "$ref": "#/$defs/__schema57"
+            },
+            "language": {
+              "$ref": "#/$defs/__schema58"
             }
           },
           "required": [
@@ -7342,7 +7341,6 @@
           }
         },
         "__schema52": {
-          "default": [],
           "type": "array",
           "items": {
             "type": "string"
@@ -7356,12 +7354,19 @@
           }
         },
         "__schema54": {
-          "type": "string"
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "__schema55": {
           "type": "string"
         },
         "__schema56": {
+          "type": "string"
+        },
+        "__schema57": {
           "default": {},
           "type": "object",
           "propertyNames": {
@@ -7369,10 +7374,10 @@
           },
           "additionalProperties": {}
         },
-        "__schema57": {
+        "__schema58": {
           "type": "string"
         },
-        "__schema58": {
+        "__schema59": {
           "type": "object",
           "properties": {
             "id": {
@@ -7400,13 +7405,13 @@
           "type": "object",
           "properties": {
             "texts": {
-              "$ref": "#/$defs/__schema59"
+              "$ref": "#/$defs/__schema60"
             },
             "role": {
-              "$ref": "#/$defs/__schema61"
+              "$ref": "#/$defs/__schema62"
             },
             "space": {
-              "$ref": "#/$defs/__schema62"
+              "$ref": "#/$defs/__schema63"
             }
           },
           "required": [
@@ -7414,17 +7419,17 @@
           ],
           "additionalProperties": false
         },
-        "__schema59": {
+        "__schema60": {
           "minItems": 1,
           "type": "array",
           "items": {
-            "$ref": "#/$defs/__schema60"
+            "$ref": "#/$defs/__schema61"
           }
         },
-        "__schema60": {
+        "__schema61": {
           "type": "string"
         },
-        "__schema61": {
+        "__schema62": {
           "default": "passage",
           "type": "string",
           "enum": [
@@ -7432,7 +7437,7 @@
             "passage"
           ]
         },
-        "__schema62": {
+        "__schema63": {
           "default": "text",
           "type": "string",
           "enum": [
@@ -7440,7 +7445,7 @@
             "visual"
           ]
         },
-        "__schema63": {
+        "__schema64": {
           "type": "object",
           "properties": {
             "id": {
@@ -11162,7 +11167,8 @@
                 "similarity",
                 "user",
                 "asset",
-                "fixed"
+                "fixed",
+                "title_card"
               ]
             },
             "boundary_confidence": {

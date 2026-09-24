@@ -210,3 +210,17 @@ export type AssetPlacement = z.infer<typeof AssetPlacement>;
 
 /** Gap inserted between consecutive assets on the capture timeline. */
 export const CAPTURE_TIMELINE_GAP_MS = 1000;
+
+/**
+ * The room a still image takes on the capture timeline, and the length of the
+ * one event it becomes.
+ *
+ * A photograph has no duration of its own — `MediaAsset.duration_ms` stays 0,
+ * because that is what the file is — but an event needs a start and an end, and
+ * with neither every still in a folder was dropped before the first event was
+ * built: four photographs beside one video compiled to one event. Three seconds
+ * is the length a still is commonly held for on screen; it is a slot on a
+ * coordinate system, not a cut, and the planner may hold a still for any length
+ * it likes.
+ */
+export const STILL_SLOT_MS = 3000;
