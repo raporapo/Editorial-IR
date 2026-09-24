@@ -38,8 +38,11 @@ export const SUBTITLE_BAND_TOP = 0.75;
  *
  * One sentence at the bottom of one frame is as likely to be a banner in shot as
  * a subtitle. Subtitles recur — the programme above had one on screen three
- * seconds in every four — and three reads is the fewest that says so while still
- * catching a subtitled clip of fifteen seconds.
+ * seconds in every four — and three reads is the fewest that says so. OCR reads
+ * one frame per shot, so it takes three shots with a sentence in the bottom
+ * band: a subtitled clip of one or two shots keeps its lines as scene text,
+ * which the describer still reads, rather than having a banner taken for a
+ * track.
  */
 export const SUBTITLE_MIN_READS = 3;
 

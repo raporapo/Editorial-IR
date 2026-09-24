@@ -246,8 +246,22 @@ describe('still images beside a video', () => {
 
   it('move no capture time in a project that has none', async () => {
     // Every capture-time annotation a user wrote is measured from these offsets.
-    const { store } = await project(editedProgramme());
+    const video = (durationMs: number): Fixture => ({
+      probe: {
+        duration_ms: durationMs,
+        width: 1280,
+        height: 720,
+        video_codec: 'h264',
+        metadata: {},
+      },
+    });
+    const { store } = await project({
+      ...editedProgramme(),
+      'IMG_0002.mov': video(12_345),
+      'IMG_0003.mov': video(7_000),
+    });
     const assets = store.readAssets();
+    expect(assets).toHaveLength(3);
     const expected: number[] = [];
     let offset = 0;
     for (const asset of [...assets].sort((a, b) => compareText(a.file_name, b.file_name))) {

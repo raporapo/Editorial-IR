@@ -114,18 +114,17 @@ describe('a folder of clips', () => {
     const list = events(
       assets.map((asset) => ({ asset_id: asset.id, description: 'a walk', event_type: 'b_roll' })),
     );
-    const { chapters } = buildChapters(
-      list,
-      {},
-      {
-        assets,
-        materials: assets.map((a) => ({ asset_id: a.id, kind: 'clip' as const })),
-      },
-    );
-    expect(chapters).toHaveLength(1);
-    // The same events with nothing known about the files: each recording is its
-    // own moment of the day, as it always was.
-    expect(buildChapters(list).chapters.length).toBeGreaterThanOrEqual(1);
+    const knowledge = {
+      assets,
+      materials: assets.map((a) => ({ asset_id: a.id, kind: 'clip' as const })),
+    };
+    expect(buildChapters(list, {}, knowledge).chapters).toHaveLength(1);
+    // With one-event chapters allowed, so the fold cannot hide the rule: clips
+    // stay together, while the same events with nothing known about the files
+    // are one recording each, and each recording is its own moment of the day,
+    // as it always was.
+    expect(buildChapters(list, { minEvents: 1 }, knowledge).chapters).toHaveLength(1);
+    expect(buildChapters(list, { minEvents: 1 }).chapters).toHaveLength(4);
   });
 
   it('still starts a chapter between recordings made hours apart', () => {
