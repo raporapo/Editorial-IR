@@ -175,7 +175,8 @@ subtitles, scene text and burned-in counters. They are kept apart:
 - `subtitles` are what was said. A file whose bottom quarter holds sentence-like
   text in at least three separate reads has a subtitle track. Each line appears
   once however OCR spaced it, and it is read the way a transcript is — by the
-  describer, for the event's title and mood, and in search.
+  describer, for the event's title and mood, by the judge, and in search. Skill
+  rules still count it as text on screen, which it also is.
 - `ocr` is what was shown: signs, title cards, slides. Also once per line.
 - Counters and timecodes (`80010:00:00`, `09:09:09.833`, `25`) are dropped. They
   once named a chapter.

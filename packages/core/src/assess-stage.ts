@@ -356,7 +356,11 @@ export function buildEventState(
     duration_ms: event.end_ms - event.start_ms,
     relative_position: Math.min(1, Math.max(0, relativePosition)),
     observed: {
-      speech: event.observed.speech.map((s) => s.text),
+      // Subtitles are what was said, read off the picture. They used to reach
+      // the judge as on-screen text; kept apart from it, they reached it as
+      // nothing at all, and a subtitled montage with a music bed was judged a
+      // stretch in which nobody said or showed anything — the rules' filler.
+      speech: [...event.observed.speech.map((s) => s.text), ...(event.observed.subtitles ?? [])],
       visual_labels: event.observed.visual_labels,
       ocr: event.observed.ocr,
       audio: [...new Set(event.observed.audio.map((a) => a.type))],

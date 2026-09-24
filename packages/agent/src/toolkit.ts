@@ -178,6 +178,8 @@ export class AgentToolkit {
     const detailed: Record<string, unknown> = {
       ...summary,
       speech: event.observed.speech.map((s) => s.text),
+      // Only when there are some, so an event without them reads as it did.
+      ...(event.observed.subtitles?.length ? { subtitles: event.observed.subtitles } : {}),
       on_screen_text: event.observed.ocr,
       seen: event.observed.visual_labels,
       sound: [...new Set(event.observed.audio.map((a) => a.type))],

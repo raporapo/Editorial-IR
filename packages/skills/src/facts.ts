@@ -47,7 +47,7 @@ export interface EventFacts {
   chapter_position: 'first' | 'middle' | 'last';
   project_position: 'first' | 'middle' | 'last';
 
-  /** Description, speech and on-screen text, for `mentions`. */
+  /** Description, speech, subtitles and on-screen text, for `mentions`. */
   text: string;
   people: string[];
   places: string[];
@@ -94,7 +94,11 @@ export function deriveFacts(ir: EditorialIR): Map<string, EventFacts> {
       has_speech: event.observed.speech.length > 0,
       has_music: event.observed.audio.some((a) => a.type === 'music'),
       has_laughter: event.observed.audio.some((a) => a.type === 'laughter'),
-      has_text_on_screen: event.observed.ocr.length > 0,
+      // Subtitles are text on the screen as much as a sign is, and counted as
+      // such before they were told apart from it; without them, tech-youtube's
+      // drop-silence rule dropped a subtitled demonstration as dead air.
+      has_text_on_screen:
+        event.observed.ocr.length > 0 || (event.observed.subtitles?.length ?? 0) > 0,
 
       is_user_essential: event.knowledge.essential,
       is_user_excluded: event.knowledge.excluded,
@@ -145,6 +149,7 @@ function searchText(event: SemanticEvent): string {
       event.description.value,
       event.title?.value ?? '',
       ...event.observed.speech.map((s) => s.text),
+      ...(event.observed.subtitles ?? []),
       ...event.observed.ocr,
       ...event.entities.value.topics,
     ].join(' '),

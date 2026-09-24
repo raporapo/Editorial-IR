@@ -33,7 +33,12 @@ export function aspectText(
       ].join(' ');
 
     case 'speech':
-      return event.observed.speech.map((s) => s.text).join(' ');
+      // Burned-in subtitles are what was said, on a video whose words exist only
+      // as text: "where they say the rain started" has to find them.
+      return [
+        ...event.observed.speech.map((s) => s.text),
+        ...(event.observed.subtitles ?? []),
+      ].join(' ');
 
     case 'event':
       return [event.title?.value ?? '', event.description.value, event.event_type.value].join(' ');
