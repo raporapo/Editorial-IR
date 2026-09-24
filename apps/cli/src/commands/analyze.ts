@@ -1,5 +1,11 @@
 import { compileProject } from '@editorial-ir/core';
-import { describeStandIn, formatTimecode } from '@editorial-ir/contracts';
+import {
+  describeStandIn,
+  formatTimecode,
+  type MaterialKind,
+  type MaterialProfile,
+  type MediaAsset,
+} from '@editorial-ir/contracts';
 import { resolveBackends } from '../backends.js';
 import { openProject } from '../project.js';
 import { Progress, colour, detail, formatCost, heading, note, success, warn } from '../ui.js';
@@ -145,28 +151,10 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
     }
 
     // What each file was taken to be, because it decides how the file was cut
-    // into events and a wrong guess is the user's to correct. Raw footage is
-    // the ordinary case and is only counted; anything else is named, with the
-    // reason, so a wrong call can be seen and overruled.
+    // into events and a wrong guess is the user's to correct.
     if (ir.materials.length > 0) {
       heading('material');
-      const raw = ir.materials.filter((m) => m.kind === 'raw' && m.provenance === 'inferred');
-      const named = ir.materials.filter((m) => !raw.includes(m));
-      if (raw.length > 0) note(`  ${raw.length} camera recording(s)`);
-      for (const profile of named.slice(0, MATERIALS_LISTED)) {
-        const asset = ir.assets.find((a) => a.id === profile.asset_id);
-        const why =
-          profile.provenance === 'user_provided' ? 'as you said' : (profile.evidence[0] ?? '');
-        note(`  ${asset?.file_name ?? profile.asset_id}: ${KIND_WORDS[profile.kind]} (${why})`);
-      }
-      if (named.length > MATERIALS_LISTED) {
-        note(
-          `  and ${named.length - MATERIALS_LISTED} more, listed under materials in .oea/ir.json`,
-        );
-      }
-      if (named.some((m) => m.provenance === 'inferred')) {
-        note('  wrong? set it in context.yaml: background.materials: { "<file name>": raw }');
-      }
+      for (const line of materialLines(ir.materials, ir.assets)) note(`  ${line}`);
     }
 
     heading('privacy');
@@ -230,10 +218,10 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
   }
 }
 
-/** How many non-raw files are named one by one before the rest are counted. */
+/** How many guessed kinds are named one by one before the rest are counted. */
 const MATERIALS_LISTED = 8;
 
-const KIND_WORDS: Record<string, string> = {
+const KIND_WORDS: Record<MaterialKind, string> = {
   raw: 'a camera recording',
   edited: 'already edited',
   clip: 'a clip, kept whole',
@@ -241,6 +229,50 @@ const KIND_WORDS: Record<string, string> = {
   audio_only: 'sound only',
   still: 'a still image',
 };
+
+/**
+ * The material section of `oea analyze`: the guesses by name, the rest counted.
+ *
+ * Raw footage is the ordinary case, and a still or a sound file is what the file
+ * itself says rather than a guess, so those are counted. Everything else — an
+ * edit, a clip, a screen recording, and whatever the user set — is named with
+ * its reason, so a wrong call can be seen and overruled. Naming the stills as
+ * well buried exactly that call: photographs sort before `final_v3.mp4`, and in
+ * a folder of forty of them the one file taken for an edit was "and 33 more".
+ */
+export function materialLines(
+  materials: readonly MaterialProfile[],
+  assets: readonly MediaAsset[],
+): string[] {
+  const counted = (kind: MaterialKind): MaterialProfile[] =>
+    materials.filter((m) => m.kind === kind && m.provenance === 'inferred');
+  const raw = counted('raw');
+  const stills = counted('still');
+  const sound = counted('audio_only');
+  const named = materials.filter(
+    (m) => !raw.includes(m) && !stills.includes(m) && !sound.includes(m),
+  );
+
+  const lines: string[] = [];
+  if (raw.length > 0) lines.push(`${raw.length} camera recording(s)`);
+  if (stills.length > 0) lines.push(`${stills.length} still image(s)`);
+  if (sound.length > 0) lines.push(`${sound.length} sound-only file(s)`);
+  for (const profile of named.slice(0, MATERIALS_LISTED)) {
+    const asset = assets.find((a) => a.id === profile.asset_id);
+    const why =
+      profile.provenance === 'user_provided' ? 'as you said' : (profile.evidence[0] ?? '');
+    lines.push(`${asset?.file_name ?? profile.asset_id}: ${KIND_WORDS[profile.kind]} (${why})`);
+  }
+  if (named.length > MATERIALS_LISTED) {
+    lines.push(
+      `and ${named.length - MATERIALS_LISTED} more, listed under materials in .oea/ir.json`,
+    );
+  }
+  if (named.some((m) => m.provenance === 'inferred')) {
+    lines.push('wrong? set it in context.yaml: background.materials: { "<file name>": raw }');
+  }
+  return lines;
+}
 
 function observationsShotCount(
   observations: { shots: readonly { asset_id: string }[] },
