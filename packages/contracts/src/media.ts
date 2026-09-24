@@ -7,7 +7,15 @@ export type MediaKind = z.infer<typeof MediaKind>;
 
 /** One audio stream inside a file, as the container reports it. */
 export const AudioStream = obj({
-  /** The container's stream index, as ffmpeg's `-map 0:<index>` means it. */
+  /**
+   * Position among the file's *audio* streams, from 0: what ffmpeg's
+   * `-map 0:a:<index>` means, and what an editor calls audio track 1, 2, 3.
+   *
+   * Not the container's own stream number. That one counts the picture, cover
+   * art and timecode tracks as well, so the lavalier on a camera's second audio
+   * track is stream 2 in one file and stream 3 in the next, and "the second audio
+   * stream" is the only address that survives.
+   */
   index: z.int().min(0),
   codec: z.string().optional(),
   channels: z.int().min(0).optional(),
@@ -49,24 +57,32 @@ export const MediaAsset = obj({
   /** Display rotation in degrees from container metadata (0/90/180/270). */
   rotation: z.int().optional(),
   /**
-   * Every audio stream, when there is more than one.
+   * Every audio stream, in container order, as the probe listed them.
    *
-   * Absent for the ordinary single-stream file. Present, the question of which
-   * one to listen to is real: a camera with a lavalier on its second track holds
-   * room tone on its first, and analysing stream 0 regardless transcribed the
-   * room.
+   * Empty for a file with no sound at all — a drone clip, a timelapse, a muted
+   * export — and that is the point of keeping it: "no audio" and "not probed"
+   * are different, and only one of them is worth going back for. Absent on an
+   * asset registered before streams were listed, where the first-stream fields
+   * above are all there is.
+   *
+   * With more than one, which to listen to is a real question: a camera with a
+   * lavalier on its second track holds room tone on its first, and analysing
+   * whatever ffmpeg picked by default transcribed the room. Measured on such a
+   * file: five spoken sentences, no utterances.
    */
   audio_streams: z.array(AudioStream).optional(),
   /**
    * The frame rate varies across the file, as phone footage routinely does.
    *
-   * An NLE conforms such a file to a constant rate on import and a timecode
-   * computed from the nominal rate drifts against it — by the end of a long clip,
-   * by more than a frame. Recorded so the proxy can be made constant-rate and so
-   * the export can warn rather than silently drift.
+   * `fps` is then the *nominal* rate — the one the camera was set to and an NLE
+   * conforms the file to — and not the measured average. The average of a phone
+   * clip that dropped frames in low light was 22.75 fps for a 30 fps recording,
+   * and taking it as the rate made the whole sequence 22.75 fps (Premiere: 23
+   * NTSC). Recorded so the proxy can be made constant-rate and so the export can
+   * warn rather than silently drift.
    */
   variable_frame_rate: z.boolean().optional(),
-  /** The measured average rate, when it differs from the nominal `fps`. */
+  /** The measured average rate, when the rate varies. */
   avg_fps: z.number().min(0).optional(),
   /** Capture time from container metadata, used to lay assets on the capture timeline. */
   creation_time: Iso8601.optional(),
@@ -74,6 +90,26 @@ export const MediaAsset = obj({
   metadata: z.record(z.string(), z.unknown()).default({}),
 }).meta({ id: 'MediaAsset', title: 'MediaAsset' });
 export type MediaAsset = z.infer<typeof MediaAsset>;
+
+/**
+ * Whether there is any sound in the file to analyse.
+ *
+ * Asked of the stream list when there is one, and of the first-stream fields
+ * for an asset registered before streams were listed. A still never has any.
+ *
+ * Every stage that reads audio asks this first, because a video with no audio
+ * track used to go through all of them: extraction failed and took the frames
+ * down with it, the loudness analyser was handed the .mp4 as a WAV, and the
+ * transcriber crashed — three failures for an ordinary drone clip, and a stored
+ * analysis that could never be reused because it had failures in it.
+ */
+export function hasAudioStream(
+  asset: Pick<MediaAsset, 'kind' | 'audio_streams' | 'audio_codec' | 'audio_channels'>,
+): boolean {
+  if (asset.kind === 'image') return false;
+  if (asset.audio_streams !== undefined) return asset.audio_streams.length > 0;
+  return asset.audio_codec !== undefined || (asset.audio_channels ?? 0) > 0;
+}
 
 /**
  * What kind of material a file is, because the same rules do not suit all of it.
@@ -124,7 +160,13 @@ export const DerivedMedia = obj({
   proxy_path: z.string().optional(),
   /** Mono 16 kHz WAV used by ASR and audio analysis. */
   audio_path: z.string().optional(),
-  /** Directory of sampled JPEG frames, named `<timestamp_ms>.jpg`. */
+  /**
+   * Directory of JPEG frames sampled at a fixed rate, named by 1-based *index*:
+   * `00000001.jpg` is 0 ms. This said `<timestamp_ms>.jpg`, which is the naming
+   * of a different set of files — the moments a model was asked about — and the
+   * two schemes sharing one directory is how a frame at 1000 ms came to be read
+   * from the file holding 999 s.
+   */
   frames_dir: z.string().optional(),
   thumbnail_path: z.string().optional(),
 }).meta({ id: 'DerivedMedia' });

@@ -79,11 +79,13 @@ def read_frames(
 
 
 def _read(engine, path: str, timestamps_ms: list[int], work: Path, progress) -> dict[str, Any]:
-    from ..media import extract_frame, image_size  # noqa: PLC0415
+    from ..media import extract_frame, image_size, moment_frame_name  # noqa: PLC0415
 
     observations: list[dict[str, Any]] = []
     for index, timestamp in enumerate(timestamps_ms):
-        frame_path = work / f"{timestamp:08d}.jpg"
+        # Named by the moment, never by prepare's index scheme; see
+        # `moment_frame_name` for the frame that was read from the wrong second.
+        frame_path = work / moment_frame_name(timestamp)
         if not frame_path.exists():
             try:
                 extract_frame(path, timestamp, str(frame_path))

@@ -13,15 +13,37 @@ export * from './wav.js';
 export * from './scheduler.js';
 export * from './suite.js';
 export * from './fixture.js';
-export { FfprobeMediaProbe, toProbeResult, parseRational } from './ffmpeg/probe.js';
+export {
+  FfprobeMediaProbe,
+  toProbeResult,
+  parseRational,
+  pictureStream,
+  isStillFormat,
+  frameRates,
+  PROBE_VERSION,
+  MAX_NOMINAL_FPS,
+  VFR_TOLERANCE,
+  type FfprobeOutput,
+  type FfprobeStream,
+} from './ffmpeg/probe.js';
 export {
   FfmpegMediaPreparer,
   AUDIO_SAMPLE_RATE,
+  PROXY_MAX_FPS,
   proxyArgs,
   audioArgs,
   frameArgs,
   frameTimestampMs,
   frameFileName,
+  frameTimestampsIn,
+  framesDirName,
+  proxyFileName,
+  proxyFrameRate,
+  audioFileName,
+  measureSpeech,
+  speechOf,
+  chooseAudioStream,
+  type StreamSpeech,
 } from './ffmpeg/prepare.js';
 export {
   FfmpegShotDetector,

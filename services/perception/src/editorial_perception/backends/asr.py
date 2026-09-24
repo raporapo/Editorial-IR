@@ -73,6 +73,12 @@ def transcribe(
             vad_filter=True,
         )
     except Exception as error:  # noqa: BLE001
+        # A file with no audio stream has nothing to say, which is an empty
+        # transcript and not a model failure. The decoder asks for audio stream
+        # 0 and gets "tuple index out of range", which is what an ordinary drone
+        # clip reported as a transcription error.
+        if _has_no_audio(audio_path):
+            return {"language": language, "model": _model_name(model), "utterances": []}
         raise ModelError(f"transcription failed: {error}") from error
 
     duration = getattr(info, "duration", 0) or 0
@@ -115,9 +121,23 @@ def transcribe(
 
     return {
         "language": getattr(info, "language", None) or language,
-        "model": getattr(model, "model_size_or_path", None) or "faster-whisper",
+        "model": _model_name(model),
         "utterances": utterances,
     }
+
+
+def _model_name(model: Any) -> str:
+    return getattr(model, "model_size_or_path", None) or "faster-whisper"
+
+
+def _has_no_audio(path: str) -> bool:
+    """Whether the file holds no audio stream at all. Asked only after a failure."""
+    from ..media import probe  # noqa: PLC0415
+
+    try:
+        return not probe(path).get("audio_streams")
+    except Exception:  # noqa: BLE001 - an unreadable file is the original failure's business
+        return False
 
 
 #: A pause between two words longer than this ends an utterance, whatever the
