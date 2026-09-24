@@ -130,6 +130,34 @@ describe('inactiveSpans', () => {
     expect(spans.length).toBe(2);
   });
 
+  it('trusts the words over an utterance that spans a silence', () => {
+    // One utterance from 8.4 s to 91 s, but its words pause from 10.1 s to 90 s.
+    const spans = inactiveSpans(
+      observations({
+        video_events: [staticEvent(0, 60_000)],
+        audio_events: [silence(0, 60_000)],
+        utterances: [
+          {
+            id: 'utt_1',
+            asset_id: 'asset_001',
+            start_ms: 8_400,
+            end_ms: 91_000,
+            text: 'Let me leave it running for a while. Okay, I am back.',
+            confidence: 0.8,
+            words: [
+              { start_ms: 8_400, end_ms: 10_100, text: 'while.' },
+              { start_ms: 89_960, end_ms: 91_000, text: 'back.' },
+            ],
+          },
+        ],
+        motion_profiles: [motion],
+        audio_profiles: [audioProfile],
+      }),
+      [asset],
+    );
+    expect(spans.some((s) => s.start_ms <= 11_000 && s.end_ms >= 59_000)).toBe(true);
+  });
+
   it('treats a picture nobody analysed as unknown, and unknown as active', () => {
     const spans = inactiveSpans(
       observations({ audio_events: [silence(0, 60_000)], audio_profiles: [audioProfile] }),

@@ -463,14 +463,19 @@ export async function buildSemanticEvents(
  * event id is excluded for the same reason: segmentation renumbers events, and
  * a description of unchanged material should survive that.
  */
-function describeKey(
+export function describeKey(
   model: ContextModel,
   params: Parameters<ContextModel['describe']>[0],
 ): Parameters<PerceptionCache['get']>[0] {
   const { frame_paths, event_id: _event_id, ...stable } = params;
   return {
     operation: 'describe',
-    mediaSha256: hashObject(stable),
+    // Which frames, by where they sit under the project rather than the whole
+    // path. Leaving them out entirely made two events with the same words share
+    // one answer whatever their pictures showed: measured, an active stretch
+    // was handed the description of the frozen minute before it, because
+    // neither had speech and "with frames" was all the key said about them.
+    mediaSha256: hashObject({ ...stable, frames: frame_paths.map(frameIdentity) }),
     backend: model.identity.backend,
     ...(model.identity.model === undefined ? {} : { model: model.identity.model }),
     ...(model.identity.modelVersion === undefined
@@ -479,6 +484,15 @@ function describeKey(
     parameters: { with_frames: frame_paths.length > 0 },
     pipelineVersion: PIPELINE_VERSION,
   };
+}
+
+/**
+ * A frame file by what identifies its content: the media's work directory,
+ * which is named for its hash, and the file within it. Stable when the project
+ * moves, different for every frame of every file.
+ */
+function frameIdentity(path: string): string {
+  return path.split(/[\\/]/).slice(-3).join('/');
 }
 
 /** The description, and whether it cost anything to get. */

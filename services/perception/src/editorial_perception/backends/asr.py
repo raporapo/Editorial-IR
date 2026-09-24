@@ -82,6 +82,12 @@ def transcribe(
         text = (segment.text or "").strip()
         if not text:
             continue
+        pieces = _split_on_pauses(segment)
+        if pieces is not None:
+            utterances.extend(pieces)
+            if progress and duration:
+                progress(min(1.0, segment.end / duration), text[:40])
+            continue
         entry: dict[str, Any] = {
             "start_ms": round(segment.start * 1000),
             "end_ms": round(segment.end * 1000),
@@ -112,6 +118,71 @@ def transcribe(
         "model": getattr(model, "model_size_or_path", None) or "faster-whisper",
         "utterances": utterances,
     }
+
+
+#: A pause between two words longer than this ends an utterance, whatever the
+#: segment says.
+#:
+#: With the voice-activity filter on, faster-whisper cuts the silence out before
+#: decoding and can hand back one segment spanning it. Measured: "Let me leave it
+#: running for a while. Okay, I am back." came back as one segment from 8.4 s to
+#: 91.0 s, around eighty seconds of digital silence — while its own word timings
+#: put "while." ending at 10.1 s and "Okay," starting at 90.0 s. The event over
+#: that frozen, silent minute then had a speech ratio of 1.0, and nine seconds of
+#: it went into the cut. Two seconds is longer than any pause inside a sentence
+#: and far shorter than the gaps the filter removes.
+SPLIT_PAUSE_S = 2.0
+
+
+def _split_on_pauses(segment: Any) -> list[dict[str, Any]] | None:
+    """The segment as several utterances, when its words say it was several.
+
+    None when it needs no splitting, so the ordinary path — and its handling of
+    words with no timing — is left exactly as it was.
+    """
+    words = list(getattr(segment, "words", None) or [])
+    timed = [w for w in words if w.start is not None and w.end is not None]
+    if len(timed) < 2:
+        return None
+    if not any(b.start - a.end > SPLIT_PAUSE_S for a, b in zip(timed, timed[1:], strict=False)):
+        return None
+
+    groups: list[list[Any]] = [[]]
+    last_end: float | None = None
+    for w in words:
+        if w.start is not None and last_end is not None and w.start - last_end > SPLIT_PAUSE_S:
+            groups.append([])
+        groups[-1].append(w)
+        if w.end is not None:
+            last_end = w.end
+
+    confidence = _confidence(getattr(segment, "avg_logprob", None))
+    pieces: list[dict[str, Any]] = []
+    for group in groups:
+        timed_group = [w for w in group if w.start is not None and w.end is not None]
+        # Words keep their own spacing: English words arrive with a leading
+        # space and Japanese ones with none, so joining as given is right for both.
+        text = "".join(w.word for w in group).strip()
+        if not timed_group or not text:
+            continue
+        pieces.append(
+            {
+                "start_ms": round(timed_group[0].start * 1000),
+                "end_ms": round(timed_group[-1].end * 1000),
+                "text": text,
+                "confidence": confidence,
+                "words": [
+                    {
+                        "start_ms": round(w.start * 1000),
+                        "end_ms": round(w.end * 1000),
+                        "text": w.word.strip(),
+                        "confidence": float(getattr(w, "probability", 0.5) or 0.5),
+                    }
+                    for w in timed_group
+                ],
+            }
+        )
+    return pieces
 
 
 def _confidence(avg_logprob: float | None) -> float:

@@ -130,6 +130,9 @@ export const ABSOLUTE_SILENCE_DB = -60;
  */
 export const QUIET_ENOUGH_DB = -45;
 
+/** Kept as speech either side of a timed word: breath, and timing error. */
+const WORD_PADDING_MS = 250;
+
 /** Shortest run below a level that counts, matching the silence detector. */
 const MIN_FLOOR_RUN_MS = 300;
 
@@ -231,9 +234,21 @@ function inactiveCandidatesFor(observations: ObservationTimeline, asset: MediaAs
 
   // Words the transcriber heard override a silence the level meter reported: a
   // whisper under a loud fan is speech, and the transcript is the better witness.
+  //
+  // The words, not the utterance, where there are word timings. A transcriber
+  // with voice-activity filtering can return one utterance spanning the silence
+  // it removed — measured, 8.4 s to 91.0 s around eighty seconds of digital
+  // silence, while its own words put the pause between 10.1 s and 90.0 s.
   const spoken = observations.utterances
     .filter((u) => u.asset_id === asset.id)
-    .map((u) => ({ start: u.start_ms, end: u.end_ms }));
+    .flatMap((u) =>
+      u.words && u.words.length > 0
+        ? u.words.map((w) => ({
+            start: w.start_ms - WORD_PADDING_MS,
+            end: w.end_ms + WORD_PADDING_MS,
+          }))
+        : [{ start: u.start_ms, end: u.end_ms }],
+    );
 
   return merge(subtract(intersect(visuallyQuiet, silent), spoken));
 }
