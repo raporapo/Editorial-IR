@@ -15,3 +15,4 @@ export * from './validator.js';
 export * from './toolkit.js';
 export * from './reviewer.js';
 export * from './llm-agent.js';
+export * from './captions.js';
