@@ -169,7 +169,10 @@ def prepare(
         result["proxy_path"] = str(proxy)
 
     if extract_audio:
-        audio = work / "audio.wav"
+        # Named for how it was made. Existing work directories hold an audio.wav
+        # extracted without the timestamp repair below, and this function reuses
+        # whatever it finds.
+        audio = work / "audio-synced.wav"
         if not audio.exists():
             _run(
                 [
@@ -185,6 +188,12 @@ def prepare(
                     "1",
                     "-ar",
                     str(AUDIO_SAMPLE_RATE),
+                    # Keep the audio on the file's clock: a track with gaps in
+                    # its timestamps was concatenated, so everything after the
+                    # first gap came out early — measured, up to 12 s on a 60 s
+                    # capture. Fill gaps with silence and pad a late start.
+                    "-af",
+                    "aresample=async=1:first_pts=0",
                     "-c:a",
                     "pcm_s16le",
                     str(audio),

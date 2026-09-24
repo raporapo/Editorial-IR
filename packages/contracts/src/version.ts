@@ -12,7 +12,10 @@
  */
 export const IR_VERSION = '0.2.0';
 export const EDIT_PLAN_VERSION = '0.1.0';
-export const PIPELINE_VERSION = '0.1.0';
+// 0.1.1: audio is extracted on the file's own clock (gaps filled, a late start
+// padded). Transcripts and silences cached from the old extraction were wrong on
+// any file with timestamp gaps, and nothing in their keys would have changed.
+export const PIPELINE_VERSION = '0.1.1';
 export const SKILL_MANIFEST_VERSION = '0.1.0';
 export const PERCEPTION_PROTOCOL_VERSION = '0.1.0';
 

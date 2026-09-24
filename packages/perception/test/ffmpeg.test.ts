@@ -190,3 +190,12 @@ describe('sceneArgs', () => {
     expect(FFMPEG_SCENE_SCALE).toBeCloseTo(1 / 3, 12);
   });
 });
+
+describe('audioArgs', () => {
+  it('keeps the audio on the file’s clock', () => {
+    // Without this a track with timestamp gaps is concatenated and everything
+    // after the first gap comes out early — measured, by up to 12 s.
+    const args = audioArgs('in.mp4', 'out.wav');
+    expect(args[args.indexOf('-af') + 1]).toBe('aresample=async=1:first_pts=0');
+  });
+});

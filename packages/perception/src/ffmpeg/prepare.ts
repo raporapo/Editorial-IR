@@ -122,6 +122,16 @@ export function audioArgs(input: string, output: string): string[] {
     '1',
     '-ar',
     String(AUDIO_SAMPLE_RATE),
+    // Keep the audio on the file's clock. A track with gaps in its timestamps —
+    // a screen recorder that dropped audio packets, a phone that paused its
+    // encoder — was concatenated, so everything after the first gap came out
+    // early: measured on a 60 s capture with six 2 s gaps, a 48 s WAV and speech
+    // found up to 12 s before it was said. Every transcript time, every silence
+    // and every cut point derived from it was wrong by that much, silently.
+    // `async=1` fills a gap with silence instead; `first_pts=0` pads a track
+    // that starts late, so 0 in the WAV is 0 in the video.
+    '-af',
+    'aresample=async=1:first_pts=0',
     '-c:a',
     'pcm_s16le',
     output,
