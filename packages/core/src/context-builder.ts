@@ -23,6 +23,7 @@ import { linkKnownEntities, withKnownEntities } from './entities.js';
 import type { PerceptionCache } from './cache.js';
 import { hashObject } from './fingerprint.js';
 import { inactiveMsWithin, isQuietRange, thinTimestamps, type InactiveSpan } from './activity.js';
+import { distinctLines, textRoles, type TextRole } from './onscreen-text.js';
 
 /**
  * Turning segments into events that mean something.
@@ -153,6 +154,9 @@ export async function buildSemanticEvents(
   });
 
   // ---- observations --------------------------------------------------------
+  // Which text is a subtitle is a property of the whole file, so it is decided
+  // once rather than once per event.
+  const roles = textRoles(options.observations.ocr);
   const skeletons = ordered.map((draft, index) => {
     const offset = placementOf.get(draft.asset_id) ?? 0;
     return {
@@ -160,7 +164,7 @@ export async function buildSemanticEvents(
       id: seqId('evt', index + 1),
       startMs: offset + draft.start_ms,
       endMs: offset + draft.end_ms,
-      observed: gatherObservations(draft, options.observations, options.inactive),
+      observed: gatherObservations(draft, options.observations, options.inactive, roles),
     };
   });
 
@@ -391,7 +395,11 @@ export async function buildSemanticEvents(
           },
           linkKnownEntities(
             {
-              speech: skeleton.observed.speech.map((utterance) => utterance.text),
+              // A subtitle is what was said, so a name in one is a mention.
+              speech: [
+                ...skeleton.observed.speech.map((utterance) => utterance.text),
+                ...(skeleton.observed.subtitles ?? []),
+              ],
               ocr: skeleton.observed.ocr,
               visual_labels: skeleton.observed.visual_labels,
               ...(described?.description ? { description: described.description } : {}),
@@ -522,7 +530,8 @@ export function escalationValue(
   observed: EventObservations,
 ): number {
   const uncertainty = 1 - confidence;
-  const speech = observed.speech.length > 0 ? 0.2 : 0;
+  // Subtitles are words that were said, and as easy to misread in context.
+  const speech = observed.speech.length > 0 || (observed.subtitles?.length ?? 0) > 0 ? 0.2 : 0;
   const onScreen = observed.ocr.length > 0 ? 0.1 : 0;
   return 0.6 * uncertainty + 0.3 * Math.min(1, durationShare * 20) + speech + onScreen;
 }
@@ -552,6 +561,9 @@ function describeParams(
     frame_paths: framePaths,
     transcript: skeleton.observed.speech.map((s) => s.text),
     ocr: skeleton.observed.ocr,
+    // Only when there are some, so every key cached before subtitles were told
+    // apart from other text is still the key of the same call.
+    ...(skeleton.observed.subtitles?.length ? { subtitles: skeleton.observed.subtitles } : {}),
     audio_tags: skeleton.observed.audio.map((a) => a.type),
     visual_labels: skeleton.observed.visual_labels,
     ...(previous ? { previous_summary: fallbackDescription(previous.observed) } : {}),
@@ -614,6 +626,8 @@ function userContextFor(context: ProjectContext): Record<string, unknown> {
 function fallbackDescription(observed: EventObservations): string {
   const speech = observed.speech.map((s) => s.text).join(' ');
   if (speech.trim().length > 0) return speech.slice(0, 120);
+  const subtitles = (observed.subtitles ?? []).join(' ');
+  if (subtitles.trim().length > 0) return subtitles.slice(0, 120);
   if (observed.visual_labels.length > 0) return observed.visual_labels.slice(0, 4).join(', ');
   if (observed.ocr.length > 0) return observed.ocr.slice(0, 2).join(' / ');
   return 'no speech or on-screen text';
@@ -624,11 +638,18 @@ function fallbackDescription(observed: EventObservations): string {
  *
  * Denormalised onto the event on purpose: an event has to be reviewable on its
  * own, including by an agent that is only allowed to see events.
+ *
+ * Text read off the picture is split by what it is (see `onscreen-text.ts`):
+ * subtitles go to `subtitles`, once per line; counters and timecodes burned
+ * into the picture go nowhere; everything else is `ocr`, once per line however
+ * OCR spaced it. A read with no box is scene text, which is every read in the
+ * worked example.
  */
 export function gatherObservations(
   draft: SegmentDraft,
   observations: ObservationTimeline,
   inactive?: readonly InactiveSpan[],
+  roles: ReadonlyMap<string, TextRole> = textRoles(observations.ocr),
 ): EventObservations {
   const range = { start_ms: draft.start_ms, end_ms: draft.end_ms };
   const duration = Math.max(1, draft.end_ms - draft.start_ms);
@@ -650,13 +671,15 @@ export function gatherObservations(
     .filter((event) => rangesOverlap(event, range))
     .map((event) => ({ type: event.event_type, confidence: event.confidence }));
 
-  const ocr = [
-    ...new Set(
-      inAsset(observations.ocr)
-        .filter((observation) => rangesOverlap(observation, range))
-        .map((observation) => observation.text),
-    ),
-  ];
+  const reads = inAsset(observations.ocr).filter((observation) =>
+    rangesOverlap(observation, range),
+  );
+  const ocr = distinctLines(
+    reads.filter((read) => roles.get(read.id) === 'scene').map((read) => read.text),
+  );
+  const subtitles = distinctLines(
+    reads.filter((read) => roles.get(read.id) === 'subtitle').map((read) => read.text),
+  );
 
   const frames = inAsset(observations.frame_features).filter(
     (frame) => frame.timestamp_ms >= range.start_ms && frame.timestamp_ms < range.end_ms,
@@ -687,6 +710,8 @@ export function gatherObservations(
     shot_count: Math.max(draft.shot_ids.length, 1),
     speech_ratio: clamp(speechMs / duration),
     silence_ratio: clamp(silenceMs / duration),
+    // Only when there are some, for the same reason as the ratio below.
+    ...(subtitles.length > 0 ? { subtitles } : {}),
     ...(motions.length > 0 ? { motion: clamp(average(motions)) } : {}),
     ...(qualities.length > 0 ? { technical_quality: clamp(average(qualities)) } : {}),
     // Only when there is some: an absent field and a zero say the same thing,

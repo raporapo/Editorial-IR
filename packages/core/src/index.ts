@@ -8,6 +8,7 @@ export * from './ingest.js';
 export * from './observe.js';
 export * from './activity.js';
 export * from './label-vocabulary.js';
+export * from './onscreen-text.js';
 export * from './segment.js';
 export * from './annotations.js';
 export * from './context-builder.js';

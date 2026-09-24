@@ -84,6 +84,26 @@ describe('describeFromObservations', () => {
     expect(result.description).toContain('UNIVERSAL STUDIOS JAPAN');
   });
 
+  it('reads burned-in subtitles as what was said, not as a sign in the picture', () => {
+    // On an edited video with a music bed the subtitles are the only words
+    // there are; listed as scene text, the montage was a bracketed row of
+    // captions in which nobody had said anything.
+    const subtitled = describeFromObservations({
+      ...empty,
+      subtitles: ['We got to the harbour just before dawn'],
+      ocr: ['HARBOUR DAYS'],
+    });
+    const spoken = describeFromObservations({
+      ...empty,
+      transcript: ['We got to the harbour just before dawn'],
+      ocr: ['HARBOUR DAYS'],
+    });
+    expect(subtitled.description).toBe(spoken.description);
+    expect(subtitled.title).toBe('We got to the harbour just before dawn');
+    expect(subtitled.event_type).toBe(spoken.event_type);
+    expect(subtitled.confidence).toBe(spoken.confidence);
+  });
+
   it('truncates rather than emitting a paragraph', () => {
     const long = 'あ'.repeat(500);
     expect(
@@ -111,6 +131,20 @@ describe('buildPrompt', () => {
     });
     expect(prompt).toContain('Previous event: on the train');
     expect(prompt).toContain('Next event: walking in');
+  });
+
+  it('hands subtitles over as what was said, apart from the text in the scene', () => {
+    const prompt = buildPrompt({
+      ...empty,
+      subtitles: ['Then the rain started'],
+      ocr: ['NOODLES'],
+    });
+    expect(prompt).toContain(
+      'Subtitles burned into the picture (what was said):\nThen the rain started',
+    );
+    expect(prompt).toContain('Text on screen:\nNOODLES');
+    // And says nothing about them where there are none.
+    expect(buildPrompt(empty)).not.toContain('Subtitles');
   });
 });
 

@@ -210,6 +210,10 @@ def build_prompt(params: dict[str, Any]) -> str:
         sections.append(f"Previous event: {params['previous_summary']}")
     if params.get("transcript"):
         sections.append("Speech:\n" + "\n".join(params["transcript"]))
+    if params.get("subtitles"):
+        sections.append(
+            "Subtitles burned into the picture (what was said):\n" + "\n".join(params["subtitles"])
+        )
     if params.get("ocr"):
         sections.append("Text on screen:\n" + "\n".join(params["ocr"]))
     if params.get("visual_labels"):

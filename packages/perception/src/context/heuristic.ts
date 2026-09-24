@@ -48,7 +48,14 @@ export class HeuristicContextModel implements ContextModel {
 
 /** Separated from the class so the whole mapping is testable as a pure function. */
 export function describeFromObservations(params: DescribeParams, maxLength = 140): DescribeResult {
-  const speech = params.transcript.filter((t) => t.trim().length > 0);
+  // Subtitles are what was said, read off the picture instead of heard: on an
+  // edited video with a music bed they are the only words there are. So they
+  // are the description's words, its title and what its mood is read from, as
+  // a transcript would be — read as scene text, a harbour montage was a
+  // bracketed list of captions in which nobody had said anything.
+  const speech = [...params.transcript, ...(params.subtitles ?? [])].filter(
+    (t) => t.trim().length > 0,
+  );
   const ocr = params.ocr.filter((t) => t.trim().length > 0);
   const audio = params.audio_tags;
   const seen = params.visual_labels.filter((t) => t.trim().length > 0);

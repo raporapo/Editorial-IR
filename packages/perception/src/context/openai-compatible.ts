@@ -263,6 +263,11 @@ export function buildPrompt(params: DescribeParams): string {
   }
   if (params.previous_summary) sections.push(`Previous event: ${params.previous_summary}`);
   if (params.transcript.length > 0) sections.push(`Speech:\n${params.transcript.join('\n')}`);
+  if (params.subtitles && params.subtitles.length > 0) {
+    sections.push(
+      `Subtitles burned into the picture (what was said):\n${params.subtitles.join('\n')}`,
+    );
+  }
   if (params.ocr.length > 0) sections.push(`Text on screen:\n${params.ocr.join('\n')}`);
   if (params.audio_tags.length > 0) sections.push(`Sound: ${params.audio_tags.join(', ')}`);
   if (params.next_summary) sections.push(`Next event: ${params.next_summary}`);
