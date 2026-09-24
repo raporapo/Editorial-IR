@@ -660,6 +660,35 @@ describe('the default suite', () => {
     expect(proxyFrameRate({})).toEqual({ num: 60, den: 1 });
   });
 
+  it('keeps every frame of a high-rate camera, so no cut is found a frame late', async () => {
+    // Measured on a 120 fps clip: a proxy capped at 60 put each cut the shot
+    // detector found one source frame late, 1008 ms as 1017.
+    expect(proxyFrameRate({ fps_num: 120, fps_den: 1 })).toEqual({ num: 120, den: 1 });
+    expect(proxyFrameRate({ fps_num: 240, fps_den: 1 })).toEqual({ num: 240, den: 1 });
+    const { preparer, ffmpegCalls } = preparerFor({
+      probe: {
+        ...VIDEO_WITH_NO_AUDIO,
+        streams: [
+          {
+            ...VIDEO_WITH_NO_AUDIO.streams![0]!,
+            r_frame_rate: '120/1',
+            avg_frame_rate: '120/1',
+            nb_frames: '3600',
+          },
+        ],
+      },
+    });
+    const result = await preparer.prepare({
+      path: '/media/GX010042.mp4',
+      work_dir: workDir('high-rate'),
+      proxy_height: 480,
+      extract_audio: false,
+      frame_fps: 0,
+    });
+    expect(result.proxy_path?.endsWith('proxy-480p-cfr120.mp4')).toBe(true);
+    expect(ffmpegCalls[0]?.join(' ')).toContain('fps=120/1,scale=-2:480');
+  });
+
   it('counts only the frames prepare named, never a file some other stage left there', () => {
     const dir = workDir('frames-count');
     for (const name of ['00000001.jpg', '00000002.jpg', 'at-00001000ms.jpg', 'notes.txt']) {

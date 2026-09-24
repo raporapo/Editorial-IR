@@ -29,7 +29,7 @@ export {
 export {
   FfmpegMediaPreparer,
   AUDIO_SAMPLE_RATE,
-  PROXY_MAX_FPS,
+  PROXY_FALLBACK_FPS,
   proxyArgs,
   audioArgs,
   frameArgs,

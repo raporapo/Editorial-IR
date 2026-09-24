@@ -297,11 +297,12 @@ def _picture_seconds(video: dict[str, Any], fmt: dict[str, Any]) -> float | None
     return _float(fmt.get("duration"))
 
 
-#: The fastest a proxy is made, whatever the file declares. A screen recorder
-#: writing Matroska declares its millisecond clock as the rate — 1000/1 — and a
-#: constant-rate proxy at that would be a thousand copies a second. Nothing
-#: downstream samples faster than five a second. `PROXY_MAX_FPS` in TypeScript.
-PROXY_MAX_FPS = 60
+#: The rate a proxy is made at when the file declares none worth believing: a
+#: Matroska screen recording declares its millisecond clock, 1000/1, and the
+#: probe refuses anything above `MAX_NOMINAL_FPS`. Only then — as a cap on every
+#: file it cost a 120 fps clip every other frame, and each cut was found one
+#: source frame late (1008 ms became 1017). `PROXY_FALLBACK_FPS` in TypeScript.
+PROXY_FALLBACK_FPS = 60
 
 #: Identifies the speech measure, so a stored measurement made another way is
 #: not trusted. The same string as `MEASURE` in the TypeScript preparer, and the
@@ -501,11 +502,11 @@ def _partial_path(target: Path) -> Path:
 
 
 def proxy_frame_rate(probed: dict[str, Any]) -> tuple[int, int]:
-    """The rate a constant-rate proxy is made at: the nominal one, capped."""
+    """The rate a constant-rate proxy is made at: the nominal one, or the fallback."""
     num = int(probed.get("fps_num") or 0)
     den = int(probed.get("fps_den") or 1)
-    if num <= 0 or den <= 0 or num / den > PROXY_MAX_FPS:
-        return (PROXY_MAX_FPS, 1)
+    if num <= 0 or den <= 0 or num / den > MAX_NOMINAL_FPS:
+        return (PROXY_FALLBACK_FPS, 1)
     return (num, den)
 
 

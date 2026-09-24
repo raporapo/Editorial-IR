@@ -190,6 +190,17 @@ def test_a_webm_whose_sound_outlasts_its_picture_is_not_variable_rate():
     )
 
 
+def test_a_high_rate_camera_keeps_every_frame_in_its_proxy():
+    # Measured on a 120 fps clip: a proxy capped at 60 put each cut the shot
+    # detector found one source frame late, 1008 ms as 1017.
+    assert media.proxy_frame_rate({"fps_num": 120, "fps_den": 1}) == (120, 1)
+    assert media.proxy_frame_rate({"fps_num": 240, "fps_den": 1}) == (240, 1)
+    assert media.proxy_frame_rate({"fps_num": 60000, "fps_den": 1001}) == (60000, 1001)
+    # Only a rate nobody records at, or none, falls back.
+    assert media.proxy_frame_rate({"fps_num": 1000, "fps_den": 1}) == (60, 1)
+    assert media.proxy_frame_rate({}) == (60, 1)
+
+
 def test_a_millisecond_clock_is_not_a_frame_rate():
     result = media.probe_result(
         {

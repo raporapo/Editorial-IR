@@ -104,7 +104,7 @@ video with no audio track used to lose its frames to the audio step's error.
 
 | derivative | named                                     | made how                                                     |
 | ---------- | ----------------------------------------- | ------------------------------------------------------------ |
-| proxy      | `proxy-480p-cfr30.mp4`, `…cfr30000-1001…` | constant rate at the nominal rate, capped at 60; video only  |
+| proxy      | `proxy-480p-cfr30.mp4`, `…cfr30000-1001…` | constant rate at the nominal rate (60 when none); video only |
 | audio      | `audio-a1.wav`                            | one named stream, 16 kHz mono, gaps in its timestamps filled |
 | frames     | `frames-1fps/00000001.jpg` …              | by 1-based index, source resolution; `00000001.jpg` is 0 ms  |
 

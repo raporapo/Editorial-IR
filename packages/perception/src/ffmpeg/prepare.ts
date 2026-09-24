@@ -20,7 +20,7 @@ import { NodeCommandRunner } from '../command.js';
 import type { MediaPreparer, MediaProbe, ModelIdentity } from '../types.js';
 import { computeHopStatistics } from '../wav.js';
 import { analyseHops } from './audio.js';
-import { FfprobeMediaProbe, isStillFormat } from './probe.js';
+import { FfprobeMediaProbe, MAX_NOMINAL_FPS, isStillFormat } from './probe.js';
 
 /**
  * Cheap derivatives, made once and reused by everything downstream.
@@ -263,23 +263,32 @@ function hasPicture(probed: ProbeResult): boolean {
 export const AUDIO_SAMPLE_RATE = 16_000;
 
 /**
- * The fastest a proxy is made, whatever the file declares.
+ * The rate a proxy is made at when the file declares none worth believing.
  *
  * A screen recorder writing Matroska declares its millisecond clock as the rate
  * — 1000/1, measured — and a constant-rate proxy at that would hold a thousand
- * frames a second, nearly all of them copies. Nothing downstream samples faster
- * than five a second, and 60 loses no frame of any ordinary camera.
+ * frames a second, nearly all of them copies. The probe refuses any rate above
+ * `MAX_NOMINAL_FPS`, and this is what the proxy is made at instead.
+ *
+ * Only then. This was a cap on every file, and a 120 fps action-camera clip
+ * lost every other frame to it: measured, each cut the shot detector found on
+ * the 60 fps proxy came one source frame late — 1008 ms became 1017, 2508
+ * became 2517 — and the last shot ended at 3720 rather than 3710. Every
+ * boundary downstream is taken from the proxy, so a real rate is kept, as it
+ * always was before the proxy was made constant-rate.
  */
-export const PROXY_MAX_FPS = 60;
+export const PROXY_FALLBACK_FPS = 60;
 
-/** The rate a constant-rate proxy is made at: the nominal one, capped. */
+/** The rate a constant-rate proxy is made at: the nominal one, or the fallback when there is none. */
 export function proxyFrameRate(probed: Pick<ProbeResult, 'fps_num' | 'fps_den'>): {
   num: number;
   den: number;
 } {
   const num = probed.fps_num ?? 0;
   const den = probed.fps_den ?? 1;
-  if (num <= 0 || den <= 0 || num / den > PROXY_MAX_FPS) return { num: PROXY_MAX_FPS, den: 1 };
+  if (num <= 0 || den <= 0 || num / den > MAX_NOMINAL_FPS) {
+    return { num: PROXY_FALLBACK_FPS, den: 1 };
+  }
   return { num, den };
 }
 
