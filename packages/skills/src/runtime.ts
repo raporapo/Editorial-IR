@@ -63,6 +63,8 @@ export class SkillRuntime {
       as_b_roll: false,
       preserve_reaction: false,
       prefer_higher_quality_only: false,
+      keep_whole: false,
+      remove_silences: false,
       tags: [],
       matched_rule_ids: [],
     };

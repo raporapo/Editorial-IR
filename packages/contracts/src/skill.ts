@@ -89,6 +89,17 @@ export const SkillCondition: z.ZodType<SkillConditionShape> = z.lazy(() =>
     shot_count: NumericCondition.optional(),
     /** Mean camera motion in [0,1]. */
     motion: NumericCondition.optional(),
+    /** Share of the event that was both still and silent, in [0,1]. */
+    inactive_ratio: NumericCondition.optional(),
+    /**
+     * What kind of material the event comes from: `raw`, `edited`, `clip`,
+     * `screen_recording`, `audio_only` or `still`. A rule written for camera
+     * footage — "no speech, so use it as b-roll without its sound" — is wrong
+     * for an edited programme, whose music bed is the point.
+     */
+    material: StringMatch.optional(),
+    /** True when the picture carries burned-in subtitles. */
+    has_subtitles: z.boolean().optional(),
 
     /** True when this event's place differs from the previous event's place. */
     new_location: z.boolean().optional(),
@@ -170,6 +181,10 @@ export const SkillAction = obj({
   place_at: z.enum(['opening', 'ending']).optional(),
   /** Use as picture only; drop its own sound. */
   as_b_roll: z.boolean().optional(),
+  /** Use the event's material whole rather than trimming inside it. */
+  keep_whole: z.boolean().optional(),
+  /** Take the pauses out of this event's speech, as jump cuts. */
+  remove_silences: z.boolean().optional(),
   /** Free tags, carried into the plan's rationale. */
   tag: z.array(z.string()).optional(),
 }).meta({ id: 'SkillAction' });
@@ -243,6 +258,28 @@ export const SkillDefaults = obj({
   default_transition: Transition.default({ type: 'hard_cut', duration_ms: 0 }),
   /** Transition used where the place changes between clips. */
   chapter_transition: Transition.optional(),
+  /** How long a photograph stays on screen. */
+  still_duration_ms: Milliseconds.default(3000),
+  /**
+   * Whether a pre-trimmed clip is used whole. `auto` keeps a clip whole when the
+   * material is a clip the user already chose and it fits the clip limits: they
+   * trimmed it on their phone, and trimming it again cuts their first syllable.
+   */
+  keep_whole: z.enum(['auto', 'always', 'never']).default('auto'),
+  /**
+   * Whether cut points move onto the source's own cuts. `auto` does it for
+   * edited material only: cutting an edited programme a few frames off its own
+   * edit leaves a flash of the neighbouring shot. Raw footage has shot
+   * boundaries too — camera moves — and snapping to those would move cuts that
+   * are right.
+   */
+  snap_to_cuts: z.enum(['auto', 'always', 'never']).default('auto'),
+  /** Take pauses out of long speech as jump cuts. Changes durations, by design. */
+  remove_silences: z.boolean().default(false),
+  /** Shortest pause that is taken out when removing silences. */
+  min_removed_silence_ms: Milliseconds.default(700),
+  /** Left on each side of a removed pause, so a word's tail and a breath survive. */
+  silence_handle_ms: Milliseconds.default(120),
 }).meta({ id: 'SkillDefaults' });
 export type SkillDefaults = z.infer<typeof SkillDefaults>;
 
@@ -301,6 +338,8 @@ export const SkillDirective = obj({
   as_b_roll: z.boolean().default(false),
   preserve_reaction: z.boolean().default(false),
   prefer_higher_quality_only: z.boolean().default(false),
+  keep_whole: z.boolean().default(false),
+  remove_silences: z.boolean().default(false),
   place_at: z.enum(['opening', 'ending']).optional(),
   role: NarrativeRole.optional(),
   transition_in: Transition.optional(),

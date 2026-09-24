@@ -403,6 +403,7 @@ export function planEdit(options: PlanOptions): EditPlan {
       audio: [{ type: 'source_audio', track: 0, gain_db: 0 }],
       text: [],
     },
+    markers: [],
     intent: {
       ...(skill.intent.opening ? { opening: skill.intent.opening } : {}),
       ...(skill.intent.middle ? { middle: skill.intent.middle } : {}),

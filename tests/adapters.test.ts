@@ -103,6 +103,7 @@ describe('capability negotiation', () => {
       audio: [],
       text: [],
     },
+    markers: [],
     intent: { tone: [] },
     rationale: [],
     model_runs: [],

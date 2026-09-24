@@ -35,10 +35,18 @@ export const OperationConstraints = obj({
 export type OperationConstraints = z.infer<typeof OperationConstraints>;
 
 /**
- * One clip on the video track.
+ * One clip of the edit, whatever its media.
  *
  * `source_in_ms`/`source_out_ms` are in the *source asset's* own time, never on
  * the capture timeline, because that is the only coordinate every NLE agrees on.
+ *
+ * Named for the common case and not limited to it. The asset decides what an
+ * adapter writes: a video asset is picture and (with `use_source_audio`) its
+ * sound; a still is its picture held for `source_out_ms - source_in_ms`, and any
+ * range is valid because a photograph is the same at every instant; an
+ * audio-only asset is sound with no picture. One kind of operation keeps one
+ * timeline to validate, review and allocate, rather than three that have to be
+ * kept consistent with each other.
  */
 export const VideoOperation = obj({
   operation_id: OperationId,
@@ -58,6 +66,27 @@ export const VideoOperation = obj({
   constraints: OperationConstraints.optional(),
   /** Whether the clip's own audio is used. B-roll normally sets this to false. */
   use_source_audio: z.boolean().default(true),
+  /**
+   * Which of the source's audio streams is its sound, by audio-relative index
+   * (`-map 0:a:N`), when it has more than one.
+   *
+   * A camera with a lavalier on its second track records room tone on the
+   * first. The analysis chose the stream with the speech in it; an export that
+   * then linked stream 0 would put the room tone under the cut the transcript
+   * was used to make. Absent means the first, as before.
+   */
+  audio_stream_index: z.int().min(0).optional(),
+  /**
+   * True when this clip continues the previous one's take, with only a pause
+   * taken out between them: a jump cut.
+   *
+   * Said explicitly because everything that looks at neighbouring clips
+   * otherwise reads two pieces of one sentence as two moments — the reviewer
+   * would call each too short and ask what context the second is missing, and
+   * an adapter might put a dissolve between them. A jump cut is always a hard
+   * cut. Absent means false.
+   */
+  continues_previous: z.boolean().optional(),
   provenance: Provenance.default('agent_derived'),
 }).meta({ id: 'VideoOperation', title: 'VideoOperation' });
 export type VideoOperation = z.infer<typeof VideoOperation>;
@@ -113,6 +142,22 @@ export const SequenceSpec = obj({
   sample_rate: z.int().min(1).default(48000),
 }).meta({ id: 'SequenceSpec' });
 export type SequenceSpec = z.infer<typeof SequenceSpec>;
+
+/**
+ * A named point on the finished timeline: a chapter, or a note for the editor.
+ *
+ * Chapters exist in the IR in capture time; this is the same chapter where it
+ * begins in the cut, which is the only place a viewer or an editor can use it —
+ * a marker in the NLE, a line in a video description.
+ */
+export const PlanMarker = obj({
+  timeline_ms: Milliseconds,
+  name: z.string().min(1),
+  kind: z.enum(['chapter', 'note']).default('chapter'),
+  /** The event whose clip the marker sits on. */
+  event_id: EventId.optional(),
+}).meta({ id: 'PlanMarker' });
+export type PlanMarker = z.infer<typeof PlanMarker>;
 
 export const PlanIntent = obj({
   opening: z.string().optional(),
@@ -183,6 +228,8 @@ export const EditPlan = obj({
     audio: z.array(AudioTrackSpec).default([]),
     text: z.array(TextOperation).default([]),
   }),
+  /** Chapters and notes on the finished timeline, in timeline order. */
+  markers: z.array(PlanMarker).default([]),
   intent: PlanIntent.prefault({}),
   rationale: z.array(PlanRationale).default([]),
   /**
