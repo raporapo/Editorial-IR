@@ -4,6 +4,7 @@ import { validatePlan } from '@editorial-ir/agent';
 import { summariseReport } from '@editorial-ir/contracts';
 import { openProject } from '../project.js';
 import { requireIr, requirePlan } from '../ir.js';
+import { skillOfPlan } from './plan.js';
 import { detail, fail, heading, note, success, table, warn } from '../ui.js';
 
 export interface ApplyArgs {
@@ -27,6 +28,7 @@ export async function runApply(args: ApplyArgs): Promise<number> {
   // reported before anything is written rather than discovered in the NLE.
   const report = validatePlan(plan, {
     ir,
+    skill: skillOfPlan(plan),
     capabilities: adapter.capabilities,
     projectRoot: store.paths.root,
     checkMediaExists: true,
