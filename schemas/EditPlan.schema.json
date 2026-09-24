@@ -712,6 +712,7 @@
         "speech",
         "visual",
         "audio",
+        "motion",
         "ocr",
         "shot_detection",
         "segmentation",

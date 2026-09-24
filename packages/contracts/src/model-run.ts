@@ -16,6 +16,7 @@ export const PipelineStage = z
     'speech',
     'visual',
     'audio',
+    'motion',
     'ocr',
     'shot_detection',
     'segmentation',

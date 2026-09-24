@@ -11,6 +11,8 @@ import {
   OpenAiCompatibleTextEmbedding,
   PythonWorkerClient,
   WorkerAudioModel,
+  WorkerVideoModel,
+  FfmpegVideoAnalyzer,
   WorkerContextModel,
   WorkerMediaPreparer,
   WorkerMediaProbe,
@@ -166,6 +168,11 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
         : {}),
       ...(has('detect_shots') ? { shots: new WorkerShotDetector(client) } : {}),
       ...(has('analyze_audio') ? { audio: new WorkerAudioModel(client) } : {}),
+      // An older worker that does not know the op still gets the picture
+      // envelope: it needs nothing but ffmpeg, and this process can run that.
+      video: has('analyze_video')
+        ? new WorkerVideoModel(client, named('analyze_video', 'cell-max-64x36'))
+        : new FfmpegVideoAnalyzer(),
       ...(has('ocr') ? { ocr: new WorkerOcrModel(client, named('ocr', 'ocr')) } : {}),
       // A worker-backed closer look is the base model only when it runs here.
       // The base pass goes over *every* event, and the worker's `describe` is an

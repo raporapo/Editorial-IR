@@ -40,10 +40,10 @@
       "$ref": "#/$defs/EventKnowledge"
     },
     "segmentation": {
-      "$ref": "#/$defs/__schema36"
+      "$ref": "#/$defs/__schema38"
     },
     "embedding_refs": {
-      "$ref": "#/$defs/__schema37"
+      "$ref": "#/$defs/__schema39"
     },
     "confidence": {
       "$ref": "#/$defs/Confidence"
@@ -358,6 +358,12 @@
         },
         "technical_quality": {
           "$ref": "#/$defs/__schema28"
+        },
+        "subtitles": {
+          "$ref": "#/$defs/__schema29"
+        },
+        "inactive_ratio": {
+          "$ref": "#/$defs/__schema30"
         }
       },
       "additionalProperties": false
@@ -454,55 +460,64 @@
     "__schema28": {
       "$ref": "#/$defs/UnitScore"
     },
+    "__schema29": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema30": {
+      "$ref": "#/$defs/UnitScore"
+    },
     "EventKnowledge": {
       "type": "object",
       "properties": {
         "occasion": {
-          "$ref": "#/$defs/__schema29"
-        },
-        "notes": {
-          "$ref": "#/$defs/__schema30"
-        },
-        "essential": {
           "$ref": "#/$defs/__schema31"
         },
-        "excluded": {
+        "notes": {
           "$ref": "#/$defs/__schema32"
         },
-        "importance_override": {
+        "essential": {
           "$ref": "#/$defs/__schema33"
         },
-        "narrative_role_override": {
+        "excluded": {
           "$ref": "#/$defs/__schema34"
         },
-        "annotation_refs": {
+        "importance_override": {
           "$ref": "#/$defs/__schema35"
+        },
+        "narrative_role_override": {
+          "$ref": "#/$defs/__schema36"
+        },
+        "annotation_refs": {
+          "$ref": "#/$defs/__schema37"
         }
       },
       "additionalProperties": false
     },
-    "__schema29": {
+    "__schema31": {
       "type": "string"
     },
-    "__schema30": {
+    "__schema32": {
       "default": [],
       "type": "array",
       "items": {
         "type": "string"
       }
     },
-    "__schema31": {
-      "default": false,
-      "type": "boolean"
-    },
-    "__schema32": {
-      "default": false,
-      "type": "boolean"
-    },
     "__schema33": {
-      "$ref": "#/$defs/UnitScore"
+      "default": false,
+      "type": "boolean"
     },
     "__schema34": {
+      "default": false,
+      "type": "boolean"
+    },
+    "__schema35": {
+      "$ref": "#/$defs/UnitScore"
+    },
+    "__schema36": {
       "$ref": "#/$defs/NarrativeRole"
     },
     "NarrativeRole": {
@@ -521,7 +536,7 @@
       ],
       "description": "The structural job an event does in the finished piece."
     },
-    "__schema35": {
+    "__schema37": {
       "default": [],
       "type": "array",
       "items": {
@@ -532,7 +547,7 @@
       "type": "string",
       "description": "A user override."
     },
-    "__schema36": {
+    "__schema38": {
       "type": "object",
       "properties": {
         "method": {
@@ -557,7 +572,7 @@
       ],
       "additionalProperties": false
     },
-    "__schema37": {
+    "__schema39": {
       "default": [],
       "type": "array",
       "items": {

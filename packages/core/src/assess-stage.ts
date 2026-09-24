@@ -7,7 +7,11 @@ import {
   type ProjectContext,
   type SemanticEvent,
 } from '@editorial-ir/contracts';
-import { assessEvent, type EditorialDecisionModel } from '@editorial-ir/decision';
+import {
+  HeuristicDecisionBackend,
+  assessEvent,
+  type EditorialDecisionModel,
+} from '@editorial-ir/decision';
 import { type CostBudget, selectForEscalation, type EscalationPolicy } from './budget.js';
 import type { ModelRunRecorder } from './model-runs.js';
 import type { PerceptionCache } from './cache.js';
@@ -43,6 +47,16 @@ export interface AssessOptions {
    * costs a full pass.
    */
   cache?: PerceptionCache;
+  /**
+   * Events that were still and silent throughout.
+   *
+   * The rules judge them instead of the base model, and they are never sent for
+   * a second opinion. The rules do not guess here: an event with nothing moving
+   * and nothing to hear scores low on every question a model would be asked,
+   * and says why. Recorded as its own run, so the IR never claims the model
+   * answered.
+   */
+  quietEvents?: readonly string[];
   onProgress?: (stage: string, done: number, total: number) => void;
   /** Told when a second opinion could not be had, so the substitution is visible. */
   onDegraded?: (message: string, failures: { eventId: string; reason: string }[]) => void;
@@ -55,6 +69,10 @@ export async function assessEvents(
   editorial: EventEditorial[];
   escalated: string[];
   failures: { eventId: string; reason: string }[];
+  /** Base-model judgements not asked for, because the event was still and silent. */
+  judgeCallsSkipped: number;
+  /** Skipped judgements times the tokens measured per base judgement in this run. */
+  estimatedTokensAvoided: number;
 }> {
   const ordered = [...events].sort((a, b) => a.start_ms - b.start_ms);
   const totalMs = ordered.reduce((sum, e) => sum + (e.end_ms - e.start_ms), 0) || 1;
@@ -99,8 +117,33 @@ export async function assessEvents(
   // With `OEA_DECISION=local-system-one` the base judge is a real language model
   // answering nineteen questions per event, and a run reported no tokens at all.
   const baseCostPerEvent = options.baseModel.identity.costPerEventUsd ?? 0;
+  // Asking the rules instead of the rules saves nothing, so only a real model
+  // is spared. The run is recorded lazily, so a project with no quiet events
+  // carries no run for work that never happened.
+  const quiet = new Set(options.quietEvents ?? []);
+  const rules =
+    quiet.size > 0 && options.baseModel.identity.standIn === undefined
+      ? new HeuristicDecisionBackend()
+      : undefined;
+  let rulesRun: string | undefined;
+  let judgeCallsSkipped = 0;
+  let baseCalls = 0;
+  let baseTokens = 0;
   for (const [index, event] of ordered.entries()) {
     options.onProgress?.('assess', index, ordered.length);
+    if (rules && quiet.has(event.id)) {
+      rulesRun ??= options.runs.record({
+        stage: 'decision',
+        backend: rules.identity.backend,
+        ...(rules.identity.model === undefined ? {} : { model: rules.identity.model }),
+        locality: rules.identity.locality,
+        mediaLeavesDevice: rules.identity.mediaLeavesDevice,
+      });
+      drafts.set(event.id, await assessEvent(rules, states.get(event.id)!));
+      producedBy.set(event.id, rulesRun);
+      judgeCallsSkipped++;
+      continue;
+    }
     const { draft, cached } = await assessCached(
       options.baseModel,
       states.get(event.id)!,
@@ -111,6 +154,8 @@ export async function assessEvents(
     // A cache hit is free. Counting it would make a re-run look as expensive as
     // the first one, which is the opposite of what the cache is for.
     if (!cached) {
+      baseCalls++;
+      baseTokens += (draft.inputTokens ?? 0) + (draft.outputTokens ?? 0);
       options.runs.addCost(
         baseRun,
         draft.costUsd ?? baseCostPerEvent,
@@ -126,20 +171,22 @@ export async function assessEvents(
     const model = options.escalationModel;
     const costPerEvent = model.identity.costPerEventUsd ?? 0.002;
     const decision = selectForEscalation(
-      ordered.map((event) => {
-        const draft = drafts.get(event.id)!;
-        return {
-          id: event.id,
-          // Worth asking again where the cheap answer is unsure, where the event
-          // is long, and where the decision is close to the line that decides
-          // whether it survives at all.
-          value:
-            0.5 * (1 - draft.confidence) +
-            0.3 * Math.min(1, ((event.end_ms - event.start_ms) / totalMs) * 20) +
-            0.2 * (1 - Math.abs(draft.metrics.story_importance - 0.5) * 2),
-          costUsd: costPerEvent,
-        };
-      }),
+      ordered
+        .filter((event) => !quiet.has(event.id))
+        .map((event) => {
+          const draft = drafts.get(event.id)!;
+          return {
+            id: event.id,
+            // Worth asking again where the cheap answer is unsure, where the event
+            // is long, and where the decision is close to the line that decides
+            // whether it survives at all.
+            value:
+              0.5 * (1 - draft.confidence) +
+              0.3 * Math.min(1, ((event.end_ms - event.start_ms) / totalMs) * 20) +
+              0.2 * (1 - Math.abs(draft.metrics.story_importance - 0.5) * 2),
+            costUsd: costPerEvent,
+          };
+        }),
       options.escalation ?? {},
     );
 
@@ -251,7 +298,14 @@ export async function assessEvents(
     );
   }
 
-  return { editorial, escalated, failures };
+  return {
+    editorial,
+    escalated,
+    failures,
+    judgeCallsSkipped,
+    estimatedTokensAvoided:
+      baseCalls > 0 ? Math.round((judgeCallsSkipped * baseTokens) / baseCalls) : 0,
+  };
 }
 
 /** How many refusals before a second-opinion model is treated as gone. */

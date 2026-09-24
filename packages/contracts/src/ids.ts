@@ -13,6 +13,10 @@ export const ShotId = idSchema('shot', 'A camera shot within one asset.');
 export const UtteranceId = idSchema('utt', 'One transcribed utterance.');
 export const AudioEventId = idSchema('aev', 'One detected audio event.');
 export const OcrId = idSchema('ocr', 'One on-screen text observation.');
+export const VideoEventId = idSchema(
+  'vev',
+  'One span of the picture doing something measurable: holding still, going black.',
+);
 export const FrameId = idSchema('frm', 'One sampled frame.');
 export const ChapterId = idSchema('chp', 'A group of consecutive events.');
 export const EventId = idSchema('evt', 'A semantic event: one thing that happened.');

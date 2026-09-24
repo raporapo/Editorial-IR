@@ -1,9 +1,21 @@
 import { z } from 'zod';
-import { Iso8601, Milliseconds, Sha256, obj } from './primitives.js';
+import { Confidence, Iso8601, Milliseconds, Sha256, obj } from './primitives.js';
 import { AssetId } from './ids.js';
 
 export const MediaKind = z.enum(['video', 'audio', 'image']).meta({ id: 'MediaKind' });
 export type MediaKind = z.infer<typeof MediaKind>;
+
+/** One audio stream inside a file, as the container reports it. */
+export const AudioStream = obj({
+  /** The container's stream index, as ffmpeg's `-map 0:<index>` means it. */
+  index: z.int().min(0),
+  codec: z.string().optional(),
+  channels: z.int().min(0).optional(),
+  sample_rate: z.int().min(0).optional(),
+  language: z.string().optional(),
+  title: z.string().optional(),
+}).meta({ id: 'AudioStream' });
+export type AudioStream = z.infer<typeof AudioStream>;
 
 /**
  * A registered source file.
@@ -36,12 +48,71 @@ export const MediaAsset = obj({
   bit_rate: z.int().min(0).optional(),
   /** Display rotation in degrees from container metadata (0/90/180/270). */
   rotation: z.int().optional(),
+  /**
+   * Every audio stream, when there is more than one.
+   *
+   * Absent for the ordinary single-stream file. Present, the question of which
+   * one to listen to is real: a camera with a lavalier on its second track holds
+   * room tone on its first, and analysing stream 0 regardless transcribed the
+   * room.
+   */
+  audio_streams: z.array(AudioStream).optional(),
+  /**
+   * The frame rate varies across the file, as phone footage routinely does.
+   *
+   * An NLE conforms such a file to a constant rate on import and a timecode
+   * computed from the nominal rate drifts against it — by the end of a long clip,
+   * by more than a frame. Recorded so the proxy can be made constant-rate and so
+   * the export can warn rather than silently drift.
+   */
+  variable_frame_rate: z.boolean().optional(),
+  /** The measured average rate, when it differs from the nominal `fps`. */
+  avg_fps: z.number().min(0).optional(),
   /** Capture time from container metadata, used to lay assets on the capture timeline. */
   creation_time: Iso8601.optional(),
   /** Container/stream metadata that no contract field claims. Free-form by design. */
   metadata: z.record(z.string(), z.unknown()).default({}),
 }).meta({ id: 'MediaAsset', title: 'MediaAsset' });
 export type MediaAsset = z.infer<typeof MediaAsset>;
+
+/**
+ * What kind of material a file is, because the same rules do not suit all of it.
+ *
+ * Measured with this project's own shot detector: edited programmes cut 5 to 16
+ * times a minute with a median shot of 1.7 to 8.4 seconds; raw camera files cut
+ * 0 to 0.8 times a minute, and the user's own 62 minutes of drone footage 0.23.
+ * An edited video fed back in to be cut down needs its cuts respected, its burned
+ * subtitles recognised as subtitles, and its music bed not mistaken for speech
+ * with no pauses — none of which the raw-footage rules do.
+ *
+ * - `raw`: a camera recording, cut nowhere inside.
+ * - `edited`: a finished or rough edit — cuts, often a music bed and titles.
+ * - `clip`: a short piece the user already chose and trimmed.
+ * - `screen_recording`: long still stretches that are not dead, heavy with text.
+ * - `audio_only`, `still`: follow from the file itself.
+ */
+export const MaterialKind = z
+  .enum(['raw', 'edited', 'clip', 'screen_recording', 'audio_only', 'still'])
+  .meta({ id: 'MaterialKind' });
+export type MaterialKind = z.infer<typeof MaterialKind>;
+
+/**
+ * The material kind decided for one asset, with what it was decided from.
+ *
+ * An inference, and marked as one, so that it is always overruled by the user's
+ * own word in `background.materials` and never presented as a fact.
+ */
+export const MaterialProfile = obj({
+  asset_id: AssetId,
+  kind: MaterialKind,
+  confidence: Confidence,
+  provenance: z.enum(['inferred', 'user_provided']),
+  /** Sentences a person can check: "14.2 cuts a minute", "no silence longer than 1 s". */
+  evidence: z.array(z.string()).default([]),
+  /** The numbers behind the evidence, for tools rather than people. */
+  signals: z.record(z.string(), z.number()).default({}),
+}).meta({ id: 'MaterialProfile' });
+export type MaterialProfile = z.infer<typeof MaterialProfile>;
 
 /**
  * Cheap derivatives produced at ingest. All are regenerable from the original,
@@ -75,7 +146,23 @@ export const AssetPlacement = obj({
   /** Position in capture order, 0-based. */
   order: z.int().min(0),
   /** How the order was decided, for when metadata is missing or wrong. */
-  ordered_by: z.enum(['creation_time', 'file_name', 'explicit']),
+  ordered_by: z.enum(['creation_time', 'file_name', 'explicit', 'audio_sync']),
+  /**
+   * The audio match that placed this asset, when `ordered_by` is `audio_sync`.
+   *
+   * Two cameras on the same moment, or a camera and a separate recorder, often
+   * carry no capture time that agrees — or none at all — and ordering them by
+   * file name lays them end to end, as though the second angle happened after
+   * the first. Their sound is the same sound, and cross-correlating it finds the
+   * offset to the frame. The confidence is how far the best match stands above
+   * the next best, so a weak match can be refused rather than trusted.
+   */
+  sync: obj({
+    reference_asset_id: AssetId,
+    /** Where this asset starts relative to the reference's start. May be negative. */
+    offset_ms: z.int(),
+    confidence: Confidence,
+  }).optional(),
 }).meta({ id: 'AssetPlacement' });
 export type AssetPlacement = z.infer<typeof AssetPlacement>;
 

@@ -2,6 +2,7 @@ import {
   IR_VERSION,
   PIPELINE_VERSION,
   analysisQuality,
+  type AnalysisSavings,
   type EditorialIR,
   type EmbeddingSet,
   type MediaAsset,
@@ -36,6 +37,7 @@ import { continuityOverrides } from './annotations.js';
 import { ModelRunRecorder } from './model-runs.js';
 import { CostBudget, type EscalationPolicy } from './budget.js';
 import { hashObject } from './fingerprint.js';
+import { inactiveSpans, totalInactiveMs } from './activity.js';
 
 /**
  * Compiling raw media and user background into an Editorial IR.
@@ -92,6 +94,8 @@ export interface CompileReport {
   totalCostUsd: number;
   /** True when anything in this compile sent media off the machine. */
   mediaLeftDevice: boolean;
+  /** Model work not done because the footage was still and silent. Absent when none was. */
+  savings?: AnalysisSavings;
   elapsedMs: number;
 }
 
@@ -143,6 +147,9 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   let derived = new Map<string, PrepareResult>();
   let unavailable: UnavailableStage[] = [];
   let failures: { stage: string; assetId: string; reason: string }[] = [];
+  // Only a fresh observation pass skips OCR reads; a reused one skipped them
+  // when it was made, and counting them again would claim a saving twice.
+  let framesNotAnalysed = 0;
 
   if (reusable && stored) {
     observations = stored;
@@ -211,7 +218,15 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     derived = observed.derived;
     unavailable = observed.unavailable;
     failures = observed.failures;
+    framesNotAnalysed = observed.framesNotAnalysed;
   }
+
+  // ---- still and silent ----------------------------------------------------
+  // Recomputed from the observations on every compile rather than stored, so a
+  // reused analysis gets exactly the mask a fresh one would, and a change to the
+  // rule never needs a re-analysis. Read only after segmentation has cut the
+  // events: it decides where not to spend, never where anything begins or ends.
+  const inactive = inactiveSpans(observations, assets);
 
   // ---- segmentation --------------------------------------------------------
   options.onProgress?.('segment', 'finding events', 0, 1);
@@ -247,6 +262,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     derived,
     now,
     cache: store.cache,
+    inactive,
     ...(options.frameFps === undefined ? {} : { frameFps: options.frameFps }),
     ...(options.onProgress
       ? { onProgress: (stage, done, total) => options.onProgress?.(stage, '', done, total) }
@@ -335,6 +351,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     budget,
     cache: store.cache,
     similarities,
+    quietEvents: built.savings.quietEvents,
     ...(options.onProgress
       ? { onProgress: (stage, done, total) => options.onProgress?.(stage, '', done, total) }
       : {}),
@@ -490,6 +507,22 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     decisionModel: options.decision.identity.model,
   });
 
+  // What the still, silent footage saved. Absent rather than zero when there
+  // was none, so an IR of footage with no such stretch is unchanged by all this.
+  const inactiveMs = totalInactiveMs(inactive);
+  const savings: AnalysisSavings | undefined =
+    inactiveMs > 0
+      ? {
+          inactive_ms: inactiveMs,
+          describe_calls_skipped: built.savings.describeCallsSkipped,
+          judge_calls_skipped: assessed.judgeCallsSkipped,
+          frames_not_sent: built.savings.framesNotSent,
+          frames_not_analysed: framesNotAnalysed,
+          estimated_tokens_avoided:
+            built.savings.estimatedTokensAvoided + assessed.estimatedTokensAvoided,
+        }
+      : undefined;
+
   const ir: EditorialIR = {
     ir_version: IR_VERSION,
     pipeline_version: PIPELINE_VERSION,
@@ -499,6 +532,8 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     context,
     assets,
     placements,
+    // Filled in by material classification; empty until it exists.
+    materials: [],
     chapters,
     events,
     editorial: assessed.editorial,
@@ -506,7 +541,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     annotations,
     conflicts: built.conflicts,
     model_runs: runs.all(),
-    quality: analysisQuality(standIns),
+    quality: { ...analysisQuality(standIns), ...(savings ? { savings } : {}) },
     stats: {
       asset_count: assets.length,
       total_media_duration_ms: assets.reduce((sum, a) => sum + a.duration_ms, 0),
@@ -541,6 +576,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       failures,
       totalCostUsd: runs.totalCostUsd(),
       mediaLeftDevice: runs.anyMediaLeftDevice(),
+      ...(savings ? { savings } : {}),
       elapsedMs: Date.now() - startedAt,
     },
   };
@@ -569,6 +605,8 @@ export function observationsFingerprint(
     visual: identityOf(suite.visual),
     audio: identityOf(suite.audio),
     ocr: identityOf(suite.ocr),
+    // Only when there is one, so a suite without it fingerprints as it always did.
+    ...(suite.video ? { video: identityOf(suite.video) } : {}),
   });
 }
 

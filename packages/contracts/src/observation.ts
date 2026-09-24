@@ -1,6 +1,15 @@
 import { z } from 'zod';
 import { Confidence, Milliseconds, obj } from './primitives.js';
-import { AssetId, AudioEventId, FrameId, ModelRunId, OcrId, ShotId, UtteranceId } from './ids.js';
+import {
+  AssetId,
+  AudioEventId,
+  FrameId,
+  ModelRunId,
+  OcrId,
+  ShotId,
+  UtteranceId,
+  VideoEventId,
+} from './ids.js';
 import { ModelRun } from './model-run.js';
 
 /**
@@ -129,9 +138,74 @@ export const AudioProfile = obj({
   rms_db: z.array(z.number()),
   /** Probability that speech is present, per hop. */
   speech_prob: z.array(z.number().min(0).max(1)).optional(),
+  /**
+   * Which audio stream of the file this profile describes, when it has several.
+   *
+   * A camera with a lavalier on its second track records room tone on the first,
+   * and everything downstream — transcript, silences, cut points — was built from
+   * stream 0 whatever it held. Recorded here so the choice is visible and so a
+   * cache entry for one stream is never served for another.
+   */
+  stream_index: z.int().min(0).optional(),
+  /** Why that stream, in words: "the only one", "most speech of 2", "chosen by the user". */
+  stream_reason: z.string().optional(),
   model_run_id: ModelRunId.optional(),
 }).meta({ id: 'AudioProfile' });
 export type AudioProfile = z.infer<typeof AudioProfile>;
+
+/**
+ * What the picture was doing, as closed as the audio vocabulary and for the same
+ * reason: a Skill can only match a word it can know in advance.
+ *
+ * - `static`: nothing in any part of the frame changed by more than the noise
+ *   floor for a sustained stretch. A tripod on an empty car park, a camera left
+ *   running on a table, a screen recording nobody is touching.
+ * - `black`: the frame is dark, as a title card, a lens cap or a pocket is.
+ *
+ * Deliberately not "boring" or "dead": those are judgements. Whether a still,
+ * silent stretch is worth anything is the decision layer's business; this only
+ * says it was still and, separately, whether it was silent.
+ */
+export const VideoEventType = z.enum(['static', 'black']).meta({ id: 'VideoEventType' });
+export type VideoEventType = z.infer<typeof VideoEventType>;
+
+export const VideoEvent = obj({
+  id: VideoEventId,
+  asset_id: AssetId,
+  start_ms: Milliseconds,
+  end_ms: Milliseconds,
+  event_type: VideoEventType,
+  confidence: Confidence,
+  model_run_id: ModelRunId.optional(),
+}).meta({ id: 'VideoEvent' });
+export type VideoEvent = z.infer<typeof VideoEvent>;
+
+/**
+ * A regularly sampled picture envelope for one asset, the visual twin of
+ * `AudioProfile`: parallel arrays, because an hour at 200 ms is 18 000 samples.
+ *
+ * `motion` is measured on a 64x36 greyscale downscale, as the largest mean
+ * absolute difference of any cell of a 3x4 grid between consecutive samples, in
+ * grey levels. Both choices are measured rather than chosen:
+ *
+ * - Downscaling first is what separates noise from motion. Sensor grain is
+ *   independent per pixel and averages out over a 30x30 block; a person walking
+ *   does not. At full resolution a static shot with heavy grain differs by 6
+ *   grey levels frame to frame, more than a moving camera does; at 64x36 the
+ *   same shot sits at 0.14 and an empty street at 0.3.
+ * - The maximum over cells rather than the frame mean is what keeps a person
+ *   crossing one corner of a wide static shot counted as motion.
+ */
+export const MotionProfile = obj({
+  asset_id: AssetId,
+  hop_ms: z.int().min(1),
+  /** Largest per-cell mean absolute difference from the previous sample, 0-255. */
+  motion: z.array(z.number().min(0)),
+  /** Mean luma per sample, 0-255. */
+  luma: z.array(z.number().min(0).max(255)),
+  model_run_id: ModelRunId.optional(),
+}).meta({ id: 'MotionProfile' });
+export type MotionProfile = z.infer<typeof MotionProfile>;
 
 /**
  * Everything observed about every asset in a project, before any interpretation.
@@ -159,6 +233,8 @@ export const ObservationTimeline = obj({
   ocr: z.array(OcrObservation).default([]),
   frame_features: z.array(FrameFeature).default([]),
   audio_profiles: z.array(AudioProfile).default([]),
+  video_events: z.array(VideoEvent).default([]),
+  motion_profiles: z.array(MotionProfile).default([]),
   /**
    * The runs that produced everything above.
    *
@@ -197,6 +273,8 @@ export const EMPTY_OBSERVATIONS: Omit<
   ocr: [],
   frame_features: [],
   audio_profiles: [],
+  video_events: [],
+  motion_profiles: [],
   model_runs: [],
   failures: [],
 };

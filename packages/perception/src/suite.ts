@@ -4,6 +4,7 @@ import { FfprobeMediaProbe } from './ffmpeg/probe.js';
 import { FfmpegMediaPreparer } from './ffmpeg/prepare.js';
 import { FfmpegShotDetector } from './ffmpeg/shots.js';
 import { WavAudioAnalyzer } from './ffmpeg/audio.js';
+import { FfmpegVideoAnalyzer } from './ffmpeg/video.js';
 import { HashingTextEmbedding } from './text-embedding/hashing.js';
 import { HeuristicContextModel } from './context/heuristic.js';
 
@@ -35,6 +36,7 @@ export function createLocalSuite(options: LocalSuiteOptions = {}): PerceptionSui
     preparer: new FfmpegMediaPreparer({ runner, binary: ffmpeg }),
     shots: new FfmpegShotDetector({ runner, binary: ffmpeg }),
     audio: new WavAudioAnalyzer(),
+    video: new FfmpegVideoAnalyzer({ runner, binary: ffmpeg }),
     context: new HeuristicContextModel(),
     text: new HashingTextEmbedding(options.embeddingDim ? { dim: options.embeddingDim } : {}),
     // Speech, visual embeddings and OCR are absent by design: they need models,

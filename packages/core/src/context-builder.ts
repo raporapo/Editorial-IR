@@ -13,7 +13,7 @@ import {
   type SemanticEvent,
   type UserAnnotation,
 } from '@editorial-ir/contracts';
-import type { ContextModel } from '@editorial-ir/perception';
+import { HeuristicContextModel, type ContextModel } from '@editorial-ir/perception';
 import type { SegmentDraft } from './segment.js';
 import { annotationsFor, applyAnnotations, withOverrides } from './annotations.js';
 import { selectForEscalation, type EscalationPolicy, type CostBudget } from './budget.js';
@@ -22,6 +22,7 @@ import { framePathFor } from './observe.js';
 import { linkKnownEntities, withKnownEntities } from './entities.js';
 import type { PerceptionCache } from './cache.js';
 import { hashObject } from './fingerprint.js';
+import { inactiveMsWithin, isQuietRange, thinTimestamps, type InactiveSpan } from './activity.js';
 
 /**
  * Turning segments into events that mean something.
@@ -61,6 +62,15 @@ export interface BuildEventsOptions {
    * events mean — while a change to the target duration correctly costs nothing.
    */
   cache?: PerceptionCache;
+  /**
+   * Where the footage was both still and silent.
+   *
+   * An event that lies wholly inside such a span is described by the rules
+   * rather than by the base model, and is never sent for a closer look; frames
+   * for a closer look at any other event are not taken twice from one span. No
+   * boundary and no time value depends on it — the events are already cut.
+   */
+  inactive?: readonly InactiveSpan[];
 
   onProgress?: (stage: string, done: number, total: number) => void;
   /**
@@ -118,6 +128,17 @@ export interface BuildEventsResult {
    * description came from a template looked like a run where three did.
    */
   describedByFallback: number;
+  /** Model work not done because the event, or part of it, was still and silent. */
+  savings: {
+    /** Events the rules described instead of the base model. */
+    describeCallsSkipped: number;
+    /** Frames not attached to a closer look because another one from the same span was. */
+    framesNotSent: number;
+    /** Events that were quiet throughout, for the judgement stage to read. */
+    quietEvents: string[];
+    /** Skipped calls times the tokens measured per base call in this run. */
+    estimatedTokensAvoided: number;
+  };
 }
 
 export async function buildSemanticEvents(
@@ -139,9 +160,38 @@ export async function buildSemanticEvents(
       id: seqId('evt', index + 1),
       startMs: offset + draft.start_ms,
       endMs: offset + draft.end_ms,
-      observed: gatherObservations(draft, options.observations),
+      observed: gatherObservations(draft, options.observations, options.inactive),
     };
   });
+
+  // ---- still and silent ----------------------------------------------------
+  // Quiet as a whole, and not pointed at by the user. An annotation on the
+  // project as a whole says nothing about this span, so it does not count; one
+  // on this asset, this range or this event does, because the user looking at
+  // a lens cap is a reason to describe it properly.
+  const quiet = new Set<string>();
+  for (const skeleton of skeletons) {
+    if (!options.inactive || options.inactive.length === 0) break;
+    const { asset_id, start_ms, end_ms } = skeleton.draft;
+    if (!isQuietRange(options.inactive, asset_id, start_ms, end_ms)) continue;
+    const pointedAt = annotationsFor(
+      {
+        id: skeleton.id,
+        start_ms: skeleton.startMs,
+        end_ms: skeleton.endMs,
+        source_ranges: [{ asset_id, source_in_ms: start_ms, source_out_ms: end_ms }],
+      } as SemanticEvent,
+      options.annotations,
+      placementOf.get(asset_id) ?? 0,
+    ).some((annotation) => annotation.target.kind !== 'project');
+    if (!pointedAt) quiet.add(skeleton.id);
+  }
+  let describeCallsSkipped = 0;
+  const framesSkipped = { count: 0 };
+  // Measured tokens per base call this run, which is what an estimate of the
+  // calls not made is scaled from. Nothing measured, nothing estimated.
+  let baseCalls = 0;
+  let baseTokens = 0;
 
   // ---- cheap pass ----------------------------------------------------------
   const descriptions = new Map<string, Awaited<ReturnType<ContextModel['describe']>>>();
@@ -168,15 +218,29 @@ export async function buildSemanticEvents(
     // and the token count is a property of this pipeline.
     const baseCostPerEvent =
       model.identity.locality === 'remote_api' ? ESTIMATED_COST_PER_EVENT_USD : 0;
+    // Only worth doing when the base model is a model. When it is already the
+    // rules, asking the rules instead saves nothing and would be counted as a
+    // saving that never happened.
+    const rules = model.identity.standIn === undefined ? new HeuristicContextModel() : undefined;
     for (const [index, skeleton] of skeletons.entries()) {
       options.onProgress?.('describe', index, skeletons.length);
       const params = describeParams(skeleton, skeletons, index, options, { includeFrames: false });
+      if (rules && quiet.has(skeleton.id)) {
+        // Described from what was measured, which for a still, silent stretch is
+        // all there is to say. Not a fallback and not a failure: the model was
+        // there and was not asked, and `savings` says so.
+        descriptions.set(skeleton.id, await rules.describe(params));
+        describeCallsSkipped++;
+        continue;
+      }
       try {
         const { result, cached } = await describeCached(model, params, options.cache);
         descriptions.set(skeleton.id, result);
         // A cache hit is free, which is the whole point of the cache; counting
         // it would make a re-run look as expensive as the first one.
         if (!cached) {
+          baseCalls++;
+          baseTokens += (result.input_tokens ?? 0) + (result.output_tokens ?? 0);
           options.runs.addCost(
             baseRun,
             baseCostPerEvent,
@@ -219,15 +283,18 @@ export async function buildSemanticEvents(
     const totalDuration = skeletons.reduce((sum, s) => sum + (s.endMs - s.startMs), 0) || 1;
 
     const decision = selectForEscalation(
-      skeletons.map((skeleton) => ({
-        id: skeleton.id,
-        value: escalationValue(
-          descriptions.get(skeleton.id)?.confidence ?? 0,
-          (skeleton.endMs - skeleton.startMs) / totalDuration,
-          skeleton.observed,
-        ),
-        costUsd: costPerEvent,
-      })),
+      // A closer look at a lens cap finds a lens cap.
+      skeletons
+        .filter((skeleton) => !quiet.has(skeleton.id))
+        .map((skeleton) => ({
+          id: skeleton.id,
+          value: escalationValue(
+            descriptions.get(skeleton.id)?.confidence ?? 0,
+            (skeleton.endMs - skeleton.startMs) / totalDuration,
+            skeleton.observed,
+          ),
+          costUsd: costPerEvent,
+        })),
       options.escalation ?? {},
     );
     limitedBy = decision.limitedBy;
@@ -239,7 +306,10 @@ export async function buildSemanticEvents(
       if (!selected.has(skeleton.id)) continue;
       options.onProgress?.('inspect', done++, decision.selected.length);
 
-      const params = describeParams(skeleton, skeletons, index, options, { includeFrames: true });
+      const params = describeParams(skeleton, skeletons, index, options, {
+        includeFrames: true,
+        framesSkipped,
+      });
       const cached = options.cache?.get<Awaited<ReturnType<ContextModel['describe']>>>(
         describeKey(model, params),
       );
@@ -373,6 +443,13 @@ export async function buildSemanticEvents(
     escalationLimitedBy: limitedBy,
     failures,
     describedByFallback,
+    savings: {
+      describeCallsSkipped,
+      framesNotSent: framesSkipped.count,
+      quietEvents: [...quiet],
+      estimatedTokensAvoided:
+        baseCalls > 0 ? Math.round((describeCallsSkipped * baseTokens) / baseCalls) : 0,
+    },
   };
 }
 
@@ -449,12 +526,12 @@ function describeParams(
   all: readonly Skeleton[],
   index: number,
   options: BuildEventsOptions,
-  flags: { includeFrames: boolean },
+  flags: { includeFrames: boolean; framesSkipped?: { count: number } },
 ) {
   const previous = index > 0 ? all[index - 1] : undefined;
   const next = all[index + 1];
 
-  const framePaths = flags.includeFrames ? framesFor(skeleton, options) : [];
+  const framePaths = flags.includeFrames ? framesFor(skeleton, options, flags.framesSkipped) : [];
 
   return {
     event_id: skeleton.id,
@@ -472,7 +549,11 @@ function describeParams(
   };
 }
 
-function framesFor(skeleton: Skeleton, options: BuildEventsOptions): string[] {
+function framesFor(
+  skeleton: Skeleton,
+  options: BuildEventsOptions,
+  skipped?: { count: number },
+): string[] {
   const prepared = options.derived?.get(skeleton.draft.asset_id);
   if (!prepared?.frames_dir) return [];
   const fps = options.frameFps ?? 1;
@@ -480,9 +561,16 @@ function framesFor(skeleton: Skeleton, options: BuildEventsOptions): string[] {
   // Four frames: the start, two through the middle and the end. More rarely
   // changes the answer and every one of them costs money on a hosted model.
   const span = skeleton.draft.end_ms - skeleton.draft.start_ms;
-  const points = [0.1, 0.35, 0.65, 0.9].map(
-    (fraction) => skeleton.draft.start_ms + span * fraction,
+  const all = [0.1, 0.35, 0.65, 0.9].map((fraction) =>
+    Math.round(skeleton.draft.start_ms + span * fraction),
   );
+  // Two frames of the same still, silent stretch are one frame sent twice.
+  const { kept: points, dropped } = thinTimestamps(
+    all,
+    options.inactive ?? [],
+    skeleton.draft.asset_id,
+  );
+  if (skipped) skipped.count += dropped;
   return points
     .map((ms) => framePathFor(prepared, ms, fps))
     .filter((path): path is string => path !== undefined);
@@ -526,6 +614,7 @@ function fallbackDescription(observed: EventObservations): string {
 export function gatherObservations(
   draft: SegmentDraft,
   observations: ObservationTimeline,
+  inactive?: readonly InactiveSpan[],
 ): EventObservations {
   const range = { start_ms: draft.start_ms, end_ms: draft.end_ms };
   const duration = Math.max(1, draft.end_ms - draft.start_ms);
@@ -566,6 +655,10 @@ export function gatherObservations(
     .filter((event) => event.event_type === 'silence')
     .reduce((sum, event) => sum + overlapMs(event, range), 0);
 
+  const inactiveRatio = inactive
+    ? clamp(inactiveMsWithin(inactive, draft.asset_id, draft.start_ms, draft.end_ms) / duration)
+    : 0;
+
   const motions = frames.map((f) => f.motion).filter((m): m is number => m !== undefined);
   const qualities = frames
     .map((f) => averageDefined([f.sharpness, f.exposure]))
@@ -582,7 +675,15 @@ export function gatherObservations(
     silence_ratio: clamp(silenceMs / duration),
     ...(motions.length > 0 ? { motion: clamp(average(motions)) } : {}),
     ...(qualities.length > 0 ? { technical_quality: clamp(average(qualities)) } : {}),
+    // Only when there is some: an absent field and a zero say the same thing,
+    // and an absent one leaves every event of a project with no still, silent
+    // footage exactly as it was, cache keys included.
+    ...(inactiveRatio > 0 ? { inactive_ratio: round3(inactiveRatio) } : {}),
   };
+}
+
+function round3(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }
 
 function average(values: number[]): number {

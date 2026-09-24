@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Iso8601, Milliseconds, obj, compareText } from './primitives.js';
-import { AssetPlacement, MediaAsset } from './media.js';
+import { AssetPlacement, MaterialProfile, MediaAsset } from './media.js';
 import { Project, ProjectContext, UserAnnotation } from './project.js';
 import { Chapter, SemanticEvent } from './event.js';
 import { EditorialAssessment } from './editorial.js';
@@ -75,6 +75,8 @@ export const EditorialIR = obj({
 
   assets: z.array(MediaAsset).default([]),
   placements: z.array(AssetPlacement).default([]),
+  /** What kind of material each asset is, and why that was decided. */
+  materials: z.array(MaterialProfile).default([]),
 
   chapters: z.array(Chapter).default([]),
   events: z.array(SemanticEvent).default([]),

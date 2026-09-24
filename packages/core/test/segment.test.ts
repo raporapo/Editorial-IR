@@ -51,6 +51,8 @@ function observations(overrides: Partial<ObservationTimeline> = {}): Observation
     ocr: [],
     frame_features: [],
     audio_profiles: [],
+    video_events: [],
+    motion_profiles: [],
     ...overrides,
   };
 }

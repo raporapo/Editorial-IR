@@ -210,6 +210,7 @@ export function makeIR(spec: IrSpec): EditorialIR {
       order: i,
       ordered_by: 'file_name' as const,
     })),
+    materials: [],
     chapters: [],
     events,
     editorial,

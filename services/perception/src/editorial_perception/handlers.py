@@ -15,6 +15,7 @@ from typing import Any
 
 from .backends import asr, audio_tags, hashing, text_embedding, visual, vlm
 from .backends import audio as audio_backend
+from .backends import motion as motion_backend
 from .backends import ocr as ocr_backend
 from .errors import BadRequest, MissingDependency
 from .media import detect_shots, has_ffmpeg, has_ffprobe, prepare, probe
@@ -40,6 +41,7 @@ def handle_health(params: dict[str, Any], session: Session) -> dict[str, Any]:
             "prepare": has_ffmpeg(),
             "detect_shots": has_ffmpeg(),
             "analyze_audio": True,
+            "analyze_video": has_ffmpeg(),
             "transcribe": _importable("faster_whisper"),
             "embed_frames": visual.available(),
             "ocr": ocr_backend.available(),
@@ -126,6 +128,9 @@ def _stage_models() -> dict[str, str]:
     # name that was asked for: an unloadable model falls back to hashing, and
     # the cache must not serve one stage's vectors under the other's key.
     models["embed_text"] = text_embedding.describe()
+    # Same algorithm and same name as the TypeScript analyser, so the cache
+    # entry one runtime wrote is the one the other would have written.
+    models["analyze_video"] = motion_backend.MODEL
     if ocr_backend.available():
         # The version, not the word "ocr". The cache keys on this, so a
         # placeholder meant an upgraded reader served the old reader's text.
@@ -292,12 +297,25 @@ def handle_embed_text(params: dict[str, Any], session: Session) -> dict[str, Any
     )
 
 
+def handle_analyze_video(params: dict[str, Any], session: Session) -> dict[str, Any]:
+    """How much the picture moves and where it is black, on the proxy."""
+    return motion_backend.analyze(
+        _require(params, "path"),
+        sample_fps=float(params.get("sample_fps", 5)),
+        static_threshold=float(params.get("static_threshold", 0.5)),
+        min_static_ms=int(params.get("min_static_ms", 3000)),
+        black_luma=float(params.get("black_luma", 24)),
+        min_black_ms=int(params.get("min_black_ms", 500)),
+    )
+
+
 HANDLERS = {
     "health": handle_health,
     "probe": handle_probe,
     "prepare": handle_prepare,
     "detect_shots": handle_detect_shots,
     "analyze_audio": handle_analyze_audio,
+    "analyze_video": handle_analyze_video,
     "transcribe": handle_transcribe,
     "embed_frames": handle_embed_frames,
     "ocr": handle_ocr,

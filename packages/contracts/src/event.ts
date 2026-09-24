@@ -85,6 +85,25 @@ export const EventObservations = obj({
   motion: UnitScore.optional(),
   /** Mean technical quality in [0,1], from sharpness and exposure. */
   technical_quality: UnitScore.optional(),
+  /**
+   * Text burned into the picture as subtitles, one line per subtitle rather than
+   * one per sampled frame.
+   *
+   * Kept apart from `ocr` because it is a different thing that happens to be
+   * read the same way. In an edited video a subtitle sits in the bottom band for
+   * three seconds across two cuts, and read frame by frame it arrived as the same
+   * sentence six times among the shop signs — which the search index then
+   * treated as the most prominent thing on screen.
+   */
+  subtitles: z.array(z.string()).optional(),
+  /**
+   * Fraction of the event that was both static and silent, in [0,1].
+   *
+   * An observation, not a verdict: a still, silent establishing shot can be the
+   * best moment in the film. It is what lets the analysis decline to pay a model
+   * to describe a lens cap, and what lets a skill rule decide for itself.
+   */
+  inactive_ratio: UnitScore.optional(),
 }).meta({ id: 'EventObservations' });
 export type EventObservations = z.infer<typeof EventObservations>;
 

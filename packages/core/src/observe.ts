@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { isAbsolute, resolve } from 'node:path';
 import {
+  AnalyzeVideoParams,
   SCENE_SENSITIVITY,
   compareText,
   EMPTY_OBSERVATIONS,
@@ -11,18 +12,21 @@ import {
   type AudioProfile,
   type FrameFeature,
   type MediaAsset,
+  type MotionProfile,
   type ObservationTimeline,
   type OcrObservation,
   type PrepareResult,
   type ProjectContext,
   type Shot,
   type Utterance,
+  type VideoEvent,
 } from '@editorial-ir/contracts';
 import { ModelScheduler, frameFileName, type PerceptionSuite } from '@editorial-ir/perception';
 import { vocabularyFor } from './label-vocabulary.js';
 import type { PerceptionCache } from './cache.js';
 import type { ModelRunRecorder } from './model-runs.js';
 import type { CacheKeyParts } from './fingerprint.js';
+import { inactiveSpans, thinTimestamps, type InactiveSpan } from './activity.js';
 
 /**
  * Running perception over every asset.
@@ -86,6 +90,16 @@ export interface ObserveResult {
    * forty of an hour of work.
    */
   failures: { stage: string; assetId: string; reason: string }[];
+  /**
+   * Where the footage was both still and silent, as far as this run measured.
+   *
+   * Recomputed from the observations by the compiler rather than trusted from
+   * here, so a reused analysis gets the same mask; returned because the OCR
+   * stage below already needed it.
+   */
+  inactive: InactiveSpan[];
+  /** OCR timestamps not read because they fell inside an already-sampled still, silent span. */
+  framesNotAnalysed: number;
 }
 
 export async function observeAssets(
@@ -120,9 +134,11 @@ export async function observeAssets(
   const ocr: OcrObservation[] = [];
   const frameFeatures: FrameFeature[] = [];
   const audioProfiles: AudioProfile[] = [];
+  const videoEvents: VideoEvent[] = [];
+  const motionProfiles: MotionProfile[] = [];
 
   const frameVectors = new Map<string, number[]>();
-  const counters = { utt: 0, shot: 0, aev: 0, ocr: 0, frm: 0 };
+  const counters = { utt: 0, shot: 0, aev: 0, ocr: 0, frm: 0, vev: 0 };
   const frameFps = options.frameFps ?? 1;
 
   // ---- prepare -------------------------------------------------------------
@@ -298,6 +314,79 @@ export async function observeAssets(
     unavailable.push({ stage: 'audio', reason: 'no model is configured for it' });
   }
 
+  // ---- picture envelope ----------------------------------------------------
+  // How much the picture moves, and where it is black. Cheap by construction —
+  // a 64x36 greyscale decode — and run before the stages that cost something,
+  // because its one job is to tell them where there is nothing to look at.
+  if (options.suite.video) {
+    const video = options.suite.video;
+    const runId = options.runs.fromIdentity('motion', video.identity);
+    let done = 0;
+    for (const asset of ordered) {
+      if (asset.kind !== 'video') continue;
+      options.onProgress?.('motion', asset.file_name, done++, ordered.length);
+
+      const params = AnalyzeVideoParams.parse({
+        path: derived.get(asset.id)?.proxy_path ?? absolutePath(asset, options.projectRoot),
+      });
+      let result: Awaited<ReturnType<typeof video.analyzeVideo>> | undefined;
+      await attempt('video', asset.id, async () => {
+        result = await cached(
+          options.cache,
+          keyFor('analyze_video', asset, video.identity, params),
+          () => video.analyzeVideo(params),
+        );
+      });
+      if (!result) continue;
+
+      for (const event of result.events) {
+        const end = Math.min(event.end_ms, asset.duration_ms || event.end_ms);
+        if (end <= event.start_ms) continue;
+        videoEvents.push({
+          id: seqId('vev', ++counters.vev, 5),
+          asset_id: asset.id,
+          start_ms: event.start_ms,
+          end_ms: end,
+          event_type: event.event_type,
+          confidence: event.confidence,
+          model_run_id: runId,
+        });
+      }
+      if (result.motion.length > 0) {
+        motionProfiles.push({
+          asset_id: asset.id,
+          hop_ms: result.hop_ms,
+          motion: result.motion,
+          luma: result.luma,
+          model_run_id: runId,
+        });
+      }
+    }
+  } else {
+    unavailable.push({ stage: 'video', reason: 'no model is configured for it' });
+  }
+
+  // Still and silent, from everything measured so far. Only the OCR stage below
+  // reads it: the visual stage must not, because segmentation reads one frame
+  // vector per shot and thinning those would move event boundaries — the one
+  // thing this mask is never allowed to do.
+  const inactive = inactiveSpans(
+    {
+      ...EMPTY_OBSERVATIONS,
+      project_id: '',
+      fingerprint: '',
+      pipeline_version: PIPELINE_VERSION,
+      generated_at: '',
+      utterances,
+      audio_events: audioEvents,
+      audio_profiles: audioProfiles,
+      video_events: videoEvents,
+      motion_profiles: motionProfiles,
+    },
+    ordered,
+  );
+  let framesNotAnalysed = 0;
+
   // ---- visual --------------------------------------------------------------
   if (options.suite.visual) {
     const visual = options.suite.visual;
@@ -363,7 +452,16 @@ export async function observeAssets(
       let done = 0;
       for (const asset of ordered) {
         const prepared = derived.get(asset.id);
-        const timestamps = representativeFrames(shots, asset.id);
+        // One read per still, silent span rather than one per shot inside it: a
+        // screen nobody touches says the same thing at every shot boundary the
+        // detector found in its compression noise. OCR does not feed
+        // segmentation, so this moves no boundary.
+        const { kept: timestamps, dropped } = thinTimestamps(
+          representativeFrames(shots, asset.id),
+          inactive,
+          asset.id,
+        );
+        framesNotAnalysed += dropped;
         if (timestamps.length === 0) continue;
         options.onProgress?.('ocr', asset.file_name, done++, ordered.length);
 
@@ -418,11 +516,15 @@ export async function observeAssets(
       ocr,
       frame_features: frameFeatures,
       audio_profiles: audioProfiles,
+      video_events: videoEvents,
+      motion_profiles: motionProfiles,
     },
     derived,
     frameVectors,
     unavailable,
     failures,
+    inactive,
+    framesNotAnalysed,
   };
 }
 

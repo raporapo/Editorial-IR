@@ -34,6 +34,14 @@ export {
   runsOf,
 } from './ffmpeg/audio.js';
 export {
+  FfmpegVideoAnalyzer,
+  analyseSamples,
+  cellMaxDifference,
+  motionArgs,
+  MOTION_WIDTH,
+  MOTION_HEIGHT,
+} from './ffmpeg/video.js';
+export {
   HashingTextEmbedding,
   normalizeText,
   fnv1a,

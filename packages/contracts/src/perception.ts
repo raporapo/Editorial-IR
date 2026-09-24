@@ -25,6 +25,7 @@ export const PerceptionOp = z
     'detect_shots',
     'embed_frames',
     'analyze_audio',
+    'analyze_video',
     'ocr',
     'describe',
     'embed_text',
@@ -52,6 +53,17 @@ export const PrepareParams = obj({
   extract_audio: z.boolean().default(true),
   /** Frames per second to sample for visual analysis. 0 disables frame sampling. */
   frame_fps: z.number().min(0).default(1),
+  /**
+   * Which audio stream to extract, by container index. Omitted: the worker picks
+   * the one with the most speech and says why in the result.
+   */
+  audio_stream_index: z.int().min(0).optional(),
+  /**
+   * Encode the proxy at a constant frame rate. On by default, because a
+   * variable-rate proxy makes "the frame at 12.4 s" a different frame in every
+   * tool that decodes it, and every timestamp downstream is taken from the proxy.
+   */
+  constant_frame_rate: z.boolean().optional(),
 }).meta({ id: 'PrepareParams' });
 export type PrepareParams = z.infer<typeof PrepareParams>;
 
@@ -80,6 +92,21 @@ export type TranscribeParams = z.infer<typeof TranscribeParams>;
  * for as long as the caller keeps passing one explicitly.
  */
 export const SCENE_SENSITIVITY = 0.3;
+
+/**
+ * Below this, in grey levels, a 64x36 cell has not changed.
+ *
+ * Measured, on a still frame looped with synthetic sensor grain and on real
+ * static-camera footage: grain of the kind a phone produces sits at 0.14-0.19,
+ * an empty car park under a traffic camera at about 0.3, and anything actually
+ * moving well above 0.5. At 0.75 people sitting still in conversation start to
+ * count as static, and they are content. Extreme grain reads as motion (1.2),
+ * which fails safe: it costs tokens, it never loses a moment.
+ */
+export const STATIC_MOTION_THRESHOLD = 0.5;
+
+/** How long the picture has to hold still before it counts as a static span. */
+export const STATIC_MIN_MS = 3000;
 
 export const DetectShotsParams = obj({
   path: z.string().min(1),
@@ -155,6 +182,30 @@ export type DescribeParams = z.infer<typeof DescribeParams>;
 export const EMBEDDING_SPACES = ['text', 'visual'] as const;
 export type EmbeddingSpace = (typeof EMBEDDING_SPACES)[number];
 
+/**
+ * The picture's envelope: how much it moves and how bright it is, per sample.
+ *
+ * Cheap on purpose — a 64x36 greyscale decode of the proxy costs about 1% of
+ * real time, measured on a five-minute 480p proxy — because it runs over every
+ * second of every file, and its whole job is to decide where the expensive
+ * stages need not look.
+ */
+export const AnalyzeVideoParams = obj({
+  path: z.string().min(1),
+  /** Samples per second. Five resolves a person crossing a frame. */
+  sample_fps: z.number().gt(0).default(5),
+  static_threshold: z.number().min(0).default(STATIC_MOTION_THRESHOLD),
+  min_static_ms: Milliseconds.default(STATIC_MIN_MS),
+  /**
+   * A sample is black when nearly all of it — its 98th-percentile luma, 0-255 —
+   * is below this. The mean would call a city at night black; the lit windows
+   * keep the percentile up.
+   */
+  black_luma: z.number().min(0).max(255).default(24),
+  min_black_ms: Milliseconds.default(500),
+}).meta({ id: 'AnalyzeVideoParams' });
+export type AnalyzeVideoParams = z.infer<typeof AnalyzeVideoParams>;
+
 export const EmbedTextParams = obj({
   texts: z.array(z.string()).min(1),
   /** `query` and `passage` may be encoded differently by asymmetric models. */
@@ -189,6 +240,7 @@ export const PerceptionRequest = z
     obj({ ...base, op: z.literal('detect_shots'), params: DetectShotsParams }),
     obj({ ...base, op: z.literal('embed_frames'), params: EmbedFramesParams }),
     obj({ ...base, op: z.literal('analyze_audio'), params: AnalyzeAudioParams }),
+    obj({ ...base, op: z.literal('analyze_video'), params: AnalyzeVideoParams }),
     obj({ ...base, op: z.literal('ocr'), params: OcrParams }),
     obj({ ...base, op: z.literal('describe'), params: DescribeParams }),
     obj({ ...base, op: z.literal('embed_text'), params: EmbedTextParams }),
@@ -263,6 +315,23 @@ export const ProbeResult = obj({
   bit_rate: jsonOptional(z.int().min(0)),
   rotation: jsonOptional(z.int()),
   creation_time: jsonOptional(z.string()),
+  /** Every audio stream, in container order. Empty for a file with none. */
+  audio_streams: jsonOptional(
+    z.array(
+      obj({
+        index: z.int().min(0),
+        codec: jsonOptional(z.string()),
+        channels: jsonOptional(z.int().min(0)),
+        sample_rate: jsonOptional(z.int().min(0)),
+        language: jsonOptional(z.string()),
+        title: jsonOptional(z.string()),
+      }),
+    ),
+  ),
+  /** `avg_frame_rate` as a rational, which differs from the nominal rate in a VFR file. */
+  avg_fps_num: jsonOptional(z.int().min(0)),
+  avg_fps_den: jsonOptional(z.int().min(1)),
+  variable_frame_rate: jsonOptional(z.boolean()),
   metadata: z.record(z.string(), z.unknown()).default({}),
 }).meta({ id: 'ProbeResult' });
 export type ProbeResult = z.infer<typeof ProbeResult>;
@@ -272,6 +341,10 @@ export const PrepareResult = obj({
   audio_path: jsonOptional(z.string()),
   frames_dir: jsonOptional(z.string()),
   frame_timestamps_ms: z.array(Milliseconds).default([]),
+  /** The audio stream extracted, by container index, when the file had any. */
+  audio_stream_index: jsonOptional(z.int().min(0)),
+  /** Why that one: "the only one", "most speech of 2 (0.61 vs 0.04)", "asked for". */
+  audio_stream_reason: jsonOptional(z.string()),
 }).meta({ id: 'PrepareResult' });
 export type PrepareResult = z.infer<typeof PrepareResult>;
 
@@ -395,6 +468,24 @@ export const DescribeResult = obj({
 }).meta({ id: 'DescribeResult' });
 export type DescribeResult = z.infer<typeof DescribeResult>;
 
+export const AnalyzeVideoResult = obj({
+  hop_ms: z.int().min(1),
+  motion: z.array(z.number().min(0)).default([]),
+  luma: z.array(z.number().min(0).max(255)).default([]),
+  events: z
+    .array(
+      obj({
+        start_ms: Milliseconds,
+        end_ms: Milliseconds,
+        event_type: z.enum(['static', 'black']),
+        confidence: z.number().min(0).max(1),
+      }),
+    )
+    .default([]),
+  model: jsonOptional(z.string()),
+}).meta({ id: 'AnalyzeVideoResult' });
+export type AnalyzeVideoResult = z.infer<typeof AnalyzeVideoResult>;
+
 export const EmbedTextResult = obj({
   model: jsonOptional(z.string()),
   dim: z.int().min(1),
@@ -465,6 +556,7 @@ export const PERCEPTION_RESULT_SCHEMAS = {
   detect_shots: DetectShotsResult,
   embed_frames: EmbedFramesResult,
   analyze_audio: AnalyzeAudioResult,
+  analyze_video: AnalyzeVideoResult,
   ocr: OcrResult,
   describe: DescribeResult,
   embed_text: EmbedTextResult,
@@ -479,6 +571,7 @@ export type PerceptionResultMap = {
   detect_shots: DetectShotsResult;
   embed_frames: EmbedFramesResult;
   analyze_audio: AnalyzeAudioResult;
+  analyze_video: AnalyzeVideoResult;
   ocr: OcrResult;
   describe: DescribeResult;
   embed_text: EmbedTextResult;

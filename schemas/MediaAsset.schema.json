@@ -60,11 +60,20 @@
     "rotation": {
       "$ref": "#/$defs/__schema14"
     },
-    "creation_time": {
+    "audio_streams": {
       "$ref": "#/$defs/__schema15"
     },
+    "variable_frame_rate": {
+      "$ref": "#/$defs/__schema22"
+    },
+    "avg_fps": {
+      "$ref": "#/$defs/__schema23"
+    },
+    "creation_time": {
+      "$ref": "#/$defs/__schema24"
+    },
     "metadata": {
-      "$ref": "#/$defs/__schema16"
+      "$ref": "#/$defs/__schema25"
     }
   },
   "required": [
@@ -168,6 +177,70 @@
       "maximum": 9007199254740991
     },
     "__schema15": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AudioStream"
+      }
+    },
+    "AudioStream": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "$ref": "#/$defs/__schema16"
+        },
+        "codec": {
+          "$ref": "#/$defs/__schema17"
+        },
+        "channels": {
+          "$ref": "#/$defs/__schema18"
+        },
+        "sample_rate": {
+          "$ref": "#/$defs/__schema19"
+        },
+        "language": {
+          "$ref": "#/$defs/__schema20"
+        },
+        "title": {
+          "$ref": "#/$defs/__schema21"
+        }
+      },
+      "required": [
+        "index"
+      ],
+      "additionalProperties": false
+    },
+    "__schema16": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema17": {
+      "type": "string"
+    },
+    "__schema18": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema19": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema20": {
+      "type": "string"
+    },
+    "__schema21": {
+      "type": "string"
+    },
+    "__schema22": {
+      "type": "boolean"
+    },
+    "__schema23": {
+      "type": "number",
+      "minimum": 0
+    },
+    "__schema24": {
       "$ref": "#/$defs/Iso8601"
     },
     "Iso8601": {
@@ -175,7 +248,7 @@
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
       "description": "ISO-8601 timestamp, always UTC with a trailing Z."
     },
-    "__schema16": {
+    "__schema25": {
       "default": {},
       "type": "object",
       "propertyNames": {

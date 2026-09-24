@@ -2,6 +2,8 @@ import type {
   StandInDeclaration,
   AnalyzeAudioParams,
   AnalyzeAudioResult,
+  AnalyzeVideoParams,
+  AnalyzeVideoResult,
   DescribeParams,
   DescribeResult,
   DetectShotsParams,
@@ -98,6 +100,16 @@ export interface AudioModel extends PerceptionModel {
   analyzeAudio(params: AnalyzeAudioParams): Promise<AnalyzeAudioResult>;
 }
 
+/**
+ * How much the picture moves and where it is black, per sample.
+ *
+ * Cheap by contract: it runs over every second of every file, and its whole
+ * purpose is to tell the expensive stages where they need not look.
+ */
+export interface VideoModel extends PerceptionModel {
+  analyzeVideo(params: AnalyzeVideoParams): Promise<AnalyzeVideoResult>;
+}
+
 export interface OcrModel extends PerceptionModel {
   ocr(params: OcrParams): Promise<OcrResult>;
 }
@@ -144,6 +156,7 @@ export interface PerceptionSuite {
   readonly shots?: ShotDetector;
   readonly visual?: VisualEmbeddingModel;
   readonly audio?: AudioModel;
+  readonly video?: VideoModel;
   readonly ocr?: OcrModel;
   readonly context?: ContextModel;
   readonly text: TextEmbeddingModel;
@@ -154,7 +167,16 @@ export interface PerceptionSuite {
 }
 
 export type PerceptionCapability =
-  'probe' | 'prepare' | 'speech' | 'shots' | 'visual' | 'audio' | 'ocr' | 'context' | 'text';
+  | 'probe'
+  | 'prepare'
+  | 'speech'
+  | 'shots'
+  | 'visual'
+  | 'audio'
+  | 'video'
+  | 'ocr'
+  | 'context'
+  | 'text';
 
 export function availableCapabilities(suite: PerceptionSuite): PerceptionCapability[] {
   const caps: PerceptionCapability[] = ['probe', 'text'];
@@ -163,6 +185,7 @@ export function availableCapabilities(suite: PerceptionSuite): PerceptionCapabil
   if (suite.shots) caps.push('shots');
   if (suite.visual) caps.push('visual');
   if (suite.audio) caps.push('audio');
+  if (suite.video) caps.push('video');
   if (suite.ocr) caps.push('ocr');
   if (suite.context) caps.push('context');
   return caps;

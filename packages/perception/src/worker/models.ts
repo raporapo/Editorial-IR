@@ -1,6 +1,8 @@
 import type {
   AnalyzeAudioParams,
   AnalyzeAudioResult,
+  AnalyzeVideoParams,
+  AnalyzeVideoResult,
   DescribeParams,
   DescribeResult,
   DetectShotsParams,
@@ -25,6 +27,7 @@ import type {
   ShotDetector,
   SpeechModel,
   TextEmbeddingModel,
+  VideoModel,
   VisualEmbeddingModel,
 } from '../types.js';
 import type { PythonWorkerClient } from './client.js';
@@ -140,6 +143,19 @@ export class WorkerAudioModel implements AudioModel {
   constructor(private readonly client: PythonWorkerClient) {}
   async analyzeAudio(params: AnalyzeAudioParams): Promise<AnalyzeAudioResult> {
     return this.client.request('analyze_audio', params, { timeoutMs: LONG_TIMEOUT_MS });
+  }
+}
+
+export class WorkerVideoModel implements VideoModel {
+  readonly identity: ModelIdentity;
+  constructor(
+    private readonly client: PythonWorkerClient,
+    model = 'cell-max-64x36',
+  ) {
+    this.identity = identity(model);
+  }
+  async analyzeVideo(params: AnalyzeVideoParams): Promise<AnalyzeVideoResult> {
+    return this.client.request('analyze_video', params, { timeoutMs: LONG_TIMEOUT_MS });
   }
 }
 

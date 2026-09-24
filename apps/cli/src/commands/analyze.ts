@@ -109,6 +109,27 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
       }
     }
 
+    // What the still, silent footage saved. Said with its measure — how much
+    // footage and how many calls — because "skipped" alone reads like "missed".
+    const savings = ir.quality.savings;
+    if (savings) {
+      heading('still and silent');
+      detail('footage', formatTimecode(savings.inactive_ms, false));
+      const calls = savings.describe_calls_skipped + savings.judge_calls_skipped;
+      if (calls > 0) {
+        detail(
+          'not asked of a model',
+          `${savings.describe_calls_skipped} description(s), ${savings.judge_calls_skipped} judgement(s)`,
+        );
+      }
+      const frames = savings.frames_not_sent + savings.frames_not_analysed;
+      if (frames > 0) detail('frames not sent or read', String(frames));
+      if (savings.estimated_tokens_avoided > 0) {
+        detail('tokens avoided', `about ${savings.estimated_tokens_avoided} (estimated)`);
+      }
+      note('  no time value changed: the media is untouched and every timecode is the same');
+    }
+
     // Said plainly, and said here rather than only in the file, because the
     // next command the user runs will not mention it and the number they get
     // from a benchmark will look exactly like a real one.

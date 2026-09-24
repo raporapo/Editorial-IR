@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { obj } from './primitives.js';
+import { Milliseconds, obj } from './primitives.js';
 
 /**
  * How much of this analysis was done by a model, and how much by a stand-in.
@@ -98,10 +98,43 @@ export const AnalysisTier = z
   .meta({ id: 'AnalysisTier' });
 export type AnalysisTier = z.infer<typeof AnalysisTier>;
 
+/**
+ * Model work deliberately not done, because the material held nothing to find.
+ *
+ * Separate from `stand_ins` on purpose, and the separation is load-bearing. A
+ * stand-in is a stage that ran without the model it wanted; a skip is a model
+ * that was available and was not asked, about a span of footage that was both
+ * still and silent. Folded together, a project with a long static stretch would
+ * look degraded — the tier logic counts descriptions that came from the fallback
+ * — when the only thing that happened is that nobody paid to have a closed lens
+ * cap described.
+ *
+ * No time value anywhere depends on this. The spans are metadata beside the
+ * media, the media is never cut or re-encoded for it, and event boundaries,
+ * source ranges and plan timecodes are the same whether it was applied or not.
+ */
+export const AnalysisSavings = obj({
+  /** Total source time judged both static and silent. */
+  inactive_ms: Milliseconds.default(0),
+  /** Events described from their observations instead of by the vision-language model. */
+  describe_calls_skipped: z.int().min(0).default(0),
+  /** Events judged by the rules instead of the decision model. */
+  judge_calls_skipped: z.int().min(0).default(0),
+  /** Frames that would have been sent to the describe call and were not. */
+  frames_not_sent: z.int().min(0).default(0),
+  /** Frame timestamps not embedded or read for text, beyond one kept per span. */
+  frames_not_analysed: z.int().min(0).default(0),
+  /** An estimate, labelled as one: skipped calls times the tokens measured per call. */
+  estimated_tokens_avoided: z.int().min(0).default(0),
+}).meta({ id: 'AnalysisSavings' });
+export type AnalysisSavings = z.infer<typeof AnalysisSavings>;
+
 export const AnalysisQuality = obj({
   tier: AnalysisTier,
   /** Every stage that ran without the model the standard path wants. */
   stand_ins: z.array(StandIn).default([]),
+  /** What was not asked of a model because there was nothing there. Absent when off. */
+  savings: AnalysisSavings.optional(),
 }).meta({ id: 'AnalysisQuality' });
 export type AnalysisQuality = z.infer<typeof AnalysisQuality>;
 

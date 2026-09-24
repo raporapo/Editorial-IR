@@ -42,8 +42,20 @@
     "creation_time": {
       "$ref": "#/$defs/__schema11"
     },
-    "metadata": {
+    "audio_streams": {
       "$ref": "#/$defs/__schema12"
+    },
+    "avg_fps_num": {
+      "$ref": "#/$defs/__schema13"
+    },
+    "avg_fps_den": {
+      "$ref": "#/$defs/__schema14"
+    },
+    "variable_frame_rate": {
+      "$ref": "#/$defs/__schema15"
+    },
+    "metadata": {
+      "$ref": "#/$defs/__schema16"
     }
   },
   "required": [
@@ -178,6 +190,102 @@
       ]
     },
     "__schema12": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "codec": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "channels": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sample_rate": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "language": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "index"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema13": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema14": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema15": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "__schema16": {
       "default": {},
       "type": "object",
       "propertyNames": {

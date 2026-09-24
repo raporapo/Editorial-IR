@@ -60,6 +60,19 @@ export const ProjectBackground = obj({
   places: z.array(Place).default([]),
   /** Domain words the transcriber and the context model should expect. */
   vocabulary: z.array(z.string()).default([]),
+  /**
+   * What kind of material a file is, when the inference gets it wrong.
+   *
+   * Keyed by file name or asset id, because a person knows the first and the
+   * project knows the second: `{ "final_v3.mp4": edited }`. Always wins over the
+   * inference, which is recorded beside it rather than discarded.
+   */
+  materials: z
+    .record(
+      z.string(),
+      z.enum(['raw', 'edited', 'clip', 'screen_recording', 'audio_only', 'still']),
+    )
+    .optional(),
   notes: z.array(z.string()).default([]),
 }).meta({ id: 'ProjectBackground' });
 export type ProjectBackground = z.infer<typeof ProjectBackground>;
