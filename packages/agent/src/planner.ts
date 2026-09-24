@@ -841,6 +841,12 @@ function suppressDuplicates(
     groups.set(key, group);
   }
 
+  // One line per event, however many groups it was dropped from. Groups overlap
+  // — every relation opens one keyed by its source — and each pushed its own
+  // line, so the probe's folder of clips listed evt_0005 as dropped four times
+  // over, and `oea explain` read the same sentence back four times.
+  const alreadyDropped = new Set<string>();
+
   for (const group of groups.values()) {
     if (group.length < 2) continue;
     if (!group.some((c) => c.directive.prefer_higher_quality_only)) continue;
@@ -856,6 +862,8 @@ function suppressDuplicates(
       if (candidate === best || candidate.required) continue;
       candidate.directive = { ...candidate.directive, dropped: true };
       candidate.value = -Infinity;
+      if (alreadyDropped.has(candidate.event.id)) continue;
+      alreadyDropped.add(candidate.event.id);
       rationale.push({
         event_id: candidate.event.id,
         decision: 'dropped',
