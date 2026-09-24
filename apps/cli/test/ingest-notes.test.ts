@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MediaAsset } from '@editorial-ir/contracts';
-import { mediaNotes } from '../src/commands/ingest.js';
+import { mediaNotes, refreshNote } from '../src/commands/ingest.js';
 
 /**
  * What `oea ingest` says about a file beyond its size and length.
@@ -61,5 +61,15 @@ describe('what ingest says about a file', () => {
     ).toEqual([]);
     // Nor about one registered before streams were listed: absent is not empty.
     expect(mediaNotes(asset({}))).toEqual([]);
+  });
+});
+
+describe('what ingest says about files it read again', () => {
+  it('does not promise an analysis already stored will use what was learned', () => {
+    // A stored analysis is reused on content and models, not on what the probe
+    // says, so the room tone stayed transcribed until --force.
+    expect(refreshNote(['asset_001'], true)).toContain('oea analyze --force');
+    expect(refreshNote(['asset_001'], false)).not.toContain('--force');
+    expect(refreshNote(['asset_001', 'asset_004'], false)).toContain('asset_001, asset_004');
   });
 });

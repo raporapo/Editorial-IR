@@ -67,11 +67,11 @@ export async function runIngest(args: IngestArgs): Promise<number> {
     }
 
     if (result.refreshed.length > 0) {
-      // Said, because it changes what the next analysis does: a second audio
-      // track now gets listened to, a phone clip gets its real frame rate.
       note(
-        `  read again: ${result.refreshed.map((asset) => asset.id).join(', ')} ` +
-          `(ids and order unchanged; "oea analyze" uses what was learned)`,
+        refreshNote(
+          result.refreshed.map((asset) => asset.id),
+          store.readObservations() !== undefined,
+        ),
       );
     }
 
@@ -113,6 +113,26 @@ export async function runIngest(args: IngestArgs): Promise<number> {
     progress.clear();
     await backends.close();
   }
+}
+
+/**
+ * What re-reading known files means for the next analysis, said so it is true.
+ *
+ * It said '"oea analyze" uses what was learned' whatever the project held. An
+ * analysis already stored is reused on the media's content and the models, not
+ * on what the probe says about the media, so a project analysed before its
+ * camera's second audio track was known kept the room-tone analysis: measured,
+ * after the refresh `oea analyze` answered "perception was reused" and the
+ * lavalier was heard only with `--force`. Forcing costs little: every stage's
+ * result is cached on its own parameters, so only what the new facts change is
+ * made again.
+ */
+export function refreshNote(ids: readonly string[], analysed: boolean): string {
+  const read = `  read again: ${ids.join(', ')} (ids and places unchanged)`;
+  return analysed
+    ? `${read}; the stored analysis predates it, and "oea analyze --force" makes it again ` +
+        '(what has not changed comes from the cache)'
+    : `${read}; "oea analyze" uses what was learned`;
 }
 
 /**
