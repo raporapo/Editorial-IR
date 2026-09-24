@@ -281,8 +281,7 @@ export function frameRates(
   const nominal = plausible(declared) ?? plausible(average);
 
   const frames = Number(video.nb_frames) > 0 ? Number(video.nb_frames) : packetCount;
-  const seconds =
-    Number(video.duration) > 0 ? Number(video.duration) : Number(parsed.format?.duration);
+  const seconds = pictureSeconds(video, parsed);
   const counted = frames !== undefined && frames > 1 && seconds > 0 ? frames / seconds : undefined;
   const measured = counted ?? (average ? average.num / average.den : undefined);
 
@@ -294,6 +293,33 @@ export function frameRates(
     out.variable = Math.abs(measured - rate) / rate > VFR_TOLERANCE;
   }
   return out;
+}
+
+/**
+ * How long the picture runs, which is not how long the file runs.
+ *
+ * Matroska and WebM give a stream no `duration` of their own, and the file's
+ * lasts until its longest stream ends. The frames were counted over the file's,
+ * so a constant 30 fps WebM whose audio ran a second past its picture — 90
+ * frames in 3.000 s, the file 4.008 s, which is what a screen recorder that stops
+ * the picture first writes — measured 22.45 fps and was called variable-rate.
+ * The muxer does write the picture's own length, as a `DURATION` tag
+ * (`DURATION-eng` when mkvmerge names a language); only past that is the file's
+ * length the best there is.
+ */
+function pictureSeconds(video: FfprobeStream, parsed: FfprobeOutput): number {
+  if (Number(video.duration) > 0) return Number(video.duration);
+  const tagged = Object.entries(video.tags ?? {}).find(([key]) => /^DURATION(-\w+)?$/i.test(key));
+  const clock = tagged ? parseClock(tagged[1]) : undefined;
+  if (clock !== undefined && clock > 0) return clock;
+  return Number(parsed.format?.duration);
+}
+
+/** `00:00:03.000000000` as seconds, or nothing for anything else. */
+function parseClock(value: string): number | undefined {
+  const match = /^(\d+):(\d{1,2}):(\d{1,2}(?:\.\d+)?)$/.exec(value.trim());
+  if (!match) return undefined;
+  return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
 }
 
 /** Parses ffprobe's `30000/1001` form, keeping the exact rational. */

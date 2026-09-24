@@ -152,6 +152,44 @@ def test_a_webm_is_counted_because_its_declared_rates_agree_regardless():
     assert media.probe_result(webm, 132)["variable_frame_rate"] is True
 
 
+def test_a_webm_whose_sound_outlasts_its_picture_is_not_variable_rate():
+    # Measured: constant 30 fps, 90 frames in the picture's 3.000 s, audio to
+    # 4.008 s. Counted over the file's length it was 22.45 fps and "variable".
+    def webm(tags):
+        return {
+            "format": {"duration": "4.008000", "format_name": "matroska,webm"},
+            "streams": [
+                {
+                    "index": 0,
+                    "codec_type": "video",
+                    "codec_name": "vp8",
+                    "width": 640,
+                    "height": 360,
+                    "r_frame_rate": "30/1",
+                    "avg_frame_rate": "30/1",
+                    "tags": tags,
+                },
+                {"index": 1, "codec_type": "audio", "codec_name": "opus", "channels": 1},
+            ],
+        }
+
+    assert (
+        media.probe_result(webm({"DURATION": "00:00:03.000000000"}), 90)["variable_frame_rate"]
+        is False
+    )
+    assert (
+        media.probe_result(webm({"DURATION-eng": "00:00:03.000000000"}), 90)["variable_frame_rate"]
+        is False
+    )
+    # Without the picture's own length the file's is all there is.
+    assert media.probe_result(webm({}), 90)["variable_frame_rate"] is True
+    # And a count that really is short of the rate is still variable.
+    assert (
+        media.probe_result(webm({"DURATION": "00:00:03.000000000"}), 70)["variable_frame_rate"]
+        is True
+    )
+
+
 def test_a_millisecond_clock_is_not_a_frame_rate():
     result = media.probe_result(
         {

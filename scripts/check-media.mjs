@@ -41,6 +41,8 @@
  *                  (0.49 vs 0.00)"
  *   vfr            30/1 nominal, 70/3 average, 140 frames; proxy 180 at 30/1
  *   album art      mjpeg 300x300 at 90000/1, attached_pic: no picture
+ *   matroska       30/1, 90 packets; the picture's DURATION tag 3.000s, the
+ *                  file 4.021s
  *
  * Two of those need explaining.
  *
@@ -277,10 +279,30 @@ function synthesise(dir) {
     cover,
   ]);
 
-  for (const path of [cuts, still, tracks, vfr, cover]) {
+  // A constant 30 fps recording in Matroska whose sound runs a second past its
+  // picture, as a screen recorder that stops the picture first writes it.
+  // Matroska keeps no frame count, so the packets are counted — and they were
+  // counted over the file's length rather than the picture's — measured, 90
+  // packets over 4.021 s, 22.4 fps and "variable" for a file with not one
+  // irregular frame in it.
+  const screen = join(dir, 'screen.mkv');
+  run('ffmpeg', [
+    ...words(`
+      -hide_banner -loglevel error -y
+      -fflags +bitexact -flags:v +bitexact -flags:a +bitexact
+      -f lavfi -i testsrc2=size=640x360:rate=30:duration=3,format=yuv420p
+      -f lavfi -i sine=frequency=440:sample_rate=48000:duration=4
+      -map 0:v -map 1:a
+      -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p -g 30
+      -c:a aac -b:a 64k
+    `),
+    screen,
+  ]);
+
+  for (const path of [cuts, still, tracks, vfr, cover, screen]) {
     console.log(`  ${basename(path)}  sha256:${sha256(path)}`);
   }
-  return { cuts, still, tracks, vfr, cover };
+  return { cuts, still, tracks, vfr, cover, screen };
 }
 
 // ----------------------------------------------------------------- the worker
@@ -426,7 +448,7 @@ async function main() {
 
   try {
     console.log('synthesising');
-    const { cuts, still, tracks, vfr, cover } = synthesise(dir);
+    const { cuts, still, tracks, vfr, cover, screen } = synthesise(dir);
     worker = new Worker(python);
 
     console.log('probe');
@@ -758,6 +780,14 @@ async function main() {
       JSON.stringify(vfrProbe),
     );
     check('does not call a constant-rate file variable', probed.variable_frame_rate === false);
+    const screenProbe = await worker.request('probe', { path: screen });
+    check(
+      'counts a Matroska picture over its own length, not the sound that outlasts it',
+      screenProbe.fps_num === 30 &&
+        screenProbe.fps_den === 1 &&
+        screenProbe.variable_frame_rate === false,
+      JSON.stringify(screenProbe),
+    );
     const vfrPrepared = await worker.request('prepare', {
       path: vfr,
       work_dir: join(dir, 'vfr-work'),

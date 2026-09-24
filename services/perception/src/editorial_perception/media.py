@@ -258,8 +258,7 @@ def frame_rates(
 
     frames = _float(video.get("nb_frames"))
     frames = frames if frames and frames > 0 else packet_count
-    seconds = _float(video.get("duration"))
-    seconds = seconds if seconds and seconds > 0 else _float(fmt.get("duration"))
+    seconds = _picture_seconds(video, fmt)
     counted = frames / seconds if frames and frames > 1 and seconds and seconds > 0 else None
     measured = counted if counted is not None else (average[0] / average[1] if average else None)
 
@@ -268,6 +267,34 @@ def frame_rates(
         rate = declared[0] / declared[1]
         variable = abs(measured - rate) / rate > VFR_TOLERANCE
     return nominal, average, variable
+
+
+# ASCII, as a JavaScript `\w` and `\d` are.
+_DURATION_TAG = re.compile(r"DURATION(-\w+)?", re.IGNORECASE | re.ASCII)
+_CLOCK = re.compile(r"(\d+):(\d{1,2}):(\d{1,2}(?:\.\d+)?)", re.ASCII)
+
+
+def _picture_seconds(video: dict[str, Any], fmt: dict[str, Any]) -> float | None:
+    """How long the picture runs, which is not how long the file runs.
+
+    Matroska and WebM give a stream no `duration`, and the file lasts until its
+    longest stream ends: a constant 30 fps WebM whose audio ran a second past the
+    picture — 90 frames in 3.000 s, the file 4.008 s — measured 22.45 fps over
+    the file and was called variable-rate. The muxer writes the picture's own
+    length as a `DURATION` tag (`DURATION-eng` from mkvmerge). `pictureSeconds`
+    in the TypeScript probe, rule for rule.
+    """
+    seconds = _float(video.get("duration"))
+    if seconds and seconds > 0:
+        return seconds
+    tags = video.get("tags") or {}
+    tagged = next((value for key, value in tags.items() if _DURATION_TAG.fullmatch(key)), None)
+    match = _CLOCK.fullmatch(tagged.strip()) if isinstance(tagged, str) else None
+    if match:
+        clock = int(match[1]) * 3600 + int(match[2]) * 60 + float(match[3])
+        if clock > 0:
+            return clock
+    return _float(fmt.get("duration"))
 
 
 #: The fastest a proxy is made, whatever the file declares. A screen recorder

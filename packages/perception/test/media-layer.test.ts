@@ -200,6 +200,38 @@ describe('reading a container', () => {
     ).toBe(false);
   });
 
+  it('does not call a WebM variable-rate because its sound outlasts its picture', () => {
+    // Measured on a constant 30 fps WebM: 90 frames in the picture's 3.000 s, the
+    // audio running on to 4.008 s. Counted over the file's length it was 22.45
+    // fps, and variable.
+    const webm = (tags: Record<string, string>): FfprobeOutput => ({
+      format: { duration: '4.008000', format_name: 'matroska,webm' },
+      streams: [
+        {
+          index: 0,
+          codec_type: 'video',
+          codec_name: 'vp8',
+          width: 640,
+          height: 360,
+          r_frame_rate: '30/1',
+          avg_frame_rate: '30/1',
+          tags,
+        },
+        { index: 1, codec_type: 'audio', codec_name: 'opus', channels: 1 },
+      ],
+    });
+    const variable = (output: FfprobeOutput, packetCount: number) =>
+      (toProbeResult(output, { packetCount }) as Record<string, unknown>).variable_frame_rate;
+
+    expect(variable(webm({ DURATION: '00:00:03.000000000' }), 90)).toBe(false);
+    // mkvmerge names the tag's language.
+    expect(variable(webm({ 'DURATION-eng': '00:00:03.000000000' }), 90)).toBe(false);
+    // Without the picture's own length the file's is all there is.
+    expect(variable(webm({}), 90)).toBe(true);
+    // And a count that really is short of the rate is still variable.
+    expect(variable(webm({ DURATION: '00:00:03.000000000' }), 70)).toBe(true);
+  });
+
   it("does not take a container's millisecond clock for a frame rate", () => {
     // Measured on a Matroska file with irregular timestamps: r and avg both
     // 1000/1, 153 frames in 2.971 s.
