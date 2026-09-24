@@ -17,4 +17,5 @@ export * from './edl.js';
 export * from './fcpxml.js';
 export * from './subtitles.js';
 export * from './chapters.js';
+export * from './preview.js';
 export * from './registry.js';

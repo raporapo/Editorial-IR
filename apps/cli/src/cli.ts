@@ -46,6 +46,9 @@ const OPTIONS = {
   sheet: { type: 'boolean' as const },
   require: { type: 'string' as const, multiple: true },
   drop: { type: 'string' as const, multiple: true },
+  captions: { type: 'boolean' as const },
+  width: { type: 'string' as const },
+  option: { type: 'string' as const, multiple: true },
   budget: { type: 'string' as const },
   'max-escalations': { type: 'string' as const },
   force: { type: 'boolean' as const },
@@ -164,6 +167,7 @@ export async function main(argv: string[]): Promise<number> {
         ...(values.quiet ? { quiet: true } : {}),
         ...(list(values.require) ? { require: list(values.require)! } : {}),
         ...(list(values.drop) ? { drop: list(values.drop)! } : {}),
+        ...(values.captions ? { captions: true } : {}),
       });
 
     case 'explain':
@@ -231,6 +235,9 @@ export async function main(argv: string[]): Promise<number> {
         ...(values.plan ? { plan: values.plan } : {}),
         ...(values.out ? { out: values.out } : {}),
         ...(values.name ? { name: values.name } : {}),
+        ...(values.captions ? { captions: true } : {}),
+        ...(number(values.width) === undefined ? {} : { width: number(values.width) }),
+        ...(list(values.option) ? { options: list(values.option)! } : {}),
       });
 
     case 'editors':
@@ -342,10 +349,15 @@ function printHelp(command: string | undefined): void {
   line('  oea plan --skill <name> --duration <seconds>');
   line('               --require evt_0031  keep a moment, whatever it scores');
   line('               --drop evt_0044     leave one out');
+  line('               --captions          add captions from the transcript');
   line('  oea agent "<what you want>"  plan with a model in the loop (needs one)');
   line('  oea review                   what is wrong with the latest cut');
   line('  oea editors                  what each editing application can take');
-  line('  oea apply --editor <id>      write the cut out');
+  line('  oea apply --editor <id>      write the cut out: otio, premiere, fcpxml, edl, aviutl2,');
+  line('                               srt, vtt, youtube-chapters, or preview (renders an mp4)');
+  line('               --captions          add captions first if the plan has none');
+  line('               --width 640         the width of the preview, in pixels');
+  line('               --option key=value  a setting for one editor (see "oea editors")');
 
   heading('everything else');
   line('  oea doctor                   what is installed and what is configured');

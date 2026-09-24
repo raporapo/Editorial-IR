@@ -1,6 +1,6 @@
 import { relative } from 'node:path';
 import { SkillRegistry } from '@editorial-ir/skills';
-import { planEdit, reviewPlan, validatePlan } from '@editorial-ir/agent';
+import { buildCaptions, planEdit, reviewPlan, validatePlan } from '@editorial-ir/agent';
 import {
   formatTimecode,
   operationTimelineDuration,
@@ -34,6 +34,8 @@ export interface PlanArgs {
   require?: string[];
   /** Events to leave out, whatever they score. */
   drop?: string[];
+  /** Add captions worked out from the transcript. */
+  captions?: boolean;
 }
 
 export function runPlan(args: PlanArgs): number {
@@ -42,7 +44,7 @@ export function runPlan(args: PlanArgs): number {
   const registry = SkillRegistry.withBuiltIns(args.skillsDir ? [args.skillsDir] : []);
   const skill = registry.resolve(args.skill ?? 'base-editor');
 
-  const plan = planEdit({
+  const planned = planEdit({
     ir,
     skill,
     ...(args.duration === undefined ? {} : { targetDurationMs: Math.round(args.duration * 1000) }),
@@ -57,6 +59,22 @@ export function runPlan(args: PlanArgs): number {
         }
       : {}),
   });
+
+  // Captions are worked out after the cut is final, from the clips it actually
+  // plays, and stored in the plan so every adapter shows the same words.
+  const captionNotes: string[] = [];
+  const plan = args.captions
+    ? {
+        ...planned,
+        tracks: {
+          ...planned.tracks,
+          text: [
+            ...planned.tracks.text.filter((text) => text.kind !== 'caption'),
+            ...buildCaptions(planned, ir, store.readObservations(), { notes: captionNotes }),
+          ],
+        },
+      }
+    : planned;
 
   const report = validatePlan(plan, {
     ir,
@@ -89,6 +107,10 @@ export function runPlan(args: PlanArgs): number {
   detail('off by', `${Math.round(plan.stats.duration_error_ms / 100) / 10}s`);
   detail('kept', `${plan.stats.events_selected} of ${plan.stats.events_available} events`);
   detail('compression', `${Math.round(plan.stats.compression_ratio * 1000) / 10}% of the material`);
+  if (args.captions) {
+    detail('captions', String(plan.tracks.text.filter((text) => text.kind === 'caption').length));
+    for (const line_ of captionNotes) note(`  ${line_}`);
+  }
   detail('saved as', relative(process.cwd(), `${store.paths.plansDir}/${plan.id}.json`));
 
   if (!args.quiet) {

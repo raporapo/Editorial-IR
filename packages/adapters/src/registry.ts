@@ -7,6 +7,7 @@ import { EdlAdapter } from './edl.js';
 import { FcpxmlAdapter } from './fcpxml.js';
 import { SrtAdapter, VttAdapter } from './subtitles.js';
 import { YoutubeChaptersAdapter } from './chapters.js';
+import { PreviewAdapter } from './preview.js';
 
 const ADAPTERS: Record<string, () => EditorAdapter> = {
   otio: () => new OtioAdapter(),
@@ -17,6 +18,7 @@ const ADAPTERS: Record<string, () => EditorAdapter> = {
   srt: () => new SrtAdapter(),
   vtt: () => new VttAdapter(),
   'youtube-chapters': () => new YoutubeChaptersAdapter(),
+  preview: () => new PreviewAdapter(),
 };
 
 /** Every adapter shipped with the project, by id. */

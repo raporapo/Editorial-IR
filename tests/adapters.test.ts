@@ -60,6 +60,7 @@ describe('the adapter registry', () => {
       'fcpxml',
       'otio',
       'premiere',
+      'preview',
       'srt',
       'vtt',
       'youtube-chapters',
