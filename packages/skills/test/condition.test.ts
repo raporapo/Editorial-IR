@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateCondition, parseNumericCondition, type EventFacts } from '../src/index.js';
-import { NEUTRAL_FLAGS, NEUTRAL_METRICS } from '@editorial-ir/contracts';
+import { NEUTRAL_FLAGS, NEUTRAL_METRICS, SkillCondition } from '@editorial-ir/contracts';
 
 function facts(overrides: Partial<EventFacts> = {}): EventFacts {
   return {
@@ -15,6 +15,8 @@ function facts(overrides: Partial<EventFacts> = {}): EventFacts {
     silence_ratio: 0.1,
     shot_count: 2,
     motion: 0.2,
+    inactive_ratio: 0,
+    has_subtitles: false,
     new_location: false,
     new_person: false,
     has_speech: true,
@@ -138,5 +140,61 @@ describe('evaluateCondition', () => {
 
   it('is true for an empty condition, which matches everything', () => {
     expect(evaluateCondition({}, facts())).toBe(true);
+  });
+});
+
+describe('every field the contract lets a rule name', () => {
+  it('can be evaluated, rather than accepted by the schema and thrown at plan time', () => {
+    // The contract says a rule may name `material`; the evaluator did not know
+    // it, so a skill using it validated cleanly and crashed when planning.
+    const inner = (
+      SkillCondition as unknown as { unwrap(): { shape: Record<string, unknown> } }
+    ).unwrap();
+    const sample: Record<string, unknown> = {
+      narrative_role: 'context',
+      event_type: 'moment',
+      affect: { excitement: '>0.1' },
+      chapter_position: 'middle',
+      project_position: 'middle',
+      mentions: 'usj',
+      involves_person: 'me',
+      at_place: 'USJ',
+      material: 'raw',
+      all_of: [],
+      any_of: [{ has_speech: true }],
+      not: { has_music: true },
+    };
+    for (const field of Object.keys(inner.shape)) {
+      const expected =
+        field in sample
+          ? sample[field]
+          : field.startsWith('has_') || field.startsWith('is_') || field.startsWith('new_')
+            ? true
+            : '>=0';
+      expect(
+        () => evaluateCondition({ [field]: expected }, facts({ material: 'raw' })),
+        field,
+      ).not.toThrow();
+    }
+  });
+});
+
+describe('material and stillness', () => {
+  it('matches the material an event is cut from', () => {
+    expect(evaluateCondition({ material: 'edited' }, facts({ material: 'edited' }))).toBe(true);
+    expect(evaluateCondition({ material: ['clip', 'edited'] }, facts({ material: 'raw' }))).toBe(
+      false,
+    );
+  });
+
+  it('never matches a kind for material nobody classified', () => {
+    expect(evaluateCondition({ material: 'raw' }, facts())).toBe(false);
+  });
+
+  it('reads an event with no still stretch as zero, so "<0.2" matches ordinary footage', () => {
+    expect(evaluateCondition({ inactive_ratio: '<0.2' }, facts())).toBe(true);
+    expect(evaluateCondition({ inactive_ratio: '>0.8' }, facts({ inactive_ratio: 0.95 }))).toBe(
+      true,
+    );
   });
 });

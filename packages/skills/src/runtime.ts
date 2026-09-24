@@ -95,6 +95,8 @@ export class SkillRuntime {
       if (action.as_b_roll) directive.as_b_roll = true;
       if (action.preserve_reaction) directive.preserve_reaction = true;
       if (action.prefer_higher_quality_only) directive.prefer_higher_quality_only = true;
+      if (action.keep_whole) directive.keep_whole = true;
+      if (action.remove_silences) directive.remove_silences = true;
       if (action.avoid_aggressive_cutting) avoidAggressiveCutting = true;
 
       // Last matching rule wins for a single-valued field, and rules are ordered
