@@ -266,3 +266,116 @@ export function parseTimecode(input: string): number {
   const millis = frac ? Number(frac.padEnd(3, '0')) : 0;
   return ((h * 60 + min) * 60 + sec) * 1000 + millis;
 }
+
+/* -------------------------------------------------------------------------- */
+/* SMPTE timecode                                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Whether a rational frame rate is one of the NTSC family: a whole rate slowed
+ * by 1000/1001, such as 24000/1001, 30000/1001 or 60000/1001.
+ *
+ * Asked of the numbers rather than of "has a denominator": 2500/101 is the
+ * measured average of a phone clip that dropped frames, not an NTSC rate, and
+ * reading every rate with a denominator as NTSC wrote it into a sequence as
+ * 25 fps slowed by 1000/1001 — a rate no camera has ever recorded.
+ */
+export function isNtscRate(num: number, den: number): boolean {
+  return den === 1001 && num % 1000 === 0 && num > 0;
+}
+
+/**
+ * Whether drop-frame counting is defined at this rate.
+ *
+ * Only for 30000/1001 and 60000/1001. Drop-frame exists to keep a 29.97 clock's
+ * labels in step with the wall clock; 23.976 has no drop-frame form, and a
+ * timecode with a `;` at 24000/1001 is a mistake, not a convention.
+ */
+export function supportsDropFrame(num: number, den: number): boolean {
+  return den === 1001 && (num === 30_000 || num === 60_000);
+}
+
+/** The labels a timecode counts in: the whole frames per second it writes. */
+export function timecodeBase(num: number, den: number): number {
+  return Math.max(1, Math.round(num / den));
+}
+
+/** Frame numbers dropped each minute at a drop-frame rate: 2 at 29.97, 4 at 59.94. */
+function droppedPerMinute(base: number): number {
+  return Math.round(base / 15);
+}
+
+/**
+ * Frames to a SMPTE timecode, `HH:MM:SS:FF`, or `HH:MM:SS;FF` when drop-frame.
+ *
+ * Drop-frame drops frame *labels*, never frames: at 29.97 the labels :00 and
+ * :01 are skipped at the start of every minute except each tenth, which is what
+ * keeps 01:00:00;00 an hour of wall-clock time. Counting 29.97 footage without
+ * it drifts 3.6 seconds an hour, and an edit list that disagrees with the
+ * media's own timecode by that much conforms the wrong frames.
+ *
+ * Wraps at 24 hours, as a timecode does.
+ */
+export function framesToSmpte(
+  frames: number,
+  num: number,
+  den: number,
+  dropFrame: boolean = supportsDropFrame(num, den),
+): string {
+  const base = timecodeBase(num, den);
+  const drop = dropFrame && supportsDropFrame(num, den);
+  let label = Math.max(0, Math.round(frames));
+
+  if (drop) {
+    const dropped = droppedPerMinute(base);
+    const perMinute = base * 60 - dropped;
+    const perTenMinutes = base * 600 - dropped * 9;
+    const tens = Math.floor(label / perTenMinutes);
+    const rest = label % perTenMinutes;
+    label +=
+      dropped * 9 * tens +
+      (rest > dropped ? dropped * Math.floor((rest - dropped) / perMinute) : 0);
+  }
+
+  const ff = label % base;
+  const totalSeconds = Math.floor(label / base);
+  const ss = totalSeconds % 60;
+  const mm = Math.floor(totalSeconds / 60) % 60;
+  const hh = Math.floor(totalSeconds / 3600) % 24;
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${two(hh)}:${two(mm)}:${two(ss)}${drop ? ';' : ':'}${two(ff)}`;
+}
+
+/**
+ * A SMPTE timecode to a frame count at a rational rate.
+ *
+ * Drop-frame is read from the timecode itself — a `;`, `.` or `,` before the
+ * frames, which is how ffprobe reports a 29.97 camera's clock (`01:00:00;00`) —
+ * and honoured only where drop-frame is defined. `dropFrame` overrides the
+ * separator for a label that is known to count one way: a record start typed
+ * as `01:00:00:00` for a drop-frame list means the label the list will print
+ * as `01:00:00;00`, and reading it as non-drop put the first event at
+ * 01:00:03;18. Returns undefined for anything that is not a timecode, so a tag
+ * holding something else is ignored rather than read as midnight.
+ */
+export function smpteToFrames(
+  timecode: string,
+  num: number,
+  den: number,
+  dropFrame?: boolean,
+): number | undefined {
+  const match = /^(\d{1,2})[:;.](\d{2})[:;.](\d{2})([:;.,])(\d{2,3})$/.exec(timecode.trim());
+  if (!match) return undefined;
+  const [, h, m, s, separator, f] = match;
+  const base = timecodeBase(num, den);
+  const hh = Number(h);
+  const mm = Number(m);
+  const ss = Number(s);
+  const ff = Number(f);
+  if (mm > 59 || ss > 59 || ff >= base) return undefined;
+  const drop = (dropFrame ?? separator !== ':') && supportsDropFrame(num, den);
+  const labels = ((hh * 60 + mm) * 60 + ss) * base + ff;
+  if (!drop) return labels;
+  const minutes = hh * 60 + mm;
+  return labels - droppedPerMinute(base) * (minutes - Math.floor(minutes / 10));
+}

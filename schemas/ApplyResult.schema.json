@@ -67,7 +67,9 @@
         "interchange",
         "script",
         "report",
-        "preview"
+        "preview",
+        "subtitles",
+        "chapters"
       ]
     },
     "__schema4": {
