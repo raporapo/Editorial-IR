@@ -113,7 +113,8 @@ What it changes:
 
 Every kind but `raw` also breaks a tie between equally weak boundaries by joining
 the smallest pair, so events stay even where nothing tells the cuts apart; raw
-footage keeps the rule the worked example was tuned on.
+footage keeps the rule the worked example was tuned on, except in a file where a
+long take was divided, because the places it was divided tie by construction.
 
 When the guess is wrong, say so in `context.yaml`, by file name or asset id. It
 always wins, and is marked `user_provided`:
