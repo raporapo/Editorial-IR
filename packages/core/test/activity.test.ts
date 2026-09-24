@@ -53,7 +53,8 @@ const silence = (start: number, end: number) => ({
 });
 
 const motion = { asset_id: 'asset_001', hop_ms: 200, motion: [1], luma: [100] };
-const audioProfile = { asset_id: 'asset_001', hop_ms: 100, rms_db: [-50] };
+/** Room tone for the whole minute: quiet enough for any silence event to count. */
+const audioProfile = { asset_id: 'asset_001', hop_ms: 100, rms_db: Array(600).fill(-50) };
 
 describe('inactiveSpans', () => {
   it('finds a stretch that is both still and silent, less its margins', () => {
@@ -182,6 +183,37 @@ describe('inactiveSpans', () => {
       [asset],
     );
     expect(spans).toEqual([]);
+  });
+
+  it('does not count the quiet between words as silent when music plays under it', () => {
+    // The silence detector is relative to its file, so under a music bed the
+    // gaps in the narration read as silence. A title card over music is not a
+    // lens cap.
+    const spans = inactiveSpans(
+      observations({
+        video_events: [staticEvent(0, 20_000)],
+        audio_events: [silence(0, 20_000)],
+        motion_profiles: [motion],
+        audio_profiles: [{ asset_id: 'asset_001', hop_ms: 100, rms_db: Array(600).fill(-26) }],
+      }),
+      [asset],
+    );
+    expect(spans).toEqual([]);
+  });
+
+  it('takes the silence events alone when no level was measured', () => {
+    // A replayed analysis can carry events and an empty envelope. Nothing
+    // measured the level, so nothing can overrule the events.
+    const spans = inactiveSpans(
+      observations({
+        video_events: [staticEvent(0, 20_000)],
+        audio_events: [silence(0, 20_000)],
+        motion_profiles: [motion],
+        audio_profiles: [{ asset_id: 'asset_001', hop_ms: 100, rms_db: [] }],
+      }),
+      [asset],
+    );
+    expect(spans.length).toBe(1);
   });
 
   it('does not count dark as still', () => {

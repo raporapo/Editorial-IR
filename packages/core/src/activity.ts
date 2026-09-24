@@ -119,14 +119,25 @@ function merge(intervals: readonly Interval[]): Interval[] {
  */
 export const ABSOLUTE_SILENCE_DB = -60;
 
-/** Shortest run below the floor that counts, matching the silence detector. */
+/**
+ * Level a silence event must also be under to count here.
+ *
+ * Silence events are relative to their recording — quiet *for this file* — so
+ * under a music bed the stretches between the narration read as silence while
+ * the music plays on at -25 dBFS. For deciding where not to spend, "quiet for
+ * this file" is not enough: a title card over music is a title card with a
+ * soundtrack. Room tone sits well under -45; music, traffic and a crowd do not.
+ */
+export const QUIET_ENOUGH_DB = -45;
+
+/** Shortest run below a level that counts, matching the silence detector. */
 const MIN_FLOOR_RUN_MS = 300;
 
-function belowFloor(rmsDb: readonly number[], hopMs: number): Interval[] {
+function belowLevel(rmsDb: readonly number[], hopMs: number, levelDb: number): Interval[] {
   const out: Interval[] = [];
   let start = -1;
   for (let i = 0; i <= rmsDb.length; i++) {
-    const quiet = i < rmsDb.length && rmsDb[i]! < ABSOLUTE_SILENCE_DB;
+    const quiet = i < rmsDb.length && rmsDb[i]! < levelDb;
     if (quiet && start < 0) start = i;
     if (!quiet && start >= 0) {
       if ((i - start) * hopMs >= MIN_FLOOR_RUN_MS)
@@ -203,12 +214,19 @@ function inactiveCandidatesFor(observations: ObservationTimeline, asset: MediaAs
     const analysed =
       profile !== undefined || observations.audio_events.some((e) => e.asset_id === asset.id);
     if (!analysed) return [];
-    silent = merge([
-      ...observations.audio_events
+    const relative = merge(
+      observations.audio_events
         .filter((e) => e.asset_id === asset.id && e.event_type === 'silence')
         .map((e) => ({ start: e.start_ms, end: e.end_ms })),
-      ...(profile ? belowFloor(profile.rms_db, profile.hop_ms) : []),
-    ]);
+    );
+    // A profile with no hops measured no level, so the events stand alone.
+    silent =
+      profile && profile.rms_db.length > 0
+        ? merge([
+            ...intersect(relative, belowLevel(profile.rms_db, profile.hop_ms, QUIET_ENOUGH_DB)),
+            ...belowLevel(profile.rms_db, profile.hop_ms, ABSOLUTE_SILENCE_DB),
+          ])
+        : relative;
   }
 
   // Words the transcriber heard override a silence the level meter reported: a

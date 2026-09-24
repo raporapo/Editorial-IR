@@ -65,7 +65,7 @@ function countingJudge(): HeuristicDecisionBackend & { events: Set<string> } {
   return judge;
 }
 
-/** The fixture's audio, with the quiet stretch made silent. */
+/** The fixture's audio, with the quiet stretch made silent: an event, and the level to match. */
 function withSilence(suite: PerceptionSuite): PerceptionSuite {
   const audio = suite.audio!;
   return {
@@ -75,8 +75,15 @@ function withSilence(suite: PerceptionSuite): PerceptionSuite {
       async analyzeAudio(params: AnalyzeAudioParams): Promise<AnalyzeAudioResult> {
         const result = await audio.analyzeAudio(params);
         if (basename(params.audio_path) !== QUIET.file) return result;
+        // Room tone, not a music bed: the level has to agree with the event.
+        const hops = Math.ceil(540_000 / result.hop_ms);
+        const rms = Array.from({ length: hops }, (_, i) => {
+          const at = i * result.hop_ms;
+          return at >= QUIET.start && at < QUIET.end ? -55 : -22;
+        });
         return {
           ...result,
+          rms_db: rms,
           events: [
             ...result.events.filter((e) => e.end_ms <= QUIET.start || e.start_ms >= QUIET.end),
             { start_ms: QUIET.start, end_ms: QUIET.end, event_type: 'silence', confidence: 0.8 },
