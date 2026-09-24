@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { EditorialIR, ObservationTimeline } from '@editorial-ir/contracts';
+import { framesDirName } from '@editorial-ir/perception';
 import { framePathFor } from '../src/observe.js';
 import { contactSheet, framePath, framesIn, shotsIn, tileFilter } from '../src/inspect.js';
 import { projectPaths } from '../src/paths.js';
@@ -105,9 +106,21 @@ describe('framePath', () => {
 
     for (const ms of [0, 1000, 2500, 61_000]) {
       expect(framePath(workDir, asset, ms, 1)).toBe(
-        framePathFor({ frames_dir: join(assetWorkDir, 'frames'), frame_timestamps_ms: [] }, ms, 1),
+        framePathFor(
+          { frames_dir: join(assetWorkDir, framesDirName(1)), frame_timestamps_ms: [] },
+          ms,
+          1,
+        ),
       );
     }
+  });
+
+  it('looks where prepare writes, which is named for the rate', () => {
+    // Prepare names the directory after its rate so frames sampled at another
+    // rate are never read as these; a path derived by hand from `frames/`
+    // found nothing at all once it did.
+    expect(framePath('/w', { sha256: 'a'.repeat(64) }, 0, 1)).toContain('/frames-1fps/');
+    expect(framePath('/w', { sha256: 'a'.repeat(64) }, 0, 2)).toContain('/frames-2fps/');
   });
 
   it('never asks for a frame before the first one', () => {
@@ -119,7 +132,7 @@ describe('framesIn', () => {
   function projectWithFrames(present: number[]): { root: string; ir: EditorialIR } {
     const root = mkdtempSync(join(tmpdir(), 'oea-inspect-'));
     const sha = 'fedcba9876543210';
-    const frames = join(projectPaths(root).workDir, sha.slice(0, 12), 'frames');
+    const frames = join(projectPaths(root).workDir, sha.slice(0, 12), framesDirName(1));
     mkdirSync(frames, { recursive: true });
     for (const index of present) {
       writeFileSync(join(frames, `${String(index).padStart(8, '0')}.jpg`), 'not really a jpeg');

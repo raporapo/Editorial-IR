@@ -569,6 +569,10 @@ function framesFor(
   skipped?: { count: number },
 ): string[] {
   const prepared = options.derived?.get(skeleton.draft.asset_id);
+  // A still is its own frame, and one look at it is all there is: four copies
+  // of the same photo would cost four images and say nothing a second time.
+  const asset = options.assets.find((a) => a.id === skeleton.draft.asset_id);
+  if (asset?.kind === 'image') return prepared?.proxy_path ? [prepared.proxy_path] : [];
   if (!prepared?.frames_dir) return [];
   const fps = options.frameFps ?? 1;
 
