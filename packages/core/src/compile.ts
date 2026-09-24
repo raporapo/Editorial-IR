@@ -294,6 +294,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     embedded = await buildEmbeddings(built.events, context, options.suite.text, {
       frameVectors,
       runs,
+      cache: store.cache,
       // The frame vectors came from the vision model, not from the text
       // encoder, and the records made out of them should say so.
       ...(runs.forStage('visual') === undefined ? {} : { visualRunId: runs.forStage('visual') }),
