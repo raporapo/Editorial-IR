@@ -364,9 +364,12 @@ export const ProbeResult = obj({
   avg_fps_den: jsonOptional(z.int().min(1)),
   /**
    * Whether the frames actually in the file run at a rate other than the nominal
-   * one, by more than 1%: frames counted over the stream's duration, against
-   * `r_frame_rate`. Counted, because comparing the two declared rates is not
-   * enough — a variable-rate WebM declares 30/1 for both with 132 frames in 8 s.
+   * one, by more than 1%, against `r_frame_rate`. The measured rate is the
+   * container's own average where it lists its frames (MP4, MOV) — the count
+   * over the stream's duration is wrong for a clip trimmed with `-c copy`, whose
+   * edit list shortens one and not the other — and the packets counted over the
+   * picture's own length where it lists none, because there the average is only
+   * declared: a variable-rate WebM declares 30/1 for both with 132 frames in 8 s.
    */
   variable_frame_rate: jsonOptional(z.boolean()),
   metadata: z.record(z.string(), z.unknown()).default({}),

@@ -266,8 +266,9 @@ interface FrameRates {
  * one nobody chose: 91/4 = 22.75 for a 30 fps recording, which became the
  * sequence rate. `r_frame_rate` is what the camera was set to and what an NLE
  * conforms to, so it is the rate; the average is kept beside it, and the file is
- * variable-rate when the frames it actually holds, counted over its duration,
- * are more than 1% off the nominal rate.
+ * variable-rate when the frames it actually holds run more than 1% off the
+ * nominal rate — by the container's own average where it lists its frames, and
+ * by the packets counted over the picture's length where it does not.
  */
 export function frameRates(
   video: FfprobeStream,
@@ -280,9 +281,21 @@ export function frameRates(
     rate && rate.num / rate.den <= MAX_NOMINAL_FPS ? rate : undefined;
   const nominal = plausible(declared) ?? plausible(average);
 
-  const frames = Number(video.nb_frames) > 0 ? Number(video.nb_frames) : packetCount;
+  // Where the container lists its frames (MP4, MOV), its average is already the
+  // count over the frames' own durations, taken from that list. Dividing the
+  // count by the stream's duration instead was wrong for any clip trimmed
+  // without re-encoding: the edit list shortens the duration and not the list,
+  // so a 30 fps clip cut with `-c copy` held 131 frames in 4.067 s — "32.2 fps",
+  // variable — while its average said 30/1. That is how a phone's own trim and
+  // every lossless cutter export, which is to say most pre-trimmed material.
+  // Where the container lists nothing (Matroska, WebM, MPEG-TS, fragmented MP4)
+  // the average is a declaration, and the packets are counted.
+  const listed = Number(video.nb_frames) > 0;
   const seconds = pictureSeconds(video, parsed);
-  const counted = frames !== undefined && frames > 1 && seconds > 0 ? frames / seconds : undefined;
+  const counted =
+    !listed && packetCount !== undefined && packetCount > 1 && seconds > 0
+      ? packetCount / seconds
+      : undefined;
   const measured = counted ?? (average ? average.num / average.den : undefined);
 
   const out: FrameRates = {};

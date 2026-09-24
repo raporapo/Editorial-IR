@@ -200,6 +200,36 @@ describe('reading a container', () => {
     ).toBe(false);
   });
 
+  it('does not call a clip trimmed without re-encoding variable-rate', () => {
+    // Measured: a 30 fps clip cut with `-c copy`, as a phone's own trim and every
+    // lossless cutter export. The edit list shortens the duration and not the
+    // frame list, so the count over the duration was 32.2 fps; the container's
+    // own average, taken over the frames' durations, is 30/1.
+    const trimmed: FfprobeOutput = {
+      format: { duration: '4.066992', format_name: 'mov,mp4,m4a,3gp,3g2,mj2' },
+      streams: [
+        {
+          index: 0,
+          codec_type: 'video',
+          codec_name: 'h264',
+          width: 640,
+          height: 360,
+          r_frame_rate: '30/1',
+          avg_frame_rate: '30/1',
+          nb_frames: '131',
+          duration: '4.066992',
+        },
+      ],
+    };
+    expect((toProbeResult(trimmed) as Record<string, unknown>).variable_frame_rate).toBe(false);
+    // A trimmed clip that really dropped frames still says so: measured 75/4.
+    const dropped = {
+      ...trimmed,
+      streams: [{ ...trimmed.streams![0]!, avg_frame_rate: '75/4', nb_frames: '175' }],
+    };
+    expect((toProbeResult(dropped) as Record<string, unknown>).variable_frame_rate).toBe(true);
+  });
+
   it('does not call a WebM variable-rate because its sound outlasts its picture', () => {
     // Measured on a constant 30 fps WebM: 90 frames in the picture's 3.000 s, the
     // audio running on to 4.008 s. Counted over the file's length it was 22.45

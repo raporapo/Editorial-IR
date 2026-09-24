@@ -43,6 +43,8 @@
  *   album art      mjpeg 300x300 at 90000/1, attached_pic: no picture
  *   matroska       30/1, 90 packets; the picture's DURATION tag 3.000s, the
  *                  file 4.021s
+ *   trimmed        stream-copied: 101 frames in 3.134s (32.2 fps by count),
+ *                  average 30/1
  *
  * Two of those need explaining.
  *
@@ -299,10 +301,24 @@ function synthesise(dir) {
     screen,
   ]);
 
-  for (const path of [cuts, still, tracks, vfr, cover, screen]) {
+  // The first clip trimmed the way a phone's own trim and every lossless cutter
+  // export: stream-copied from between two keyframes, so the file keeps the
+  // frames back to the keyframe and an edit list hides them. The frame count
+  // over the stream's duration was then more than the rate — measured on such a
+  // cut, 131 frames in 4.067 s, 32.2 fps at 30 — and a constant-rate clip was
+  // called variable.
+  const trimmed = join(dir, 'trimmed.mp4');
+  run('ffmpeg', [
+    ...words('-hide_banner -loglevel error -y -fflags +bitexact -ss 1.3 -i'),
+    cuts,
+    ...words('-t 3 -c copy'),
+    trimmed,
+  ]);
+
+  for (const path of [cuts, still, tracks, vfr, cover, screen, trimmed]) {
     console.log(`  ${basename(path)}  sha256:${sha256(path)}`);
   }
-  return { cuts, still, tracks, vfr, cover, screen };
+  return { cuts, still, tracks, vfr, cover, screen, trimmed };
 }
 
 // ----------------------------------------------------------------- the worker
@@ -448,7 +464,7 @@ async function main() {
 
   try {
     console.log('synthesising');
-    const { cuts, still, tracks, vfr, cover, screen } = synthesise(dir);
+    const { cuts, still, tracks, vfr, cover, screen, trimmed } = synthesise(dir);
     worker = new Worker(python);
 
     console.log('probe');
@@ -780,6 +796,12 @@ async function main() {
       JSON.stringify(vfrProbe),
     );
     check('does not call a constant-rate file variable', probed.variable_frame_rate === false);
+    const trimmedProbe = await worker.request('probe', { path: trimmed });
+    check(
+      'does not call a clip trimmed without re-encoding variable-rate',
+      trimmedProbe.fps_num === 30 && trimmedProbe.variable_frame_rate === false,
+      JSON.stringify(trimmedProbe),
+    );
     const screenProbe = await worker.request('probe', { path: screen });
     check(
       'counts a Matroska picture over its own length, not the sound that outlasts it',

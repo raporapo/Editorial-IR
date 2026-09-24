@@ -245,8 +245,9 @@ def frame_rates(
     `r_frame_rate` is what the camera was set to and what an NLE conforms to;
     `avg_frame_rate` was taken instead, and a phone clip that dropped frames came
     out at 91/4 = 22.75 fps and made the sequence that rate. A file is
-    variable-rate when the frames it holds, counted over its duration, are more
-    than 1% off the nominal rate.
+    variable-rate when the frames it holds run more than 1% off the nominal
+    rate — by the container's own average where it lists its frames, and by the
+    packets counted over the picture's length where it does not.
     """
     declared = _rational(video.get("r_frame_rate"))
     average = _rational(video.get("avg_frame_rate"))
@@ -256,10 +257,19 @@ def frame_rates(
 
     nominal = plausible(declared) or plausible(average)
 
-    frames = _float(video.get("nb_frames"))
-    frames = frames if frames and frames > 0 else packet_count
+    # A container that lists its frames (MP4, MOV) has already averaged them over
+    # their own durations. The count over the stream's duration was wrong for a
+    # clip trimmed with `-c copy`, whose edit list shortens the duration and not
+    # the list: 131 frames in 4.067 s, "32.2 fps", for a 30 fps clip whose
+    # average said 30/1. Elsewhere the average is a declaration, and the
+    # packets are counted. `frameRates` in TypeScript, rule for rule.
+    listed = (_float(video.get("nb_frames")) or 0) > 0
     seconds = _picture_seconds(video, fmt)
-    counted = frames / seconds if frames and frames > 1 and seconds and seconds > 0 else None
+    counted = (
+        packet_count / seconds
+        if not listed and packet_count and packet_count > 1 and seconds and seconds > 0
+        else None
+    )
     measured = counted if counted is not None else (average[0] / average[1] if average else None)
 
     variable = None

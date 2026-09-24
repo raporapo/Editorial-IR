@@ -152,6 +152,27 @@ def test_a_webm_is_counted_because_its_declared_rates_agree_regardless():
     assert media.probe_result(webm, 132)["variable_frame_rate"] is True
 
 
+def test_a_clip_trimmed_without_re_encoding_is_not_variable_rate():
+    # Measured: a 30 fps clip cut with `-c copy`. Its edit list shortens the
+    # duration and not the frame list — 131 frames in 4.067 s, "32.2 fps" —
+    # while the container's own average is 30/1.
+    stream = {
+        "index": 0,
+        "codec_type": "video",
+        "codec_name": "h264",
+        "width": 640,
+        "height": 360,
+        "r_frame_rate": "30/1",
+        "avg_frame_rate": "30/1",
+        "nb_frames": "131",
+        "duration": "4.066992",
+    }
+    fmt = {"duration": "4.066992", "format_name": "mov,mp4,m4a,3gp,3g2,mj2"}
+    assert media.probe_result({"format": fmt, "streams": [stream]})["variable_frame_rate"] is False
+    dropped = {**stream, "avg_frame_rate": "75/4", "nb_frames": "175"}
+    assert media.probe_result({"format": fmt, "streams": [dropped]})["variable_frame_rate"] is True
+
+
 def test_a_webm_whose_sound_outlasts_its_picture_is_not_variable_rate():
     # Measured: constant 30 fps, 90 frames in the picture's 3.000 s, audio to
     # 4.008 s. Counted over the file's length it was 22.45 fps and "variable".

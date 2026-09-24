@@ -89,12 +89,15 @@ every JPEG, and that 25 once became a 30 fps project's sequence rate.
   set to and what an editor conforms to. `avg_fps_num/avg_fps_den` is the
   average. A declared rate above 240 is a container's clock, not a rate: the
   average stands in for it when that is plausible, and otherwise there is none.
-- `variable_frame_rate` compares the frames actually in the file, counted over
-  the picture's own length, with the nominal rate, at 1%. Matroska and WebM keep
-  no frame count and declare the same rate twice whatever their frames do, so
-  their packets are counted, without decoding, over the picture stream's
-  `DURATION` tag — not the file's length, which runs on as long as the sound
-  does and made a constant-rate recording "variable".
+- `variable_frame_rate` compares the rate of the frames actually in the file
+  with the nominal rate, at 1%. An MP4 or MOV lists its frames, and its average
+  is taken over their own durations; the count over the stream's duration is not
+  used, because a clip trimmed with `-c copy` keeps frames its edit list cuts off
+  and read as 32.2 fps at 30. Matroska, WebM and MPEG-TS list nothing and
+  declare the same rate twice whatever their frames do, so their packets are
+  counted, without decoding, over the picture stream's own length (its
+  `DURATION` tag) — not the file's, which runs on as long as the sound does and
+  made a constant-rate recording "variable".
 - `audio_streams` lists every audio stream; `index` is the position among audio
   streams, what `-map 0:a:<index>` means. Empty is "this file has no sound".
 
