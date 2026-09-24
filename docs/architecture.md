@@ -81,8 +81,9 @@ renormalises over the signals that exist, so a machine with no transcriber gets 
 meaningful answer from shot changes and silence rather than a diluted one.
 
 A shot longer than an event may be (45 seconds) is divided before merging, where
-it shows a change: first where the picture starts moving after holding still or
-its text changes, then at pauses of a second and a half between utterances, then
+it shows a change: first where the picture, after holding still, changes as much
+as a new slide does (not where something in it merely stirs) or its text
+changes, then at pauses of a second and a half between utterances, then
 at silences, and into the fewest equal parts that fit where nothing marks a
 change. A screen recording of six slides is six events, and a ten-minute take is
 no longer one ten-minute event.

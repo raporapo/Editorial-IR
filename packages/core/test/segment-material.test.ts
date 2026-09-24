@@ -260,26 +260,112 @@ describe('segmenting by material', () => {
   });
 });
 
+/**
+ * One unbroken take that holds still and then moves, again and again: static
+ * spans as the picture analysis reports them, and the motion envelope beside
+ * them, which jumps to `peak` where each still stretch ends.
+ */
+function stillAndMoving(
+  durationMs: number,
+  stills: readonly { start_ms: number; end_ms: number }[],
+  peak: number,
+): Partial<ObservationTimeline> {
+  const hop = 200;
+  const motion = Array.from({ length: Math.ceil(durationMs / hop) }, (_, i) => {
+    const at = i * hop;
+    if (stills.some((s) => at >= s.start_ms && at < s.end_ms)) return 0.05;
+    return stills.some((s) => at === s.end_ms) ? peak : 1.3;
+  });
+  return {
+    shots: [shot('shot_001', 0, durationMs)],
+    video_events: stills.map((span, i) => ({
+      id: `vev_${String(i).padStart(3, '0')}`,
+      asset_id: 'asset_001',
+      ...span,
+      event_type: 'static' as const,
+      confidence: 0.9,
+    })),
+    motion_profiles: [{ asset_id: 'asset_001', hop_ms: hop, motion, luma: motion.map(() => 120) }],
+  };
+}
+
 describe('a take longer than an event may be', () => {
+  // The screen-recording probe: one 60 s shot, the picture still between slide
+  // changes every ten seconds, each change a jump of 8.0 to 12.2 grey levels.
+  const slides = [0, 1, 2, 3, 4, 5].map((i) => ({
+    start_ms: i * 10_000 + 2200,
+    end_ms: (i + 1) * 10_000,
+  }));
+
   it('is divided where the picture changes, so six slides are six events', () => {
-    // The screen-recording probe: one 60 s shot, the picture still between slide
-    // changes every ten seconds. It was one event, and OCR read one slide of six.
-    const observed = observations({
-      shots: [shot('shot_001', 0, 60_000)],
-      video_events: [0, 1, 2, 3, 4, 5].map((i) => ({
-        id: `vev_${i}`,
-        asset_id: 'asset_001',
-        start_ms: i * 10_000 + 2200,
-        end_ms: (i + 1) * 10_000,
-        event_type: 'static' as const,
-        confidence: 0.9,
-      })),
-    });
-    const drafts = segmentAssets([asset], observed, [], {}, undefined, placement, [
-      { asset_id: 'asset_001', kind: 'screen_recording' },
-    ]);
+    // It was one event, and OCR read one slide of six.
+    const drafts = segmentAssets(
+      [asset],
+      observations(stillAndMoving(60_000, slides, 8.8)),
+      [],
+      {},
+      undefined,
+      placement,
+      [{ asset_id: 'asset_001', kind: 'screen_recording' }],
+    );
     expect(drafts.map((d) => d.start_ms)).toEqual([0, 10_000, 20_000, 30_000, 40_000, 50_000]);
     expect(drafts.slice(1).every((d) => d.method === 'similarity')).toBe(true);
+  });
+
+  it('is not divided where something in the picture merely stirs', () => {
+    // A person or a car starting to move peaked at 0.52 to 2.07 on three real
+    // static-camera files: the same picture, not a new one.
+    const drafts = segmentAssets(
+      [asset],
+      observations(stillAndMoving(60_000, slides, 1.5)),
+      [],
+      {},
+      undefined,
+      placement,
+    );
+    expect(drafts.map((d) => [d.start_ms, d.method])).toEqual([
+      [0, 'shot'],
+      [30_000, 'fixed'],
+    ]);
+  });
+
+  it('does not turn ten minutes of fidgeting in front of a tripod into a hundred events', () => {
+    // A still stretch every 3.2 seconds, each ended by a stir. Every stir was a
+    // boundary nothing could score, so the take became a hundred events, merged
+    // from the front into six of 45 seconds and ninety-two of 3.
+    const stirs = Array.from({ length: 187 }, (_, k) => ({
+      start_ms: k * 3200,
+      end_ms: k * 3200 + 3000,
+    }));
+    const drafts = segmentAssets(
+      [{ ...asset, duration_ms: 600_000 }],
+      observations(stillAndMoving(600_000, stirs, 1.5)),
+      [],
+      {},
+      undefined,
+      placement,
+    );
+    expect(drafts).toHaveLength(14);
+    expect(spread(drafts)).toBeLessThanOrEqual(1.1);
+  });
+
+  it('shares a raw take out evenly where it changes often, instead of eating it from the front', () => {
+    // The same take with a new picture every 3.2 seconds: every change is worth
+    // a boundary, none scores differently, and first-wins merged the front of it
+    // into 45-second events and left a tail of 3-second ones.
+    const changes = Array.from({ length: 187 }, (_, k) => ({
+      start_ms: k * 3200,
+      end_ms: k * 3200 + 3000,
+    }));
+    const drafts = segmentAssets(
+      [{ ...asset, duration_ms: 600_000 }],
+      observations(stillAndMoving(600_000, changes, 9)),
+      [],
+      {},
+      undefined,
+      placement,
+    );
+    expect(Math.max(...drafts.map((d) => d.end_ms - d.start_ms))).toBeLessThan(10_000);
   });
 
   it('is divided at the pauses between utterances when the picture says nothing', () => {

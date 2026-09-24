@@ -9,6 +9,7 @@ import {
   type MaterialKind,
   type MaterialProfile,
   type MediaAsset,
+  type MotionProfile,
   type ObservationTimeline,
   type Shot,
   type UserAnnotation,
@@ -51,7 +52,9 @@ export interface SegmentationOptions {
    * Of boundaries that score the same, merge the one joining the least material
    * rather than the first.
    *
-   * Off for raw footage and on for everything else (see `segmentAssets`). Where
+   * Off for raw footage — unless a long take in it was divided, whose new
+   * boundaries tie by construction — and on for everything else (see
+   * `segmentAssets`). Where
    * nothing distinguishes one boundary from another — an edit with no
    * transcript, no vision model and a music bed that never falls silent, or a
    * recording cut into windows because no shot detector ran — every boundary
@@ -212,9 +215,28 @@ const MIN_ATOM_MS = 200;
  */
 export const TAKE_PAUSE_MS = 1500;
 
+/**
+ * How much the picture has to change, where it starts moving after holding
+ * still, for that to be a place a take may be divided.
+ *
+ * In grey levels of the motion envelope — the most any of the twelve cells of
+ * a 64x36 frame changed between two samples — taken as the most it reaches in
+ * the first second of movement.
+ *
+ * Measured: the six slides of the screen-recording probe changed at 8.0 to 12.2,
+ * and a picture coming back after a freeze at 94; on the three real
+ * static-camera files, the moments a person or a car started to move peaked at
+ * 0.52 to 2.07. Four sits between the two: a new picture, rather than something
+ * stirring in the same one. Without it every one of those stirrings was a
+ * boundary nothing could score — a ten-minute take of somebody fidgeting in
+ * front of a tripod became a hundred events, merged from the front into six of
+ * 45 seconds and ninety-two of 3.
+ */
+export const TAKE_CHANGE_MOTION = 4;
+
 /** Where a long take shows that something changed, gathered once per asset. */
 export interface TakeEvidence {
-  /** The picture started moving after holding still, or the text in it changed. */
+  /** The picture changed after holding still, or the text in it changed. */
   visual: number[];
   /** Gaps between utterances of at least {@link TAKE_PAUSE_MS}. */
   pauses: Span[];
@@ -227,8 +249,13 @@ export function takeEvidence(
   observations: ObservationTimeline,
   roles: ReadonlyMap<string, string> = textRoles(observations.ocr),
 ): TakeEvidence {
+  // A still stretch ends where the picture moves again. Only a change the size
+  // of a new picture counts; where nothing measured how much it changed (a
+  // static span handed in with no envelope), the span is taken at its word.
+  const profile = observations.motion_profiles.find((p) => p.asset_id === assetId);
   const visual = observations.video_events
     .filter((event) => event.asset_id === assetId && event.event_type === 'static')
+    .filter((event) => !profile || changeAfter(profile, event.end_ms) >= TAKE_CHANGE_MOTION)
     .map((event) => event.end_ms);
 
   // Scene text that changed between two reads: the slide is a different slide.
@@ -272,6 +299,15 @@ export function takeEvidence(
   return { visual: [...new Set(visual)].sort((a, b) => a - b), pauses, silences };
 }
 
+/** The most the picture changes in the first second after `ms`. */
+function changeAfter(profile: MotionProfile, ms: number): number {
+  const first = Math.round(ms / profile.hop_ms);
+  const last = Math.min(profile.motion.length, first + Math.ceil(1000 / profile.hop_ms));
+  let most = 0;
+  for (let i = first; i < last; i++) most = Math.max(most, profile.motion[i] ?? 0);
+  return most;
+}
+
 /**
  * Divides every atom longer than an event may be.
  *
@@ -283,11 +319,12 @@ export function takeEvidence(
  * conversation that changes subject is two", and nothing did it.
  *
  * A long atom is divided where it shows a change, strongest evidence first: the
- * picture starting to move after holding still, or its text changing; then the
- * pauses between utterances; then silences. Every such point inside it is used,
- * so the pieces are what happened rather than a count; a piece still too long
- * goes on to the next kind of evidence, and with none left it is divided into
- * the fewest equal parts that fit. The ordinary merging then decides which of
+ * picture changing as much as a new picture does after holding still (see
+ * {@link TAKE_CHANGE_MOTION}), or its text changing; then the pauses between
+ * utterances; then silences. Every such point inside it is used, so the pieces
+ * are what happened rather than a count; a piece still too long goes on to the
+ * next kind of evidence, and with none left it is divided into the fewest equal
+ * parts that fit. The ordinary merging then decides which of
  * the new boundaries are worth keeping, exactly as it does for shots.
  *
  * An atom no longer than `maxEventMs` is returned untouched, so footage whose
@@ -742,11 +779,17 @@ export function segmentAssets(
       }
     }
 
+    const whole = atoms.length;
     atoms = subdivideLongAtoms(atoms, takeEvidence(asset.id, observations, roles), options);
+    // Raw footage keeps first-wins, because its shot boundaries carry the
+    // detector's score and rarely tie. The places a long take was divided carry
+    // none, so they tie by construction, and first-wins merged them from the
+    // front into 45-second events followed by a tail of 3-second ones.
+    const divided = atoms.length > whole;
     drafts.push(
       ...segmentAtoms(atoms, context, {
         ...options,
-        balancedTies: options.balancedTies ?? kind !== 'raw',
+        balancedTies: options.balancedTies ?? (kind !== 'raw' || divided),
       }),
     );
   }
