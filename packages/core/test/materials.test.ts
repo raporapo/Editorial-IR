@@ -191,6 +191,17 @@ describe('classifyMaterials', () => {
     expect(both.kind).toBe('raw');
   });
 
+  it('takes nothing for the user’s word that the user did not write', () => {
+    // A file with no extension named like a property of every object found that
+    // property in the overrides and was classified as a function.
+    for (const name of ['constructor', 'toString', '__proto__']) {
+      const profile = only([video({ file_name: name, duration_ms: 60_000 })], observations(), {
+        background: { materials: {} },
+      });
+      expect(profile, name).toMatchObject({ kind: 'raw', provenance: 'inferred' });
+    }
+  });
+
   it('is the same classification on every run, in asset order', () => {
     const assets = [
       video({ id: 'asset_002', file_name: 'b.mp4', duration_ms: 5000 }),

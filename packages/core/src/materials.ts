@@ -257,7 +257,13 @@ export function classifyMaterials(
     .sort((a, b) => compareText(a.id, b.id))
     .map((asset) => {
       const signals = measure(asset, observations, roles);
-      const override = overrides[asset.id] ?? overrides[asset.file_name];
+      // Own keys only: a file called `constructor` or `toString` would
+      // otherwise find a function on every object and call it a kind.
+      const override = Object.hasOwn(overrides, asset.id)
+        ? overrides[asset.id]
+        : Object.hasOwn(overrides, asset.file_name)
+          ? overrides[asset.file_name]
+          : undefined;
       if (override !== undefined) {
         return {
           asset_id: asset.id,
