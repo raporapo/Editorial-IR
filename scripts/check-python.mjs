@@ -60,6 +60,29 @@ let failed = false;
   }
 }
 
+// And the scale that turns it into ffmpeg's own cutoff. The TypeScript side had
+// none at all, so the default suite sent a raw 0.3 — the exact bug the worker's
+// docstring records fixing — and nothing compared the two.
+{
+  const shots = readFileSync('packages/perception/src/ffmpeg/shots.ts', 'utf8');
+  const worker = readFileSync(`${WORKER}/src/editorial_perception/media.py`, 'utf8');
+  const ts = /export const FFMPEG_SCENE_SCALE = ([0-9./ ]+);/.exec(shots)?.[1];
+  const py = /^FFMPEG_SCALE = ([0-9./ ]+)$/m.exec(worker)?.[1];
+  const value = (expression) => {
+    const [a, b] = expression.split('/').map((part) => Number(part.trim()));
+    return b === undefined ? a : a / b;
+  };
+  if (ts === undefined || py === undefined) {
+    console.error('could not read the ffmpeg scene scale from both sides');
+    failed = true;
+  } else if (value(ts) !== value(py)) {
+    console.error(`ffmpeg scene scale disagrees: TypeScript ${ts}, the worker ${py}`);
+    failed = true;
+  } else {
+    console.log(`ffmpeg scene scale agrees across both languages (${ts.trim()})`);
+  }
+}
+
 if (have(python, ['-m', 'ruff', '--version'])) {
   if (run(python, ['-m', 'ruff', 'check', WORKER]).status !== 0) failed = true;
 } else {

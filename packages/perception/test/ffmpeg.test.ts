@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  FFMPEG_SCENE_SCALE,
   FfprobeMediaProbe,
   ScriptedCommandRunner,
   audioArgs,
@@ -10,6 +11,7 @@ import {
   parseRational,
   parseShowinfoTimes,
   proxyArgs,
+  sceneArgs,
   toProbeResult,
 } from '../src/index.js';
 
@@ -175,5 +177,16 @@ describe('buildShots', () => {
     expect(buildShots([], 10_000, 800)).toEqual([
       { start_ms: 0, end_ms: 10_000, representative_frame_ms: 3333 },
     ]);
+  });
+});
+
+describe('sceneArgs', () => {
+  it('turns the sensitivity into ffmpeg’s own scale, as the worker does', () => {
+    // Unscaled, 0.3 was a raw cutoff above most real cuts: the bug the worker's
+    // docstring records fixing, surviving in the default suite.
+    const filter = sceneArgs('in.mp4', 0.3).find((arg) => arg.startsWith('select='));
+    const cutoff = Number(/gt\(scene,([0-9.e-]+)\)/.exec(filter ?? '')?.[1]);
+    expect(cutoff).toBeCloseTo(0.1, 6);
+    expect(FFMPEG_SCENE_SCALE).toBeCloseTo(1 / 3, 12);
   });
 });

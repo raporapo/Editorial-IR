@@ -23,7 +23,13 @@ export {
   frameTimestampMs,
   frameFileName,
 } from './ffmpeg/prepare.js';
-export { FfmpegShotDetector, sceneArgs, parseShowinfoTimes, buildShots } from './ffmpeg/shots.js';
+export {
+  FfmpegShotDetector,
+  FFMPEG_SCENE_SCALE,
+  sceneArgs,
+  parseShowinfoTimes,
+  buildShots,
+} from './ffmpeg/shots.js';
 export {
   WavAudioAnalyzer,
   analyseHops,
