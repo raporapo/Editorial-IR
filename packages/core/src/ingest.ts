@@ -3,6 +3,7 @@ import { basename, extname, isAbsolute, join, relative, resolve } from 'node:pat
 import {
   compareText,
   CAPTURE_TIMELINE_GAP_MS,
+  STILL_SLOT_MS,
   EditorialError,
   PIPELINE_VERSION,
   seqId,
@@ -370,8 +371,11 @@ export function placeAssets(assets: readonly MediaAsset[]): AssetPlacement[] {
       ordered_by: everyAssetHasTime ? 'creation_time' : 'file_name',
     };
     // A gap between files, so an event can never straddle two recordings by
-    // accident of arithmetic.
-    offset += asset.duration_ms + CAPTURE_TIMELINE_GAP_MS;
+    // accident of arithmetic. A still has no duration and takes a slot instead,
+    // so it has somewhere to be an event; a project with no stills is laid out
+    // exactly as before, and so is every capture time a user wrote about it.
+    offset +=
+      (asset.kind === 'image' ? STILL_SLOT_MS : asset.duration_ms) + CAPTURE_TIMELINE_GAP_MS;
     return placement;
   });
 }

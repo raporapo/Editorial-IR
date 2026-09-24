@@ -94,7 +94,13 @@ function markers(event: SemanticEvent): string {
   const marks: string[] = [];
   if (event.knowledge.essential) marks.push(colour.green('keep'));
   if (event.knowledge.excluded) marks.push(colour.red('drop'));
+  // A title card opens a part of an edited programme; it is why a chapter
+  // begins here.
+  if (event.segmentation.method === 'title_card') marks.push(colour.cyan('card'));
   if (event.observed.speech.length > 0) marks.push(colour.grey('talk'));
+  // Subtitles are words that were said, read off the picture: marked apart
+  // from text in the scene, which is what they used to be counted as.
+  else if ((event.observed.subtitles?.length ?? 0) > 0) marks.push(colour.grey('subs'));
   if (event.observed.ocr.length > 0) marks.push(colour.grey('text'));
   return marks.join(' ').padEnd(12);
 }

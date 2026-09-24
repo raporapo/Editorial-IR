@@ -24,6 +24,7 @@ context: { background, editing_goal, constraints } # yours; never overwritten
 
 assets: [...] # registered files, unmodified and unmoved
 placements: [...] # where each sits on the capture timeline
+materials: [...] # what kind of material each file is, and why
 
 chapters: [...] # coarse structure
 events: [...] # what happened
@@ -66,6 +67,65 @@ they do not, and `placements[].ordered_by` records which. That matters: a wrong
 order invents continuity that was never there, which is worse than an arbitrary
 one, so `oea ingest` says out loud when it had to fall back.
 
+A still image has no duration — its `duration_ms` is 0, because that is what the
+file is — so it takes a slot of `STILL_SLOT_MS` (three seconds) on this axis
+instead, and becomes one event over `0..3000` of itself. A project with no stills
+is laid out exactly as it was, so no capture time a user wrote about it moves.
+
+The axis is a coordinate system, not a clock: files are one second apart on it
+whatever the real time between them. Chapters that need the real time read it
+from the files' own `creation_time`.
+
+## What kind of material
+
+Not everything dropped into a project is a camera's raw recording, and the rules
+for raw recordings are the wrong rules for the rest. `materials` records, for
+every asset, what it was taken to be and why:
+
+```yaml
+materials:
+  - asset_id: asset_001
+    kind: edited # raw | edited | clip | screen_recording | audio_only | still
+    confidence: 0.9
+    provenance: inferred # or user_provided
+    evidence: ['20 cuts a minute over 60 s, where camera footage cuts under one', …]
+    signals: { cut_rate_per_min: 20, median_shot_ms: 3000, title_cards: 1, … }
+```
+
+The classification reads only observations — cuts, silence, black, stillness,
+text — and runs on a reused analysis exactly as on a fresh one. The measured
+lines it draws, and why, are in
+[`packages/core/src/materials.ts`](../packages/core/src/materials.ts): an edit
+cuts at least three times a minute with half its shots under eleven seconds; a
+clip is fifteen seconds or less with at most one cut; a screen recording says so
+in its file name, or runs at a variable rate, holds still and is full of text.
+
+What it changes:
+
+| Kind               | How it becomes events                                                         |
+| ------------------ | ----------------------------------------------------------------------------- |
+| `raw`              | as it always did: shots, merged by how much changes at each boundary          |
+| `edited`           | every title card or cut to black begins an event, and belongs to what follows |
+| `clip`             | one event, the whole file, whether or not a shot detector ran                 |
+| `still`            | one event over its slot on the capture timeline                               |
+| `screen_recording` | as `raw`; its long still stretches are divided where the picture changes      |
+| `audio_only`       | as `raw`, from windows and pauses, having no picture                          |
+
+Every kind but `raw` also breaks a tie between equally weak boundaries by joining
+the smallest pair, so events stay even where nothing tells the cuts apart; raw
+footage keeps the rule the worked example was tuned on, except in a file where a
+long take was divided, because the places it was divided tie by construction.
+
+When the guess is wrong, say so in `context.yaml`, by file name or asset id. It
+always wins, and is marked `user_provided`:
+
+```yaml
+background:
+  materials:
+    final_v3.mp4: edited
+    asset_004: raw
+```
+
 ## An event
 
 ```yaml
@@ -88,7 +148,8 @@ affect: { value: { excitement: 0.88, happiness: 0.83 }, provenance: inferred }
 observed: # copied in, so an event reads on its own
   speech: [{ text: 'やっと着いた！', start_ms: 541000, end_ms: 542900 }]
   visual_labels: [two_people, theme_park_gate]
-  ocr: ['UNIVERSAL STUDIOS JAPAN']
+  ocr: ['UNIVERSAL STUDIOS JAPAN'] # text in the scene, once per line
+  subtitles: [] # burned-in subtitles, when there are any
   audio: [{ type: crowd }, { type: laughter }]
   speech_ratio: 0.42
   silence_ratio: 0.08
@@ -101,6 +162,28 @@ knowledge: # yours
 segmentation: { method: shot, boundary_confidence: 0.78 }
 confidence: 0.91
 ```
+
+`segmentation.method` says how the event's start was decided: `shot`, `speech`,
+`silence`, `similarity` (the picture changed inside a long take), `fixed`,
+`user`, `asset` (the whole file) or `title_card` (it opens on a title card or a
+cut to black in an edited video).
+
+### Text in the picture is three things
+
+OCR reads everything that looks like letters, and on an edited video that is
+subtitles, scene text and burned-in counters. They are kept apart:
+
+- `subtitles` are what was said. A file whose bottom quarter holds sentence-like
+  text in at least three separate reads has a subtitle track. Each line appears
+  once however OCR spaced it, and it is read the way a transcript is — by the
+  describer, for the event's title and mood, by the judge, and in search. Skill
+  rules still count it as text on screen, which it also is.
+- `ocr` is what was shown: signs, title cards, slides. Also once per line.
+- Counters and timecodes (`80010:00:00`, `09:09:09.833`, `25`) are dropped. They
+  once named a chapter.
+
+A read with no bounding box is scene text, which is every read in the worked
+example.
 
 ### Provenance is structural
 
@@ -197,7 +280,11 @@ that this shot only makes sense after that one.
 `same_location`, `same_person`, `contrast`, `callback`, `duplicate_of`.
 
 `duplicate_of` is the one with teeth: at most one member of a duplicate group
-belongs in a cut, and the planner enforces it.
+belongs in a cut, and the planner enforces it. So it asks for real shared
+content: both events have to carry something — speech, subtitles, text, labels,
+names — and share at least half of it. Two events with nothing in them have the
+same fallback description, and were once all duplicates of each other, which
+left an edited programme and a folder of clips with nothing to plan.
 
 ## Fingerprints
 

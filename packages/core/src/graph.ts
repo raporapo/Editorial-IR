@@ -170,11 +170,10 @@ export function buildEventGraph(
     for (let j = i + 1; j < ordered.length; j++) {
       const a = ordered[i]!;
       const b = ordered[j]!;
-      const similarity =
-        settings.similarity?.(a.id, b.id) ??
-        featureSimilarity(features.get(a.id), features.get(b.id));
+      const common = featureSimilarity(features.get(a.id), features.get(b.id));
+      const similarity = contentSimilarity(common, settings.similarity?.(a.id, b.id));
 
-      if (similarity >= settings.duplicateThreshold) {
+      if (similarity >= settings.duplicateThreshold && common >= DUPLICATE_MIN_SHARED) {
         add(
           a.id,
           b.id,
@@ -379,9 +378,45 @@ export function featureSimilarity(
   return shared / small.size;
 }
 
+/**
+ * How alike two events are, from what is actually in them.
+ *
+ * The index compares embedded descriptions, and an event with nothing in it has
+ * a description anyway — the fallback `no speech or on-screen text`, or the
+ * audio tags — which is identical for every such event. So on an edited
+ * programme with no transcript and on a folder of clips, every event was a
+ * duplicate of every other, the planner kept one take of "the same thing", and
+ * both planned no clips at all offline. Two events are alike only when both
+ * carry something distinctive and they share some of it; the index then says
+ * how alike, because it measures meaning where the features measure words.
+ */
+function contentSimilarity(common: number, indexed: number | undefined): number {
+  if (common <= 0) return 0;
+  return indexed ?? common;
+}
+
+/**
+ * The share of what is in them two takes of the same thing have in common.
+ *
+ * Measured: every duplicate pair in the worked example shares all of its words
+ * and labels. The three pairs a model embedding called duplicates in the
+ * screen-recording probe were different steps of the tutorial — "First install
+ * the package and create a project" and "then import the file and run it on the
+ * project" — sharing 17 to 43% of their words, and the planner kept one step of
+ * each pair. Half sits between; a pair under it is on the same topic, not the
+ * same take.
+ */
+const DUPLICATE_MIN_SHARED = 0.5;
+
+/** Whether an event carries anything to compare: words, text, labels, names. */
+export function hasDistinctiveContent(event: SemanticEvent): boolean {
+  return distinctiveText(event).length > 0;
+}
+
 function distinctiveText(event: SemanticEvent): string {
   return [
     ...event.observed.speech.map((s) => s.text),
+    ...(event.observed.subtitles ?? []),
     ...event.observed.ocr,
     ...event.observed.visual_labels,
     ...event.entities.value.topics,

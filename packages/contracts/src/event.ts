@@ -152,9 +152,29 @@ export const SemanticEvent = obj({
   affect: ProvenancedAffect,
   observed: EventObservations,
   knowledge: EventKnowledge,
-  /** How the boundaries of this event were decided. */
+  /**
+   * How the boundaries of this event were decided.
+   *
+   * - `asset`: the whole file is the event — a still, a clip the user already
+   *   trimmed, or a recording the user asked to keep whole.
+   * - `title_card`: it opens on a title card or a cut to black in an edited
+   *   video, which introduces what follows it and so begins an event and a
+   *   chapter rather than ending the one before.
+   * - `similarity`, `speech`, `silence`: an unbroken take longer than any event
+   *   may be, divided where the picture changed, where the talking paused, or
+   *   where the sound stopped.
+   */
   segmentation: obj({
-    method: z.enum(['shot', 'speech', 'silence', 'similarity', 'user', 'asset', 'fixed']),
+    method: z.enum([
+      'shot',
+      'speech',
+      'silence',
+      'similarity',
+      'user',
+      'asset',
+      'fixed',
+      'title_card',
+    ]),
     boundary_confidence: Confidence,
   }),
   /** Ids of embeddings held in the sidecar vector store. */

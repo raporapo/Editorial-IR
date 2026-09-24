@@ -559,7 +559,8 @@
             "similarity",
             "user",
             "asset",
-            "fixed"
+            "fixed",
+            "title_card"
           ]
         },
         "boundary_confidence": {

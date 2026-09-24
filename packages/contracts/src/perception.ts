@@ -179,7 +179,20 @@ export const DescribeParams = obj({
   /** Frame timestamps to look at, already chosen by the caller. */
   frame_paths: z.array(z.string()).default([]),
   transcript: z.array(z.string()).default([]),
+  /** Text in the picture that is not subtitles: signs, titles, slides. */
   ocr: z.array(z.string()).default([]),
+  /**
+   * Subtitles burned into the picture, one line each.
+   *
+   * What was said, on an edited video whose sound is a music bed and whose
+   * words exist only as text — so it is read the way a transcript is, not the
+   * way a shop sign is. Mixed into `ocr`, a harbour montage's subtitles were its
+   * "text on screen", bracketed behind the title card and a burned-in counter,
+   * and the montage had no words in it at all. Absent rather than empty when
+   * there are none, so the key of every description cached before this field
+   * existed is unchanged.
+   */
+  subtitles: z.array(z.string()).optional(),
   audio_tags: z.array(z.string()).default([]),
   /** Labels a vision model attached to the sampled frames, when there was one. */
   visual_labels: z.array(z.string()).default([]),

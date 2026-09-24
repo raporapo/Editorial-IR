@@ -1,16 +1,22 @@
 import {
+  STILL_SLOT_MS,
   compareText,
   coverage,
   overlapMs,
   rangesOverlap,
   type AssetPlacement,
   type AudioEvent,
+  type MaterialKind,
+  type MaterialProfile,
   type MediaAsset,
+  type MotionProfile,
   type ObservationTimeline,
   type Shot,
   type UserAnnotation,
   type Utterance,
 } from '@editorial-ir/contracts';
+import { kindOf, titleCards, type Span } from './materials.js';
+import { textRoles, textKey } from './onscreen-text.js';
 
 /**
  * Turning shots into events.
@@ -42,6 +48,26 @@ export interface SegmentationOptions {
   silenceGapMs?: number;
   /** Window either side of a boundary that signals are read from. */
   boundaryWindowMs?: number;
+  /**
+   * Of boundaries that score the same, merge the one joining the least material
+   * rather than the first.
+   *
+   * Off for raw footage — unless a long take in it was divided, whose new
+   * boundaries tie by construction — and on for everything else (see
+   * `segmentAssets`). Where
+   * nothing distinguishes one boundary from another — an edit with no
+   * transcript, no vision model and a music bed that never falls silent, or a
+   * recording cut into windows because no shot detector ran — every boundary
+   * scores the same, and first-wins ate the footage from the front: a
+   * sixty-second edit became one 34.5-second event followed by nine single
+   * shots, and ten minutes of 3-second shots became seven 45-second events
+   * followed by ninety-two 3-second ones. Raw camera footage rarely has enough
+   * equally scored boundaries for the order to matter: on the worked example the
+   * balanced rule moved three boundaries between equally scored shots (39 s and
+   * 13 s became 26 s and 26 s) and its only effect on the cut was one more
+   * 1.6-second shot of walking, so raw keeps the rule it has.
+   */
+  balancedTies?: boolean;
 }
 
 const DEFAULTS: Required<SegmentationOptions> = {
@@ -51,6 +77,7 @@ const DEFAULTS: Required<SegmentationOptions> = {
   mergeThreshold: 0.38,
   silenceGapMs: 700,
   boundaryWindowMs: 1200,
+  balancedTies: false,
 };
 
 /** The smallest unit segmentation works with: one shot, or a fixed window. */
@@ -63,7 +90,15 @@ export interface Atom {
   representative_frame_ms: number;
   /** Strength of the shot boundary that opened it, when there was one. */
   change_score?: number;
+  /**
+   * What opened this atom when it was not a shot boundary: the place a long take
+   * was divided, and why. Absent for a shot, a window and a user's cut.
+   */
+  opened_by?: 'similarity' | 'speech' | 'silence' | 'fixed';
 }
+
+export type SegmentMethod =
+  'shot' | 'speech' | 'silence' | 'similarity' | 'user' | 'asset' | 'fixed' | 'title_card';
 
 export interface SegmentDraft {
   asset_id: string;
@@ -71,7 +106,7 @@ export interface SegmentDraft {
   start_ms: number;
   end_ms: number;
   shot_ids: string[];
-  method: 'shot' | 'speech' | 'silence' | 'similarity' | 'user' | 'asset' | 'fixed';
+  method: SegmentMethod;
   boundary_confidence: number;
 }
 
@@ -170,6 +205,213 @@ function cutAt(atoms: Atom[], splits: readonly number[]): Atom[] {
 /** The shortest piece worth making; below this a split produces nothing usable. */
 const MIN_ATOM_MS = 200;
 
+/**
+ * A pause at least this long is a place an unbroken take may be divided.
+ *
+ * Longer than the breath between two sentences of one thought, which the
+ * boundary scoring already reads as a weak silence at 700 ms; shorter than the
+ * three to eight seconds a narrator leaves between the screens of a tutorial,
+ * which is the pause the screen-recording probe had between every slide.
+ */
+export const TAKE_PAUSE_MS = 1500;
+
+/**
+ * How much the picture has to change, where it starts moving after holding
+ * still, for that to be a place a take may be divided.
+ *
+ * In grey levels of the motion envelope — the most any of the twelve cells of
+ * a 64x36 frame changed between two samples — taken as the most it reaches in
+ * the first second of movement.
+ *
+ * Measured: the six slides of the screen-recording probe changed at 8.0 to 12.2,
+ * and a picture coming back after a freeze at 94; on the three real
+ * static-camera files, the moments a person or a car started to move peaked at
+ * 0.52 to 2.07. Four sits between the two: a new picture, rather than something
+ * stirring in the same one. Without it every one of those stirrings was a
+ * boundary nothing could score — a ten-minute take of somebody fidgeting in
+ * front of a tripod became a hundred events, merged from the front into six of
+ * 45 seconds and ninety-two of 3.
+ */
+export const TAKE_CHANGE_MOTION = 4;
+
+/** Where a long take shows that something changed, gathered once per asset. */
+export interface TakeEvidence {
+  /** The picture changed after holding still, or the text in it changed. */
+  visual: number[];
+  /** Gaps between utterances of at least {@link TAKE_PAUSE_MS}. */
+  pauses: Span[];
+  /** Silences of at least {@link TAKE_PAUSE_MS}. */
+  silences: Span[];
+}
+
+export function takeEvidence(
+  assetId: string,
+  observations: ObservationTimeline,
+  roles: ReadonlyMap<string, string> = textRoles(observations.ocr),
+): TakeEvidence {
+  // A still stretch ends where the picture moves again. Only a change the size
+  // of a new picture counts; where nothing measured how much it changed (a
+  // static span handed in with no envelope), the span is taken at its word.
+  const profile = observations.motion_profiles.find((p) => p.asset_id === assetId);
+  const visual = observations.video_events
+    .filter((event) => event.asset_id === assetId && event.event_type === 'static')
+    .filter((event) => !profile || changeAfter(profile, event.end_ms) >= TAKE_CHANGE_MOTION)
+    .map((event) => event.end_ms);
+
+  // Scene text that changed between two reads: the slide is a different slide.
+  // Subtitles are left out, because they change every few seconds whatever the
+  // picture does.
+  const moments = new Map<number, Set<string>>();
+  for (const read of observations.ocr) {
+    if (read.asset_id !== assetId || roles.get(read.id) !== 'scene') continue;
+    const keys = moments.get(read.start_ms) ?? new Set<string>();
+    keys.add(textKey(read.text));
+    moments.set(read.start_ms, keys);
+  }
+  const times = [...moments.keys()].sort((a, b) => a - b);
+  for (let i = 1; i < times.length; i++) {
+    const before = moments.get(times[i - 1]!)!;
+    const after = moments.get(times[i]!)!;
+    const same = before.size === after.size && [...before].every((key) => after.has(key));
+    if (!same) visual.push(Math.round((times[i - 1]! + times[i]!) / 2));
+  }
+
+  const pauses: Span[] = [];
+  let spoken = -Infinity;
+  for (const utterance of observations.utterances
+    .filter((u) => u.asset_id === assetId)
+    .sort((a, b) => a.start_ms - b.start_ms || compareText(a.id, b.id))) {
+    if (Number.isFinite(spoken) && utterance.start_ms - spoken >= TAKE_PAUSE_MS) {
+      pauses.push({ start_ms: spoken, end_ms: utterance.start_ms });
+    }
+    spoken = Math.max(spoken, utterance.end_ms);
+  }
+
+  const silences = observations.audio_events
+    .filter(
+      (event) =>
+        event.asset_id === assetId &&
+        event.event_type === 'silence' &&
+        event.end_ms - event.start_ms >= TAKE_PAUSE_MS,
+    )
+    .map((event) => ({ start_ms: event.start_ms, end_ms: event.end_ms }));
+
+  return { visual: [...new Set(visual)].sort((a, b) => a - b), pauses, silences };
+}
+
+/** The most the picture changes in the first second after `ms`. */
+function changeAfter(profile: MotionProfile, ms: number): number {
+  const first = Math.round(ms / profile.hop_ms);
+  const last = Math.min(profile.motion.length, first + Math.ceil(1000 / profile.hop_ms));
+  let most = 0;
+  for (let i = first; i < last; i++) most = Math.max(most, profile.motion[i] ?? 0);
+  return most;
+}
+
+/**
+ * Divides every atom longer than an event may be.
+ *
+ * A shot was never divided, and `maxEventMs` limited only what merging could
+ * build, so one unbroken take was one event however long it ran: a sixty-second
+ * screen recording of six slides was one event read once, a ten-minute take was
+ * one event of ten minutes, and a camera left running gave [30, 60, 30, 60]
+ * seconds. The file header promises that "a single unbroken take of a
+ * conversation that changes subject is two", and nothing did it.
+ *
+ * A long atom is divided where it shows a change, strongest evidence first: the
+ * picture changing as much as a new picture does after holding still (see
+ * {@link TAKE_CHANGE_MOTION}), or its text changing; then the pauses between
+ * utterances; then silences. Every such point inside it is used, so the pieces
+ * are what happened rather than a count; a piece still too long goes on to the
+ * next kind of evidence, and with none left it is divided into the fewest equal
+ * parts that fit. The ordinary merging then decides which of
+ * the new boundaries are worth keeping, exactly as it does for shots.
+ *
+ * An atom no longer than `maxEventMs` is returned untouched, so footage whose
+ * every shot fits — the worked example's longest is 41.5 s — is segmented
+ * exactly as it was.
+ */
+export function subdivideLongAtoms(
+  atoms: readonly Atom[],
+  evidence: TakeEvidence,
+  options: SegmentationOptions = {},
+): Atom[] {
+  const settings = { ...DEFAULTS, ...options };
+  return atoms.flatMap((atom) => subdivide(atom, evidence, settings, 0));
+}
+
+const TAKE_LEVELS = ['similarity', 'speech', 'silence'] as const;
+
+function subdivide(
+  atom: Atom,
+  evidence: TakeEvidence,
+  settings: Required<SegmentationOptions>,
+  level: number,
+): Atom[] {
+  if (atom.end_ms - atom.start_ms <= settings.maxEventMs) return [atom];
+  const min = settings.minEventMs;
+  const fits = (at: number): boolean => at >= atom.start_ms + min && at <= atom.end_ms - min;
+  const inside = (span: Span): boolean =>
+    span.start_ms >= atom.start_ms && span.end_ms <= atom.end_ms;
+
+  for (let l = level; l < TAKE_LEVELS.length; l++) {
+    const kind = TAKE_LEVELS[l]!;
+    const candidates =
+      kind === 'similarity'
+        ? evidence.visual
+        : (kind === 'speech' ? evidence.pauses : evidence.silences)
+            .filter(inside)
+            .map((span) => Math.round((span.start_ms + span.end_ms) / 2));
+
+    const points: number[] = [];
+    for (const at of [...new Set(candidates)].sort((a, b) => a - b)) {
+      if (!fits(at)) continue;
+      if (at - (points.at(-1) ?? atom.start_ms) < min) continue;
+      points.push(at);
+    }
+    if (points.length === 0) continue;
+    return splitAtom(atom, points, kind).flatMap((piece) =>
+      subdivide(piece, evidence, settings, l + 1),
+    );
+  }
+
+  const parts = Math.ceil((atom.end_ms - atom.start_ms) / settings.maxEventMs);
+  const even = Array.from({ length: parts - 1 }, (_, k) =>
+    Math.round(atom.start_ms + ((k + 1) * (atom.end_ms - atom.start_ms)) / parts),
+  );
+  return splitAtom(atom, even, 'fixed');
+}
+
+function splitAtom(
+  atom: Atom,
+  points: readonly number[],
+  openedBy: NonNullable<Atom['opened_by']>,
+): Atom[] {
+  const out: Atom[] = [];
+  let from = atom.start_ms;
+  for (const [index, at] of [...points, atom.end_ms].entries()) {
+    const representative = from + Math.floor((at - from) / 3);
+    if (index === 0) {
+      out.push({ ...atom, end_ms: at, representative_frame_ms: representative });
+    } else {
+      // What the camera's cut score and the parent's opener said was about the
+      // start of the take, not about this point inside it.
+      const { change_score: _score, opened_by: _opener, ...rest } = atom;
+      void _score;
+      void _opener;
+      out.push({
+        ...rest,
+        start_ms: from,
+        end_ms: at,
+        representative_frame_ms: representative,
+        opened_by: openedBy,
+      });
+    }
+    from = at;
+  }
+  return out;
+}
+
 interface BoundarySignals {
   /** Set only when a signal was actually available. */
   visual?: number;
@@ -220,6 +462,15 @@ export interface SegmentContext {
   /** Boundaries the user demanded, in asset time. */
   forcedSplits?: readonly number[];
   forcedMerges?: readonly number[];
+  /**
+   * Where title cards and cuts to black begin and end, in an edited asset.
+   *
+   * A card introduces what follows it, so there is always a boundary where it
+   * begins and never one where it ends. Weaker than the user: a split or a merge
+   * the user asked for at the same place wins.
+   */
+  cardStarts?: readonly number[];
+  cardEnds?: readonly number[];
 }
 
 export function signalsAt(
@@ -237,6 +488,15 @@ export function signalsAt(
   const forcedMerge = context.forcedMerges?.some((ms) => Math.abs(ms - at) <= window / 2);
   if (forcedSplit) signals.forced = 'split';
   else if (forcedMerge) signals.forced = 'merge';
+  else {
+    // Atoms are cut at every card edge, so a card's boundary sits on it; the
+    // nearer of the two edges decides, because a half-second flash of black has
+    // both within the window the user's boundaries are matched in.
+    const toStart = nearestMs(context.cardStarts, at);
+    const toEnd = nearestMs(context.cardEnds, at);
+    if (toStart <= MIN_ATOM_MS && toStart <= toEnd) signals.forced = 'split';
+    else if (toEnd <= MIN_ATOM_MS) signals.forced = 'merge';
+  }
 
   const assetUtterances = context.utterances.filter((u) => u.asset_id === before.asset_id);
 
@@ -280,6 +540,20 @@ export function signalsAt(
   return signals;
 }
 
+function nearestMs(list: readonly number[] | undefined, at: number): number {
+  let best = Infinity;
+  for (const ms of list ?? []) best = Math.min(best, Math.abs(ms - at));
+  return best;
+}
+
+/**
+ * Scores closer than this are the same score.
+ *
+ * Only arithmetic noise: a boundary with no signal at all scores exactly 0.5,
+ * and two with the same signals score the same to the last bit.
+ */
+const SCORE_TIE = 1e-9;
+
 /**
  * Merges atoms into events for one asset.
  *
@@ -318,6 +592,7 @@ export function segmentAtoms(
           ? left.representative_frame_ms
           : right.representative_frame_ms,
       ...(left.change_score === undefined ? {} : { change_score: left.change_score }),
+      ...(left.opened_by === undefined ? {} : { opened_by: left.opened_by }),
     };
     return [...list.slice(0, index), merged, ...list.slice(index + 2)];
   };
@@ -361,13 +636,21 @@ export function segmentAtoms(
     const scores = separations(segments);
     let weakest = -1;
     let weakestScore = Infinity;
+    let weakestCombined = Infinity;
     for (let i = 0; i < scores.length; i++) {
       const score = scores[i] ?? 1;
       const combined = durationOf(segments[i]!) + durationOf(segments[i + 1]!);
       if (combined > settings.maxEventMs) continue;
-      if (score < weakestScore) {
+      // Of boundaries that score the same, the one joining the least material
+      // when ties are balanced, and otherwise the first (see `balancedTies`).
+      const better = settings.balancedTies
+        ? score < weakestScore - SCORE_TIE ||
+          (Math.abs(score - weakestScore) <= SCORE_TIE && combined < weakestCombined)
+        : score < weakestScore;
+      if (better) {
         weakestScore = score;
         weakest = i;
+        weakestCombined = combined;
       }
     }
     if (weakest < 0) break;
@@ -400,12 +683,32 @@ function methodFor(segment: Atom, context: SegmentContext): SegmentDraft['method
   // did not show the correction anywhere.
   if (context.forcedMerges?.some((ms) => ms > segment.start_ms && ms < segment.end_ms))
     return 'user';
+  if (nearestMs(context.cardStarts, segment.start_ms) <= MIN_ATOM_MS) return 'title_card';
+  if (segment.opened_by) return segment.opened_by;
   if (segment.shot_ids.length > 0) return 'shot';
   if (context.utterances.some((u) => rangesOverlap(u, segment))) return 'speech';
   return 'fixed';
 }
 
-/** Segments every asset. Events never straddle two recordings. */
+/**
+ * Segments every asset. Events never straddle two recordings.
+ *
+ * How depends on what the asset is (see `materials.ts`), and `raw` — the
+ * default, and what every asset is when no classification is given — goes down
+ * the one path every file went down before kinds existed:
+ *
+ * - a still is one event, over the slot it has on the capture timeline;
+ * - a clip the user already trimmed is one event, whole, whether or not a shot
+ *   detector ran — the fallback windows turned a seven-second clip into five
+ *   seconds and two;
+ * - a recording the user annotated `merge` as a whole is kept whole, which is
+ *   what that annotation now means (it pointed at a boundary past the end of the
+ *   file and did nothing);
+ * - an edited video begins an event at every title card and cut to black, and
+ *   the card belongs to what it introduces;
+ * - anything else is atoms, long takes divided, merged by how much changes at
+ *   each boundary.
+ */
 export function segmentAssets(
   assets: readonly MediaAsset[],
   observations: ObservationTimeline,
@@ -413,20 +716,21 @@ export function segmentAssets(
   options: SegmentationOptions = {},
   frameSimilarity?: SegmentContext['frameSimilarity'],
   placements: readonly AssetPlacement[] = [],
+  materials: readonly Pick<MaterialProfile, 'asset_id' | 'kind'>[] = [],
 ): SegmentDraft[] {
+  const settings = { ...DEFAULTS, ...options };
   const drafts: SegmentDraft[] = [];
   const offsets = new Map(placements.map((placement) => [placement.asset_id, placement.offset_ms]));
+  const roles = textRoles(observations.ocr);
 
   for (const asset of [...assets].sort((a, b) => compareText(a.id, b.id))) {
+    const kind = kindOf(materials, asset);
     const where = {
       assetId: asset.id,
       offsetMs: offsets.get(asset.id) ?? 0,
-      durationMs: asset.duration_ms,
+      durationMs: extentOf(asset),
     };
     const forcedSplits = forcedBoundaries(annotations, where, 'split');
-    const atoms = buildAtoms(asset, observations.shots, options, forcedSplits);
-    if (atoms.length === 0) continue;
-
     const context: SegmentContext = {
       utterances: observations.utterances,
       audioEvents: observations.audio_events,
@@ -435,10 +739,115 @@ export function segmentAssets(
       forcedMerges: forcedBoundaries(annotations, where, 'merge_with_next'),
     };
 
-    drafts.push(...segmentAtoms(atoms, context, options));
+    if (asset.kind === 'image') {
+      drafts.push(wholeDraft(asset, [], 'asset'));
+      continue;
+    }
+
+    const keepWhole = keepsWhole(annotations, asset.id);
+    if (keepWhole || isWholeKind(kind)) {
+      if (asset.duration_ms <= 0) continue;
+      const shotIds = observations.shots
+        .filter((shot) => shot.asset_id === asset.id)
+        .sort((a, b) => a.start_ms - b.start_ms || compareText(a.id, b.id))
+        .map((shot) => shot.id);
+      const whole = cutAt([wholeAtom(asset, shotIds)], forcedSplits);
+      // One piece is the whole file, and whose decision that was is the method.
+      // Pieces mean the user also split it, and the ordinary merging honours
+      // those cuts and marks them as theirs.
+      if (whole.length === 1) drafts.push(wholeDraft(asset, shotIds, keepWhole ? 'user' : 'asset'));
+      else drafts.push(...segmentAtoms(whole, context, options));
+      continue;
+    }
+
+    let atoms = buildAtoms(asset, observations.shots, options, forcedSplits);
+    if (atoms.length === 0) continue;
+
+    if (kind === 'edited') {
+      // Only cards with something after them: an end card introduces nothing,
+      // and is left to close the event it follows.
+      const cards = titleCards(asset, observations, roles).filter(
+        (card) => card.end_ms <= asset.duration_ms - settings.minEventMs,
+      );
+      if (cards.length > 0) {
+        atoms = cutAt(
+          atoms,
+          cards.flatMap((card) => [card.start_ms, card.end_ms]),
+        );
+        context.cardStarts = cards.map((card) => card.start_ms);
+        context.cardEnds = cards.map((card) => card.end_ms);
+      }
+    }
+
+    const whole = atoms.length;
+    atoms = subdivideLongAtoms(atoms, takeEvidence(asset.id, observations, roles), options);
+    // Raw footage keeps first-wins, because its shot boundaries carry the
+    // detector's score and rarely tie. The places a long take was divided carry
+    // none, so they tie by construction, and first-wins merged them from the
+    // front into 45-second events followed by a tail of 3-second ones.
+    const divided = atoms.length > whole;
+    drafts.push(
+      ...segmentAtoms(atoms, context, {
+        ...options,
+        balancedTies: options.balancedTies ?? (kind !== 'raw' || divided),
+      }),
+    );
   }
 
   return drafts;
+}
+
+/** Kinds that are one event per file. */
+function isWholeKind(kind: MaterialKind): boolean {
+  return kind === 'clip' || kind === 'still';
+}
+
+/** How much of the capture timeline an asset occupies: a still has a slot. */
+function extentOf(asset: MediaAsset): number {
+  return asset.kind === 'image' ? STILL_SLOT_MS : asset.duration_ms;
+}
+
+function wholeAtom(asset: MediaAsset, shotIds: string[]): Atom {
+  const end = extentOf(asset);
+  return {
+    asset_id: asset.id,
+    start_ms: 0,
+    end_ms: end,
+    shot_ids: shotIds,
+    representative_frame_ms: Math.floor(end / 3),
+  };
+}
+
+function wholeDraft(asset: MediaAsset, shotIds: string[], method: SegmentMethod): SegmentDraft {
+  return {
+    asset_id: asset.id,
+    start_ms: 0,
+    end_ms: extentOf(asset),
+    shot_ids: shotIds,
+    method,
+    // The first event of an asset starts where the asset does, which is as sure
+    // as a boundary gets; the same number the merging gives every first event.
+    boundary_confidence: 0.9,
+  };
+}
+
+/**
+ * Whether the user asked for a whole recording to be one moment.
+ *
+ * `oea annotate asset_001 merge` is advertised, and it was read as "merge the
+ * boundary at the end of this file" — where events never meet, because they do
+ * not straddle recordings — so it was accepted, reported, and did nothing.
+ * Merging everything in one file into one event is the only thing it can mean.
+ */
+function keepsWhole(annotations: readonly UserAnnotation[], assetId: string): boolean {
+  return annotations.some(
+    (a) =>
+      a.type === 'boundary' &&
+      a.action === 'merge_with_next' &&
+      a.anchor.length === 0 &&
+      a.target.kind === 'asset' &&
+      a.target.asset_id === assetId,
+  );
 }
 
 /**
@@ -484,11 +893,11 @@ function forcedBoundaries(
       // An annotation anchored somewhere else is not about this asset.
       if (a.anchor.length > 0) return [];
 
-      // A whole recording: merging every atom in it into one, or splitting at a
-      // point inside it.
+      // A whole recording: splitting at a point inside it. Merging a whole
+      // recording is not a boundary at all, and is read by `keepsWhole`.
       if (a.target.kind === 'asset') {
         if (a.target.asset_id !== where.assetId) return [];
-        if (action === 'merge_with_next') return [where.durationMs];
+        if (action === 'merge_with_next') return [];
         return a.at_ms === undefined ? [] : [a.at_ms - where.offsetMs];
       }
 
