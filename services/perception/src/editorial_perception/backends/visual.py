@@ -220,7 +220,7 @@ def _embed(
 ) -> dict[str, Any]:
     from PIL import Image  # noqa: PLC0415
 
-    from ..media import extract_frame  # noqa: PLC0415
+    from ..media import extract_frame, moment_frame_name  # noqa: PLC0415
 
     frames: list[dict[str, Any]] = []
     dim = 0
@@ -234,7 +234,10 @@ def _embed(
         kept: list[int] = []
 
         for timestamp in batch:
-            frame_path = work / f"{timestamp:08d}.jpg"
+            # Named by the moment, and never the way prepare names its frames:
+            # the two shared a directory and a moment at 1000 ms was read from
+            # prepare's frame 1000, which is the picture at 999 s.
+            frame_path = work / moment_frame_name(timestamp)
             if not frame_path.exists():
                 try:
                     extract_frame(path, timestamp, str(frame_path))

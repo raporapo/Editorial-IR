@@ -31,9 +31,13 @@ export function createLocalSuite(options: LocalSuiteOptions = {}): PerceptionSui
   const ffmpeg = options.ffmpegBinary ?? 'ffmpeg';
   const ffprobe = options.ffprobeBinary ?? 'ffprobe';
 
+  const probe = new FfprobeMediaProbe({ runner, binary: ffprobe });
   return {
-    probe: new FfprobeMediaProbe({ runner, binary: ffprobe }),
-    preparer: new FfmpegMediaPreparer({ runner, binary: ffmpeg }),
+    probe,
+    // The preparer reads the file's streams itself, with the same probe, rather
+    // than trusting an asset that may have been registered before they were
+    // listed.
+    preparer: new FfmpegMediaPreparer({ runner, binary: ffmpeg, probe }),
     shots: new FfmpegShotDetector({ runner, binary: ffmpeg }),
     audio: new WavAudioAnalyzer(),
     video: new FfmpegVideoAnalyzer({ runner, binary: ffmpeg }),

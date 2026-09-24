@@ -8,11 +8,13 @@ import {
   seqId,
   toIso8601,
   type AssetPlacement,
+  type AudioStream,
   type MediaAsset,
   type MediaKind,
+  type ProbeResult,
 } from '@editorial-ir/contracts';
 import type { MediaProbe } from '@editorial-ir/perception';
-import { hashFile } from './fingerprint.js';
+import { canonicalJson, hashFile } from './fingerprint.js';
 import type { PerceptionCache } from './cache.js';
 
 /**
@@ -85,6 +87,13 @@ export interface IngestResult {
   added: MediaAsset[];
   /** Files skipped because the same content is already registered. */
   duplicates: { path: string; existingId: string }[];
+  /**
+   * Registered assets whose container facts were read again and came out
+   * different — a probe that has learned something since, such as the audio
+   * streams, the nominal frame rate, or that the art on an MP3 is not a picture.
+   * Ids, paths and places on the capture timeline are never touched.
+   */
+  refreshed: MediaAsset[];
   /** Files that could not be probed, with the reason and anything that would fix it. */
   failed: { path: string; reason: string; fix?: string }[];
 }
@@ -103,6 +112,7 @@ export async function ingestPaths(
 
   const added: MediaAsset[] = [];
   const duplicates: IngestResult['duplicates'] = [];
+  const refreshed = new Map<string, MediaAsset>();
   const failed: IngestResult['failed'] = [];
   let nextIndex = existing.length + 1;
   let done = 0;
@@ -131,6 +141,29 @@ export async function ingestPaths(
     const alreadyKnown = byHash.get(sha256);
     if (alreadyKnown) {
       duplicates.push({ path: file, existingId: alreadyKnown.id });
+      // Read again, because a known file was never probed a second time: the
+      // stream list, the nominal rate and the VFR flag reached no project that
+      // had been ingested before they existed, however often it was re-ingested.
+      // The probe is cached on the file and the probe's version, so this costs a
+      // lookup once the new facts are known. A probe that fails now leaves the
+      // asset exactly as it was.
+      try {
+        const updated: MediaAsset = {
+          ...probedFields(alreadyKnown.file_name, await probeWithCache(file, sha256, options)),
+          id: alreadyKnown.id,
+          path: alreadyKnown.path,
+          file_name: alreadyKnown.file_name,
+          sha256: alreadyKnown.sha256,
+          byte_size: alreadyKnown.byte_size,
+        };
+        if (canonicalJson(updated) !== canonicalJson(alreadyKnown)) {
+          existing[existing.indexOf(alreadyKnown)] = updated;
+          byHash.set(sha256, updated);
+          refreshed.set(updated.id, updated);
+        }
+      } catch {
+        // The asset stays as it was registered.
+      }
       continue;
     }
 
@@ -155,36 +188,13 @@ export async function ingestPaths(
       continue;
     }
 
-    const kind = mediaKindOf(file) ?? 'video';
-    const captured = toIso8601(probe.creation_time);
     const asset: MediaAsset = {
+      ...probedFields(basename(file), probe),
       id: seqId('asset', nextIndex++, 3),
       path: relativeToProject(file, options.projectRoot),
       file_name: basename(file),
-      kind,
       sha256,
       byte_size: stat.size,
-      // A still has no duration of its own; it gets one when it is used.
-      duration_ms: kind === 'image' ? 0 : probe.duration_ms,
-      ...(probe.width === undefined ? {} : { width: probe.width }),
-      ...(probe.height === undefined ? {} : { height: probe.height }),
-      ...(probe.fps_num && probe.fps_den
-        ? { fps: probe.fps_num / probe.fps_den, fps_num: probe.fps_num, fps_den: probe.fps_den }
-        : {}),
-      ...(probe.video_codec === undefined ? {} : { video_codec: probe.video_codec }),
-      ...(probe.audio_codec === undefined ? {} : { audio_codec: probe.audio_codec }),
-      ...(probe.audio_channels === undefined ? {} : { audio_channels: probe.audio_channels }),
-      ...(probe.audio_sample_rate === undefined
-        ? {}
-        : { audio_sample_rate: probe.audio_sample_rate }),
-      ...(probe.container === undefined ? {} : { container: probe.container }),
-      ...(probe.bit_rate === undefined ? {} : { bit_rate: probe.bit_rate }),
-      ...(probe.rotation === undefined ? {} : { rotation: probe.rotation }),
-      // Whatever the container said, as an instant or not at all. A date the
-      // contract cannot hold is worse than none: assets are laid on the capture
-      // timeline in this order, and a misread one invents continuity.
-      ...(captured === undefined ? {} : { creation_time: captured }),
-      metadata: probe.metadata,
     };
 
     byHash.set(sha256, asset);
@@ -193,18 +203,110 @@ export async function ingestPaths(
   }
 
   options.onProgress?.('done', files.length, files.length);
-  return { assets: existing, added, duplicates, failed };
+  return {
+    assets: existing,
+    added,
+    duplicates,
+    refreshed: [...refreshed.values()].sort((a, b) => compareText(a.id, b.id)),
+    failed,
+  };
 }
 
-async function probeWithCache(file: string, sha256: string, options: IngestOptions) {
+/**
+ * What a file is, decided by what is in it and only then by its name.
+ *
+ * The extension was the whole answer, so an .mp4 or .mov holding nothing but
+ * sound — a voice memo, a podcast exported from an editor — was a video, and
+ * every picture stage went looking for frames in it. A picture keeps its name's
+ * kind: an image is a picture by construction, and an audio file's album art is
+ * not a picture of anything, which the probe already leaves out.
+ */
+export function mediaKindFromProbe(
+  fileName: string,
+  probe: Pick<ProbeResult, 'video_codec' | 'width' | 'audio_codec' | 'audio_streams'>,
+): MediaKind {
+  const byName = mediaKindOf(fileName) ?? 'video';
+  if (byName !== 'video') return byName;
+  const picture = probe.video_codec !== undefined && (probe.width ?? 0) > 0;
+  const sound = (probe.audio_streams?.length ?? 0) > 0 || probe.audio_codec !== undefined;
+  return !picture && sound ? 'audio' : 'video';
+}
+
+/** Everything about an asset that comes from reading the file rather than from registering it. */
+function probedFields(
+  fileName: string,
+  probe: ProbeResult,
+): Omit<MediaAsset, 'id' | 'path' | 'file_name' | 'sha256' | 'byte_size'> {
+  const kind = mediaKindFromProbe(fileName, probe);
+  const captured = toIso8601(probe.creation_time);
+  // A still has no frame rate. ffmpeg's image reader reports 25/1 for every
+  // picture, and the sequence took its rate from the largest asset — so a
+  // 4032x3024 phone photo made a 30 fps video's project 4032x3024 at 25 fps.
+  const moving = kind === 'video';
+  const variable = moving ? probe.variable_frame_rate : undefined;
+  return {
+    kind,
+    // A still has no duration of its own; it gets one when it is used.
+    duration_ms: kind === 'image' ? 0 : probe.duration_ms,
+    ...(probe.width === undefined ? {} : { width: probe.width }),
+    ...(probe.height === undefined ? {} : { height: probe.height }),
+    ...(moving && probe.fps_num && probe.fps_den
+      ? { fps: probe.fps_num / probe.fps_den, fps_num: probe.fps_num, fps_den: probe.fps_den }
+      : {}),
+    ...(probe.video_codec === undefined ? {} : { video_codec: probe.video_codec }),
+    ...(probe.audio_codec === undefined ? {} : { audio_codec: probe.audio_codec }),
+    ...(probe.audio_channels === undefined ? {} : { audio_channels: probe.audio_channels }),
+    ...(probe.audio_sample_rate === undefined
+      ? {}
+      : { audio_sample_rate: probe.audio_sample_rate }),
+    ...(probe.container === undefined ? {} : { container: probe.container }),
+    ...(probe.bit_rate === undefined ? {} : { bit_rate: probe.bit_rate }),
+    ...(probe.rotation === undefined ? {} : { rotation: probe.rotation }),
+    ...(probe.audio_streams === undefined || kind === 'image'
+      ? {}
+      : { audio_streams: probe.audio_streams.map(audioStreamOf) }),
+    ...(variable === undefined ? {} : { variable_frame_rate: variable }),
+    ...(variable && probe.avg_fps_num && probe.avg_fps_den
+      ? { avg_fps: probe.avg_fps_num / probe.avg_fps_den }
+      : {}),
+    // Whatever the container said, as an instant or not at all. A date the
+    // contract cannot hold is worse than none: assets are laid on the capture
+    // timeline in this order, and a misread one invents continuity.
+    ...(captured === undefined ? {} : { creation_time: captured }),
+    metadata: probe.metadata,
+  };
+}
+
+function audioStreamOf(stream: NonNullable<ProbeResult['audio_streams']>[number]): AudioStream {
+  return {
+    index: stream.index,
+    ...(stream.codec === undefined ? {} : { codec: stream.codec }),
+    ...(stream.channels === undefined ? {} : { channels: stream.channels }),
+    ...(stream.sample_rate === undefined ? {} : { sample_rate: stream.sample_rate }),
+    ...(stream.language === undefined ? {} : { language: stream.language }),
+    ...(stream.title === undefined ? {} : { title: stream.title }),
+  };
+}
+
+async function probeWithCache(
+  file: string,
+  sha256: string,
+  options: IngestOptions,
+): Promise<ProbeResult> {
   const parts = {
     operation: 'probe',
     mediaSha256: sha256,
     backend: options.probe.identity.backend,
     ...(options.probe.identity.model === undefined ? {} : { model: options.probe.identity.model }),
+    // What the probe's answer means, for when that changes and its name does
+    // not: a probe cached before the audio streams were listed would otherwise
+    // be served for good, and re-ingesting would refresh nothing.
+    ...(options.probe.identity.modelVersion === undefined
+      ? {}
+      : { modelVersion: options.probe.identity.modelVersion }),
     pipelineVersion: PIPELINE_VERSION,
   };
-  const cached = options.cache?.get<Awaited<ReturnType<MediaProbe['probe']>>>(parts);
+  const cached = options.cache?.get<ProbeResult>(parts);
   if (cached) return cached;
   const probed = await options.probe.probe(file);
   options.cache?.set(parts, probed);
