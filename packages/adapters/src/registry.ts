@@ -4,24 +4,23 @@ import { OtioAdapter } from './otio.js';
 import { PremiereAdapter } from './premiere.js';
 import { AviUtl2Adapter } from './aviutl2.js';
 
+const ADAPTERS: Record<string, () => EditorAdapter> = {
+  otio: () => new OtioAdapter(),
+  premiere: () => new PremiereAdapter(),
+  aviutl2: () => new AviUtl2Adapter(),
+};
+
 /** Every adapter shipped with the project, by id. */
 export function createAdapter(id: string): EditorAdapter {
-  switch (id) {
-    case 'otio':
-      return new OtioAdapter();
-    case 'premiere':
-      return new PremiereAdapter();
-    case 'aviutl2':
-      return new AviUtl2Adapter();
-    default:
-      throw new EditorialError('unsupported', `there is no adapter called "${id}"`, {
-        available: listAdapters().map((a) => a.id),
-      });
+  const make = ADAPTERS[id];
+  if (!make) {
+    throw new EditorialError('unsupported', `there is no adapter called "${id}"`, {
+      available: listAdapters().map((a) => a.id),
+    });
   }
+  return make();
 }
 
 export function listAdapters(): AdapterCapabilities[] {
-  return [new OtioAdapter(), new PremiereAdapter(), new AviUtl2Adapter()].map(
-    (a) => a.capabilities,
-  );
+  return Object.values(ADAPTERS).map((make) => make().capabilities);
 }

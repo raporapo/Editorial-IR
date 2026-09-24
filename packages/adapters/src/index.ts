@@ -8,6 +8,8 @@
  * and why the agent is never allowed to speak to an NLE directly.
  */
 export * from './types.js';
+export * from './xml.js';
+export * from './timeline.js';
 export * from './otio.js';
 export * from './premiere.js';
 export * from './aviutl2.js';
