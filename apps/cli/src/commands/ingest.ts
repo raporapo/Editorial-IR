@@ -1,5 +1,5 @@
 import { ingestPaths, placeAssets } from '@editorial-ir/core';
-import { formatTimecode } from '@editorial-ir/contracts';
+import { formatTimecode, type MediaAsset } from '@editorial-ir/contracts';
 import { resolveBackends } from '../backends.js';
 import { openProject } from '../project.js';
 import { Progress, detail, fail, heading, note, success, table, warn } from '../ui.js';
@@ -66,6 +66,23 @@ export async function runIngest(args: IngestArgs): Promise<number> {
       }
     }
 
+    if (result.refreshed.length > 0) {
+      // Said, because it changes what the next analysis does: a second audio
+      // track now gets listened to, a phone clip gets its real frame rate.
+      note(
+        `  read again: ${result.refreshed.map((asset) => asset.id).join(', ')} ` +
+          `(ids and order unchanged; "oea analyze" uses what was learned)`,
+      );
+    }
+
+    const worthSaying = [...result.added, ...result.refreshed].flatMap((asset) =>
+      mediaNotes(asset).map((line) => `  ${asset.id} ${asset.file_name}: ${line}`),
+    );
+    if (worthSaying.length > 0) {
+      heading('worth knowing');
+      for (const line of worthSaying) note(line);
+    }
+
     if (result.failed.length > 0) {
       heading('could not read');
       const fixes = new Set<string>();
@@ -96,4 +113,33 @@ export async function runIngest(args: IngestArgs): Promise<number> {
     progress.clear();
     await backends.close();
   }
+}
+
+/**
+ * The facts about a file that change what happens to it, in words.
+ *
+ * Each of these used to be silent and wrong: a clip with no sound was put
+ * through three audio stages, a second audio track was never heard, a phone
+ * clip's dropped frames set the sequence rate.
+ */
+export function mediaNotes(asset: MediaAsset): string[] {
+  const notes: string[] = [];
+  const streams = asset.audio_streams;
+  if (asset.kind === 'video' && streams !== undefined && streams.length === 0) {
+    notes.push('no audio track; nothing will be transcribed, and that is not an error');
+  }
+  if (streams !== undefined && streams.length > 1) {
+    notes.push(
+      `${streams.length} audio streams; the one with the most speech is analysed, ` +
+        'and the analysis says which',
+    );
+  }
+  if (asset.variable_frame_rate && asset.fps !== undefined) {
+    const average = asset.avg_fps === undefined ? '' : ` (averaging ${asset.avg_fps.toFixed(2)})`;
+    notes.push(
+      `variable frame rate${average}; treated as ${Number(asset.fps.toFixed(3))} fps, ` +
+        'the rate an editor will conform it to',
+    );
+  }
+  return notes;
 }
