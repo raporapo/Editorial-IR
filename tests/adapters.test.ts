@@ -60,6 +60,9 @@ describe('the adapter registry', () => {
       'fcpxml',
       'otio',
       'premiere',
+      'srt',
+      'vtt',
+      'youtube-chapters',
     ]);
     for (const capabilities of adapters) {
       expect(capabilities.output_extensions.length).toBeGreaterThan(0);

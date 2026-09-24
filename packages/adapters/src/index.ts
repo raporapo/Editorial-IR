@@ -15,4 +15,6 @@ export * from './premiere.js';
 export * from './aviutl2.js';
 export * from './edl.js';
 export * from './fcpxml.js';
+export * from './subtitles.js';
+export * from './chapters.js';
 export * from './registry.js';
