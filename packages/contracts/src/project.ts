@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Iso8601, Milliseconds, UnitScore, obj } from './primitives.js';
 import { AnnotationId, AssetId, EventId, ProjectId } from './ids.js';
 import { NarrativeRole } from './editorial.js';
+import { MaterialKind } from './media.js';
 
 export const ProjectStatus = z
   .enum(['created', 'ingested', 'analyzed', 'planned', 'applied'])
@@ -67,12 +68,7 @@ export const ProjectBackground = obj({
    * project knows the second: `{ "final_v3.mp4": edited }`. Always wins over the
    * inference, which is recorded beside it rather than discarded.
    */
-  materials: z
-    .record(
-      z.string(),
-      z.enum(['raw', 'edited', 'clip', 'screen_recording', 'audio_only', 'still']),
-    )
-    .optional(),
+  materials: z.record(z.string(), MaterialKind).optional(),
   notes: z.array(z.string()).default([]),
 }).meta({ id: 'ProjectBackground' });
 export type ProjectBackground = z.infer<typeof ProjectBackground>;

@@ -337,16 +337,19 @@
             "type": "string"
           },
           "additionalProperties": {
-            "type": "string",
-            "enum": [
-              "raw",
-              "edited",
-              "clip",
-              "screen_recording",
-              "audio_only",
-              "still"
-            ]
+            "$ref": "#/$defs/MaterialKind"
           }
+        },
+        "MaterialKind": {
+          "type": "string",
+          "enum": [
+            "raw",
+            "edited",
+            "clip",
+            "screen_recording",
+            "audio_only",
+            "still"
+          ]
         },
         "__schema24": {
           "default": [],
@@ -884,17 +887,6 @@
             "provenance"
           ],
           "additionalProperties": false
-        },
-        "MaterialKind": {
-          "type": "string",
-          "enum": [
-            "raw",
-            "edited",
-            "clip",
-            "screen_recording",
-            "audio_only",
-            "still"
-          ]
         },
         "__schema76": {
           "type": "string",
@@ -1528,7 +1520,8 @@
                 "similarity",
                 "user",
                 "asset",
-                "fixed"
+                "fixed",
+                "title_card"
               ]
             },
             "boundary_confidence": {
@@ -5607,16 +5600,19 @@
             "type": "string"
           },
           "additionalProperties": {
-            "type": "string",
-            "enum": [
-              "raw",
-              "edited",
-              "clip",
-              "screen_recording",
-              "audio_only",
-              "still"
-            ]
+            "$ref": "#/$defs/MaterialKind"
           }
+        },
+        "MaterialKind": {
+          "type": "string",
+          "enum": [
+            "raw",
+            "edited",
+            "clip",
+            "screen_recording",
+            "audio_only",
+            "still"
+          ]
         },
         "__schema16": {
           "default": [],
@@ -10960,7 +10956,8 @@
                 "similarity",
                 "user",
                 "asset",
-                "fixed"
+                "fixed",
+                "title_card"
               ]
             },
             "boundary_confidence": {

@@ -176,16 +176,19 @@
         "type": "string"
       },
       "additionalProperties": {
-        "type": "string",
-        "enum": [
-          "raw",
-          "edited",
-          "clip",
-          "screen_recording",
-          "audio_only",
-          "still"
-        ]
+        "$ref": "#/$defs/MaterialKind"
       }
+    },
+    "MaterialKind": {
+      "type": "string",
+      "enum": [
+        "raw",
+        "edited",
+        "clip",
+        "screen_recording",
+        "audio_only",
+        "still"
+      ]
     },
     "__schema16": {
       "default": [],

@@ -33,6 +33,7 @@ import { buildEmbeddings, attachEmbeddingRefs } from './embed.js';
 import { assessEvents } from './assess-stage.js';
 import { buildChapters, type ChapterOptions } from './chapters.js';
 import { buildEventGraph } from './graph.js';
+import { classifyMaterials } from './materials.js';
 import { continuityOverrides } from './annotations.js';
 import { ModelRunRecorder } from './model-runs.js';
 import { CostBudget, type EscalationPolicy } from './budget.js';
@@ -228,6 +229,12 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   // events: it decides where not to spend, never where anything begins or ends.
   const inactive = inactiveSpans(observations, assets);
 
+  // ---- what kind of material ----------------------------------------------
+  // Decided from the observations whether they were made now or reused, for the
+  // same reason as the mask: a reused analysis must get exactly the kinds a
+  // fresh one would. The user's word in context.yaml wins over every rule.
+  const materials = classifyMaterials(assets, observations, context);
+
   // ---- segmentation --------------------------------------------------------
   options.onProgress?.('segment', 'finding events', 0, 1);
   const drafts = segmentAssets(
@@ -239,6 +246,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     // A boundary the user asked for is written in capture time; segmentation
     // works in each asset's own time. Without the placements it cannot convert.
     placements,
+    materials,
   );
 
   // ---- meaning -------------------------------------------------------------
@@ -532,8 +540,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     context,
     assets,
     placements,
-    // Filled in by material classification; empty until it exists.
-    materials: [],
+    materials,
     chapters,
     events,
     editorial: assessed.editorial,
