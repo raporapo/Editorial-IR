@@ -188,6 +188,22 @@ describe('the batch prompt and schema', () => {
     expect(prompt).toContain('the_user_marked_this_essential');
   });
 
+  it('puts the questions before the moment, so every event shares one cacheable prefix', () => {
+    // Providers cache a repeated prefix and nothing else. The question set is
+    // nearly all of this prompt; with the event first, no two calls shared it.
+    const full = {
+      scores: Object.values(METRIC_QUESTIONS),
+      booleans: Object.values(FLAG_QUESTIONS),
+      choice: NARRATIVE_ROLE_QUESTION,
+    };
+    const a = buildBatchPrompt(state({ duration_ms: 4_000 }), full);
+    const b = buildBatchPrompt(state({ duration_ms: 9_000, relative_position: 0.9 }), full);
+    let shared = 0;
+    while (shared < a.length && a[shared] === b[shared]) shared++;
+    expect(shared / a.length).toBeGreaterThan(0.8);
+    expect(a.indexOf('## The moment')).toBeGreaterThan(a.indexOf('## Scales'));
+  });
+
   it('leaves out fields that are empty, so a small model is not reading blanks', () => {
     const prompt = buildBatchPrompt(state(), request);
     expect(prompt).not.toContain('"speech"');

@@ -93,7 +93,7 @@ export class LocalSystemOneBackend implements EditorialDecisionModel {
   async assessAll(state: EventState, request: BatchRequest): Promise<BatchAnswers> {
     const schema = batchSchema(request);
     const payload = await this.call(
-      buildBatchPrompt(state, request),
+      { questions: buildBatchQuestions(request), moment: buildMomentSection(state) },
       schema,
       'editorial_assessment',
     );
@@ -192,7 +192,7 @@ export class LocalSystemOneBackend implements EditorialDecisionModel {
   }
 
   private async call(
-    prompt: string,
+    prompt: { questions: string; moment: string },
     schema: Record<string, unknown>,
     schemaName: string,
   ): Promise<{ content: unknown; inputTokens?: number; outputTokens?: number }> {
@@ -213,8 +213,16 @@ export class LocalSystemOneBackend implements EditorialDecisionModel {
             { role: 'system', content: SYSTEM_PROMPT },
             {
               role: 'user',
+              // Everything that is the same for every event first, the event
+              // last. The question set is about 95% of this prompt and never
+              // changes within a run, and providers cache a repeated prefix —
+              // but only a prefix: with the event first, no two requests shared
+              // more than the system line, and every judgement paid full price
+              // for the same 1,400 tokens of questions.
               content:
-                this.mode === 'json_schema' ? prompt : `${prompt}\n\n${schemaInstruction(schema)}`,
+                this.mode === 'json_schema'
+                  ? `${prompt.questions}\n\n${prompt.moment}`
+                  : `${prompt.questions}\n\n${schemaInstruction(schema)}\n\n${prompt.moment}`,
             },
           ],
           ...responseFormatFor(this.mode, schemaName, schema),
@@ -280,9 +288,32 @@ const SYSTEM_PROMPT = [
   'Background the user supplied is knowledge you do not have. Weigh it; never contradict it.',
 ].join(' ');
 
-/** Exported so the prompt is reviewable and testable rather than only observable in logs. */
+/**
+ * Exported so the prompt is reviewable and testable rather than only observable in logs.
+ *
+ * The questions come before the moment, and that order is the cost of the
+ * stage: see {@link buildBatchQuestions}.
+ */
 export function buildBatchPrompt(state: EventState, request: BatchRequest): string {
-  const sections: string[] = ['## The moment', JSON.stringify(compactState(state), null, 2)];
+  return `${buildBatchQuestions(request)}\n\n${buildMomentSection(state)}`;
+}
+
+/** The moment being judged: the only part of the prompt that changes between events. */
+export function buildMomentSection(state: EventState): string {
+  return ['## The moment', JSON.stringify(compactState(state), null, 2)].join('\n\n');
+}
+
+/**
+ * The questions, identical for every event of a run.
+ *
+ * Measured, judgement sends twelve times the input tokens description does
+ * (1,564 against 133 per event), and nearly all of it is this constant text.
+ * Put first, it is a prefix a provider can cache and a local server can reuse
+ * its computation for; put after the event, as it was, it was paid for in full
+ * on every call.
+ */
+export function buildBatchQuestions(request: BatchRequest): string {
+  const sections: string[] = ['Answer every question below about the moment described at the end.'];
 
   if (request.scores.length > 0) {
     sections.push('## Scales');
