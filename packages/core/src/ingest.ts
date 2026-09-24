@@ -91,7 +91,8 @@ export interface IngestResult {
    * Registered assets whose container facts were read again and came out
    * different — a probe that has learned something since, such as the audio
    * streams, the nominal frame rate, or that the art on an MP3 is not a picture.
-   * Ids, paths and places on the capture timeline are never touched.
+   * Ids, paths and places on the capture timeline are never touched, which is
+   * why duration and capture time stay as they were registered.
    */
   refreshed: MediaAsset[];
   /** Files that could not be probed, with the reason and anything that would fix it. */
@@ -148,13 +149,30 @@ export async function ingestPaths(
       // lookup once the new facts are known. A probe that fails now leaves the
       // asset exactly as it was.
       try {
+        // Except where the file sits. The capture timeline is laid out from
+        // each asset's capture time and duration, and a boundary the user asked
+        // for is written in capture time: a refresh that moved either would move
+        // every placement after it, and each of those annotations would land on
+        // different footage without a word. So both stay as registered — and a
+        // capture time the old probe never found is not added either, because
+        // one more dated asset can switch the whole timeline from file-name
+        // order to capture order.
+        const {
+          duration_ms: _duration,
+          creation_time: _captured,
+          ...facts
+        } = probedFields(alreadyKnown.file_name, await probeWithCache(file, sha256, options));
         const updated: MediaAsset = {
-          ...probedFields(alreadyKnown.file_name, await probeWithCache(file, sha256, options)),
+          ...facts,
           id: alreadyKnown.id,
           path: alreadyKnown.path,
           file_name: alreadyKnown.file_name,
           sha256: alreadyKnown.sha256,
           byte_size: alreadyKnown.byte_size,
+          duration_ms: alreadyKnown.duration_ms,
+          ...(alreadyKnown.creation_time === undefined
+            ? {}
+            : { creation_time: alreadyKnown.creation_time }),
         };
         if (canonicalJson(updated) !== canonicalJson(alreadyKnown)) {
           existing[existing.indexOf(alreadyKnown)] = updated;

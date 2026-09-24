@@ -184,6 +184,67 @@ describe('ingest', () => {
     expect(third.refreshed).toEqual([]);
   });
 
+  it('never moves a known file on the capture timeline when it is read again', async () => {
+    // Placements come from capture time and duration, and the user's own
+    // boundaries are written in capture time. A refresh that moved either
+    // would slide every later placement, and those annotations with it onto
+    // other footage. The first probe found no date for B and so the timeline was
+    // in file-name order; the second finds one, and a different length for A.
+    const { root, dir } = footage({ 'A.mp4': 'first', 'B.mp4': 'second' });
+    const cache = new MemoryCache();
+    const first = await ingestPaths([dir], {
+      projectRoot: root,
+      probe: new TableProbe({
+        'A.mp4': { duration_ms: 5000, video_codec: 'h264', width: 1280, metadata: {} },
+        'B.mp4': {
+          duration_ms: 7000,
+          video_codec: 'h264',
+          width: 1280,
+          creation_time: '2026-05-01T09:00:00Z',
+          metadata: {},
+        },
+      }),
+      cache,
+    });
+    const placedBefore = placeAssets(first.assets);
+
+    const again = await ingestPaths([dir], {
+      projectRoot: root,
+      probe: new TableProbe(
+        {
+          'A.mp4': {
+            duration_ms: 5400,
+            video_codec: 'h264',
+            width: 1280,
+            creation_time: '2026-05-01T10:00:00Z',
+            audio_streams: [],
+            metadata: {},
+          },
+          'B.mp4': {
+            duration_ms: 7000,
+            video_codec: 'h264',
+            width: 1280,
+            creation_time: '2026-05-01T09:00:00Z',
+            audio_streams: [],
+            metadata: {},
+          },
+        },
+        '2',
+      ),
+      cache,
+      existing: first.assets,
+    });
+
+    // What the file holds is learned...
+    expect(again.refreshed.map((a) => a.id)).toEqual(['asset_001', 'asset_002']);
+    expect(again.assets.every((a) => a.audio_streams?.length === 0)).toBe(true);
+    // ...and where it sits is not.
+    const a = again.assets.find((asset) => asset.file_name === 'A.mp4');
+    expect(a?.duration_ms).toBe(5000);
+    expect(a?.creation_time).toBeUndefined();
+    expect(placeAssets(again.assets)).toEqual(placedBefore);
+  });
+
   it('leaves a known asset alone when it cannot be read again', async () => {
     const { root, dir } = footage({ 'A.mp4': 'first' });
     const first = await ingestPaths([dir], {
