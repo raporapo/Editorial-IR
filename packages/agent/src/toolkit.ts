@@ -74,6 +74,16 @@ export interface EventSummary {
   redundancy: number;
   essential: boolean;
   confidence: number;
+  /**
+   * Share of the event that was still and silent, when any of it was.
+   *
+   * The analysis already decided not to spend a model on these stretches, and
+   * the editing agent is the next thing that would: an event at 0.9 described
+   * as "a static shot" invites a closer look, and a contact sheet of it is nine
+   * pictures of the same frame, paid for. Absent when none of it was, as in the
+   * IR, so the common case costs the model nothing to read.
+   */
+  inactive_ratio?: number;
 }
 
 export type DetailLevel = 'summary' | 'detailed' | 'full';
@@ -343,6 +353,7 @@ export class AgentToolkit {
       redundancy: assessment?.metrics.redundancy ?? 0.5,
       essential: event.knowledge.essential,
       confidence: event.confidence,
+      ...(event.observed.inactive_ratio ? { inactive_ratio: event.observed.inactive_ratio } : {}),
     };
   }
 }
@@ -412,7 +423,7 @@ export const AGENT_TOOL_DEFINITIONS = [
   {
     name: 'look_at_event',
     description:
-      'Actually look at an event, as a grid of frames. The last resort and the only tool that costs money per call: everything above is text. Use it when the description and the shots still do not tell you what is on screen.',
+      'Actually look at an event, as a grid of frames. The last resort and the only tool that costs money per call: everything above is text. Use it when the description and the shots still do not tell you what is on screen. Not for an event whose summary gives inactive_ratio near 1: that much of it is still and silent, and the frames are the same picture repeated.',
     parameters: {
       type: 'object',
       properties: {
