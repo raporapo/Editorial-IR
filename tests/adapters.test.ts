@@ -56,6 +56,8 @@ describe('the adapter registry', () => {
     const adapters = listAdapters();
     expect(adapters.map((a) => a.id).sort()).toEqual([
       'aviutl2',
+      'edl',
+      'fcpxml',
       'otio',
       'premiere',
     ]);
@@ -591,7 +593,7 @@ describe('would it actually import', () => {
   }, 60_000);
 });
 
-const EDITORS = ['otio', 'premiere', 'aviutl2'];
+const EDITORS = ['otio', 'premiere', 'aviutl2', 'edl', 'fcpxml'];
 
 describe('one plan, every editor', () => {
   it('feeds every editing application from the same EditPlan', async () => {

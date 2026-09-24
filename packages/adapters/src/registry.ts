@@ -3,11 +3,15 @@ import type { EditorAdapter } from './types.js';
 import { OtioAdapter } from './otio.js';
 import { PremiereAdapter } from './premiere.js';
 import { AviUtl2Adapter } from './aviutl2.js';
+import { EdlAdapter } from './edl.js';
+import { FcpxmlAdapter } from './fcpxml.js';
 
 const ADAPTERS: Record<string, () => EditorAdapter> = {
   otio: () => new OtioAdapter(),
   premiere: () => new PremiereAdapter(),
   aviutl2: () => new AviUtl2Adapter(),
+  edl: () => new EdlAdapter(),
+  fcpxml: () => new FcpxmlAdapter(),
 };
 
 /** Every adapter shipped with the project, by id. */

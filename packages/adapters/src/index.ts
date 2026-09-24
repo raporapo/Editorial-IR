@@ -13,4 +13,6 @@ export * from './timeline.js';
 export * from './otio.js';
 export * from './premiere.js';
 export * from './aviutl2.js';
+export * from './edl.js';
+export * from './fcpxml.js';
 export * from './registry.js';
