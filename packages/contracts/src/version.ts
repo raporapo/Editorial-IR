@@ -15,7 +15,12 @@ export const EDIT_PLAN_VERSION = '0.1.0';
 // 0.1.1: audio is extracted on the file's own clock (gaps filled, a late start
 // padded). Transcripts and silences cached from the old extraction were wrong on
 // any file with timestamp gaps, and nothing in their keys would have changed.
-export const PIPELINE_VERSION = '0.1.1';
+// 0.1.2: the proxy is made at the file's nominal rate, constant-frame-rate, and
+// named for how it was made; with several audio streams the one with the speech
+// is analysed. Shots and motion cached from the old implicitly-CFR proxy of a
+// variable-rate file would otherwise be served again, because paths are not part
+// of a cache key.
+export const PIPELINE_VERSION = '0.1.2';
 export const SKILL_MANIFEST_VERSION = '0.1.0';
 export const PERCEPTION_PROTOCOL_VERSION = '0.1.0';
 
