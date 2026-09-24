@@ -159,6 +159,59 @@ function hasAudioTrack(asset: MediaAsset): boolean {
 }
 
 /**
+ * Where one asset is silent, by the one definition of silence this project has.
+ *
+ * Quiet for this recording *and* quiet in absolute terms (under
+ * {@link QUIET_ENOUGH_DB}), or so quiet that no microphone was listening (under
+ * {@link ABSOLUTE_SILENCE_DB}). A file with no audio track is silent end to end;
+ * one whose sound was never analysed has no silence, because unknown is not
+ * silent. A profile with no level envelope measured nothing, so the silence
+ * events stand exactly as the detector reported them.
+ *
+ * Exported because three things ask where the silence is and they must not
+ * disagree: the mask below, the planner snapping a cut to a quiet moment, and
+ * the planner taking pauses out of speech. The planner used to read the
+ * per-recording silence events directly, and under a music bed those fire in
+ * every gap between the narration while the music plays on at -25 dBFS — a cut
+ * "snapped to silence" there lands in the middle of a bar, and a pause "removed"
+ * there chops the music.
+ *
+ * The mask states the same rule inline, in `inactiveCandidatesFor`, and a test
+ * (`packages/core/test/silence.test.ts`) holds the two to each other: change
+ * one and the test fails until the other agrees.
+ *
+ * Words are not subtracted here. The mask removes what the transcriber heard
+ * with a margin of its own, and the pause remover never cuts inside a word; both
+ * do so where they need it, so that this stays a statement about the sound
+ * alone.
+ */
+export function silentSpans(
+  observations: Pick<ObservationTimeline, 'audio_events' | 'audio_profiles'>,
+  asset: MediaAsset,
+): { start_ms: number; end_ms: number }[] {
+  if (asset.kind === 'image') return [];
+  if (!hasAudioTrack(asset)) return [{ start_ms: 0, end_ms: asset.duration_ms }];
+
+  const profile = observations.audio_profiles.find((p) => p.asset_id === asset.id);
+  const analysed =
+    profile !== undefined || observations.audio_events.some((e) => e.asset_id === asset.id);
+  if (!analysed) return [];
+  const relative = merge(
+    observations.audio_events
+      .filter((e) => e.asset_id === asset.id && e.event_type === 'silence')
+      .map((e) => ({ start: e.start_ms, end: e.end_ms })),
+  );
+  const silent =
+    profile && profile.rms_db.length > 0
+      ? merge([
+          ...intersect(relative, belowLevel(profile.rms_db, profile.hop_ms, QUIET_ENOUGH_DB)),
+          ...belowLevel(profile.rms_db, profile.hop_ms, ABSOLUTE_SILENCE_DB),
+        ])
+      : relative;
+  return silent.map((s) => ({ start_ms: s.start, end_ms: s.end }));
+}
+
+/**
  * Every inactive span in the project.
  *
  * Deterministic and cheap: it is recomputed from observations on every compile
