@@ -32,7 +32,7 @@ import { buildSemanticEvents } from './context-builder.js';
 import { buildEmbeddings, attachEmbeddingRefs } from './embed.js';
 import { assessEvents } from './assess-stage.js';
 import { buildChapters, type ChapterOptions } from './chapters.js';
-import { buildEventGraph } from './graph.js';
+import { buildEventGraph, hasDistinctiveContent } from './graph.js';
 import { classifyMaterials } from './materials.js';
 import { continuityOverrides } from './annotations.js';
 import { ModelRunRecorder } from './model-runs.js';
@@ -348,6 +348,23 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   const similarities = embeddingUsed.lexical
     ? vectorIndex.maxSimilarities('event')
     : vectorIndex.calibratedMaxSimilarities('event').maxima;
+  // An event nothing could be read from has nothing to compare. Its vector is
+  // the embedding of a fallback sentence every such event shares, so every one
+  // of them scored 1.0 against the others and was judged fully redundant: an
+  // edited programme with no transcript and a folder of clips both planned no
+  // clips at all offline. Unknown is the honest answer, and the rules have a
+  // prior for it.
+  //
+  // Except where the footage was measured still and silent throughout. Two
+  // such stretches do show the same nothing, and saying otherwise put a frozen
+  // minute and a black one into the cut of a camera left running, ahead of the
+  // stretch where somebody came back and spoke.
+  const measuredNothing = new Set(built.savings.quietEvents);
+  for (const event of built.events) {
+    if (!hasDistinctiveContent(event) && !measuredNothing.has(event.id)) {
+      similarities.delete(event.id);
+    }
+  }
 
   // ---- judgement -----------------------------------------------------------
   const assessed = await assessEvents(built.events, {
@@ -385,7 +402,12 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   }
 
   // ---- structure -----------------------------------------------------------
-  const { chapters, assignments } = buildChapters(built.events, options.chapters ?? {});
+  const { chapters, assignments } = buildChapters(built.events, options.chapters ?? {}, {
+    // Real capture times, so a folder of clips shot minutes apart is one
+    // outing and two recordings hours apart are two.
+    assets,
+    materials,
+  });
   const eventsWithChapters: SemanticEvent[] = built.events.map((event) => {
     const chapterId = assignments.get(event.id);
     return chapterId ? { ...event, chapter_id: chapterId } : event;
