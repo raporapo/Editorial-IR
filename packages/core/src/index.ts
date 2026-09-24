@@ -7,6 +7,7 @@ export * from './budget.js';
 export * from './ingest.js';
 export * from './observe.js';
 export * from './activity.js';
+export * from './sync.js';
 export * from './label-vocabulary.js';
 export * from './materials.js';
 export * from './onscreen-text.js';
