@@ -588,6 +588,30 @@ export function captureStartsApartMs(
 }
 
 /**
+ * The clock that orders the most of a project, or nothing when no asset is
+ * dated on either.
+ *
+ * The instant unless more assets have a wall clock than an instant — photos
+ * from a camera that knows no zone beside phone clips that wrote theirs. And
+ * never the wall clock when the files that wrote an offset wrote more than one:
+ * then the day crossed a time zone, and 18:00 in Tokyo and 11:00 in Paris on
+ * the same date are not in the order their wall clocks say.
+ */
+export function captureClockFor(
+  assets: readonly Pick<MediaAsset, 'creation_time' | 'capture_time'>[],
+): CaptureClock | undefined {
+  const onUtc = assets.filter((a) => captureMsOn(a, 'utc') !== undefined).length;
+  const onLocal = assets.filter((a) => captureMsOn(a, 'local') !== undefined).length;
+  const offsets = new Set(
+    assets.flatMap((a) =>
+      a.capture_time?.utc_offset_minutes === undefined ? [] : [a.capture_time.utc_offset_minutes],
+    ),
+  );
+  if (onLocal > onUtc && offsets.size <= 1) return 'local';
+  return onUtc > 0 ? 'utc' : undefined;
+}
+
+/**
  * Lays assets end to end on the capture timeline.
  *
  * Semantic events need one ordered axis, or "the previous event" means nothing
@@ -595,27 +619,67 @@ export function captureStartsApartMs(
  * and file name is the fallback — cameras are not reliable about metadata, and a
  * wrong order is far more damaging than an arbitrary one, because it invents
  * continuity that was never there.
+ *
+ * The fallback is per asset. It was all or nothing: one asset without a time put
+ * every asset in file-name order, and a photo with no date — ffprobe gives a
+ * JPEG no tags at all — turned B.MOV at 10:00:00 and A.MOV at 10:00:10 into A,
+ * B. Now the dated assets keep their order and an undated one is set beside its
+ * file-name neighbour among them: after the dated file its name sorts after,
+ * which for a camera's own numbering (IMG_0041.MOV, IMG_0042.JPG) is the file
+ * shot just before it; before the first dated file its name sorts before when no
+ * dated name sorts ahead of it. A project where nothing or everything is dated is
+ * laid out exactly as it was.
  */
 export function placeAssets(assets: readonly MediaAsset[]): AssetPlacement[] {
-  const everyAssetHasTime = assets.every((asset) => asset.creation_time);
-  const ordered = [...assets].sort((a, b) => {
-    if (everyAssetHasTime) {
-      // By the instant, not by how the string sorts. The two agree only while
-      // every timestamp is in the one canonical form, which is a property of
-      // what `ingest` writes rather than of what a camera produces.
-      const byTime = Date.parse(a.creation_time!) - Date.parse(b.creation_time!);
-      if (byTime !== 0 && Number.isFinite(byTime)) return byTime;
-    }
-    return compareText(a.file_name, b.file_name) || compareText(a.id, b.id);
-  });
+  const clock = captureClockFor(assets);
+  const byName = (a: MediaAsset, b: MediaAsset): number =>
+    compareText(a.file_name, b.file_name) || compareText(a.id, b.id);
+  const at = (asset: MediaAsset): number | undefined =>
+    clock === undefined ? undefined : captureMsOn(asset, clock);
+
+  const dated = assets
+    .filter((asset) => at(asset) !== undefined)
+    .sort((a, b) => at(a)! - at(b)! || byName(a, b));
+  const datedByName = [...dated].sort(byName);
+
+  // Every asset gets a slot: a dated asset its own place in time, an undated one
+  // the place of its neighbour, just after it (1) or just before it (-1).
+  const slots = new Map<string, { index: number; side: -1 | 0 | 1; beside?: MediaAsset }>();
+  dated.forEach((asset, index) => slots.set(asset.id, { index, side: 0 }));
+  for (const asset of assets) {
+    if (slots.has(asset.id) || dated.length === 0) continue;
+    const before = datedByName.filter((d) => byName(d, asset) < 0).at(-1);
+    const neighbour = before ?? datedByName.find((d) => byName(d, asset) > 0)!;
+    slots.set(asset.id, {
+      index: dated.indexOf(neighbour),
+      side: before ? 1 : -1,
+      beside: neighbour,
+    });
+  }
+
+  const slotOf = (asset: MediaAsset) => slots.get(asset.id) ?? { index: 0, side: 0 as const };
+  const ordered = [...assets].sort(
+    (a, b) => slotOf(a).index - slotOf(b).index || slotOf(a).side - slotOf(b).side || byName(a, b),
+  );
 
   let offset = 0;
   return ordered.map((asset, index) => {
+    const slot = slots.get(asset.id);
+    const byTime = slot !== undefined && slot.side === 0;
     const placement: AssetPlacement = {
       asset_id: asset.id,
       offset_ms: offset,
       order: index,
-      ordered_by: everyAssetHasTime ? 'creation_time' : 'file_name',
+      ordered_by: byTime ? 'creation_time' : 'file_name',
+      ...(byTime && clock !== undefined ? { clock } : {}),
+      ...(slot?.beside === undefined
+        ? {}
+        : {
+            beside: {
+              asset_id: slot.beside.id,
+              side: slot.side === 1 ? ('after' as const) : ('before' as const),
+            },
+          }),
     };
     // A gap between files, so an event can never straddle two recordings by
     // accident of arithmetic. A still has no duration and takes a slot instead,

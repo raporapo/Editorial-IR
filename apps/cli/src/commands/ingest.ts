@@ -1,5 +1,5 @@
 import { ingestPaths, placeAssets } from '@editorial-ir/core';
-import { formatTimecode, type MediaAsset } from '@editorial-ir/contracts';
+import { formatTimecode, type AssetPlacement, type MediaAsset } from '@editorial-ir/contracts';
 import { resolveBackends } from '../backends.js';
 import { openProject } from '../project.js';
 import { Progress, detail, fail, heading, note, success, table, warn } from '../ui.js';
@@ -102,11 +102,13 @@ export async function runIngest(args: IngestArgs): Promise<number> {
 
     heading('the capture timeline');
     detail('length', formatTimecode(total, false));
-    detail('ordered by', placements[0]?.ordered_by ?? 'file_name');
-    if (placements[0]?.ordered_by === 'file_name') {
-      warn('no capture times in the metadata, so file name decides the order');
+    const order = orderingSummary(result.assets, placements);
+    detail('ordered by', order.headline);
+    if (order.warning) {
+      warn(order.warning);
       note('  A wrong order invents continuity that was never there; check it.');
     }
+    for (const line of order.lines) note(line);
 
     return result.failed.length > 0 ? 1 : 0;
   } finally {
@@ -167,4 +169,74 @@ export function mediaNotes(asset: MediaAsset): string[] {
     );
   }
   return notes;
+}
+
+/**
+ * How the capture timeline was ordered, in words, with every asset that is not
+ * where its own capture time would put it and the reason.
+ *
+ * It printed the first placement's `ordered_by` and nothing else, which was
+ * true while the order was one rule for the whole project. It is per asset now:
+ * a photo with no date is placed beside its file-name neighbour among clips
+ * that keep their capture order, and saying only "creation_time" would hide that
+ * the photo's place is a guess.
+ */
+export function orderingSummary(
+  assets: readonly MediaAsset[],
+  placements: readonly AssetPlacement[],
+): { headline: string; warning?: string; lines: string[] } {
+  const byId = new Map(assets.map((asset) => [asset.id, asset]));
+  const dated = placements.filter((p) => p.ordered_by === 'creation_time');
+  const guessed = placements.filter((p) => p.ordered_by === 'file_name');
+  const clock = dated[0]?.clock ?? 'utc';
+  const onClock =
+    clock === 'local'
+      ? 'capture time, on the wall clock where it was shot (not every file says its time zone)'
+      : 'capture time';
+
+  if (dated.length === 0) {
+    return {
+      headline: 'file name',
+      warning: 'no capture times in the metadata, so file name decides the order',
+      lines: [],
+    };
+  }
+  if (guessed.length === 0) {
+    return { headline: onClock, lines: [] };
+  }
+
+  const name = (id: string) => byId.get(id)?.file_name ?? id;
+  const lines = guessed.map((placement) => {
+    const asset = byId.get(placement.asset_id);
+    const beside = placement.beside
+      ? `; placed ${placement.beside.side} ${placement.beside.asset_id} ${name(placement.beside.asset_id)}, ` +
+        `the dated file its name sorts ${placement.beside.side === 'after' ? 'after' : 'before'}`
+      : '';
+    return `  ${placement.asset_id} ${name(placement.asset_id)}: ${undatedReason(asset, clock)}${beside}`;
+  });
+  return {
+    headline: `${onClock} for ${dated.length} of ${placements.length}; file name places the rest`,
+    lines,
+  };
+}
+
+/** Why an asset has no place on the clock the rest of the project was ordered on. */
+function undatedReason(asset: MediaAsset | undefined, clock: 'utc' | 'local'): string {
+  const capture = asset?.capture_time;
+  if (capture?.precision === 'date') {
+    return `only a date (${capture.date ?? capture.raw}), which is not a time of day`;
+  }
+  if (clock === 'utc' && capture?.local !== undefined && asset?.creation_time === undefined) {
+    return (
+      `its time (${capture.raw}) has no zone, and the others are instants; ` +
+      'reading it as UTC would invent an offset'
+    );
+  }
+  if (clock === 'local' && asset?.creation_time !== undefined && capture?.local === undefined) {
+    return (
+      'its time is an instant with no local clock, and the others are local times ' +
+      'with no zone; the two cannot be compared'
+    );
+  }
+  return 'no capture time in the file';
 }

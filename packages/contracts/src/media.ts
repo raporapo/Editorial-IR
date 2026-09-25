@@ -259,8 +259,38 @@ export const AssetPlacement = obj({
   offset_ms: Milliseconds,
   /** Position in capture order, 0-based. */
   order: z.int().min(0),
-  /** How the order was decided, for when metadata is missing or wrong. */
+  /**
+   * How this asset's place was decided, for when metadata is missing or wrong.
+   *
+   * Per asset, because it differs between them: in a folder of phone clips and
+   * one photo with no date, the clips are `creation_time` and the photo is
+   * `file_name` — placed beside the file its name sorts next to, which for a
+   * camera's own numbering (IMG_0041.JPG, IMG_0042.MOV) is the file shot
+   * before it. It was one value for the whole project, so the one undated photo
+   * put every clip in file-name order.
+   */
   ordered_by: z.enum(['creation_time', 'file_name', 'explicit', 'audio_sync']),
+  /**
+   * For `creation_time`: the clock the capture times were compared on.
+   *
+   * `utc` is the instant (`MediaAsset.creation_time`). `local` is the wall clock
+   * the files wrote (`MediaAsset.capture_time.local`), taken when more of the
+   * project has a wall clock than an instant — a camera's photos carry no zone
+   * and a phone's clips carry theirs — and only when every offset the files did
+   * write is the same one, because the local clock of a day that crossed a time
+   * zone is not one clock.
+   */
+  clock: z.enum(['utc', 'local']).optional(),
+  /**
+   * For `file_name` in a project where other assets are dated: the dated asset
+   * this one was placed next to, the one its name sorts after (or, when none
+   * does, before). An asset without a capture time is set beside its file-name
+   * neighbour rather than moving every other asset out of capture order.
+   */
+  beside: obj({
+    asset_id: AssetId,
+    side: z.enum(['after', 'before']),
+  }).optional(),
   /**
    * The audio match that placed this asset, when `ordered_by` is `audio_sync`.
    *

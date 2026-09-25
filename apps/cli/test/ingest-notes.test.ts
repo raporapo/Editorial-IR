@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MediaAsset } from '@editorial-ir/contracts';
-import { mediaNotes, refreshNote } from '../src/commands/ingest.js';
+import { placeAssets } from '@editorial-ir/core';
+import { mediaNotes, orderingSummary, refreshNote } from '../src/commands/ingest.js';
 
 /**
  * What `oea ingest` says about a file beyond its size and length.
@@ -80,5 +81,67 @@ describe('what ingest says about files it read again', () => {
     expect(refreshNote(['asset_001'], true)).toContain('oea analyze --force');
     expect(refreshNote(['asset_001'], false)).not.toContain('--force');
     expect(refreshNote(['asset_001', 'asset_004'], false)).toContain('asset_001, asset_004');
+  });
+});
+
+describe('what ingest says about the order of the capture timeline', () => {
+  const clip = (id: string, fileName: string, extra: Partial<MediaAsset> = {}) =>
+    asset({ id, file_name: fileName, path: `footage/${fileName}`, ...extra });
+
+  it('names each file whose place is a guess, and why, when the rest are dated', () => {
+    // It printed the first placement's rule and nothing else: "creation_time"
+    // while the photo's place was a guess, or "file_name" while the clips kept
+    // their order.
+    const assets = [
+      clip('asset_001', 'A.MOV', { creation_time: '2026-05-17T10:00:10.000Z' }),
+      clip('asset_002', 'B.MOV', { creation_time: '2026-05-17T10:00:00.000Z' }),
+      clip('asset_003', 'photo.jpg', { kind: 'image', duration_ms: 0 }),
+      clip('asset_004', 'song.mp3', {
+        kind: 'audio',
+        capture_time: { source: 'container', precision: 'date', raw: '2026', date: '2026' },
+      }),
+    ];
+    const summary = orderingSummary(assets, placeAssets(assets));
+    expect(summary.headline).toBe('capture time for 2 of 4; file name places the rest');
+    expect(summary.warning).toBeUndefined();
+    expect(summary.lines).toEqual([
+      '  asset_003 photo.jpg: no capture time in the file; placed after asset_002 B.MOV, ' +
+        'the dated file its name sorts after',
+      '  asset_004 song.mp3: only a date (2026), which is not a time of day; placed after ' +
+        'asset_002 B.MOV, the dated file its name sorts after',
+    ]);
+  });
+
+  it('says a zone-less time was not read as UTC', () => {
+    const assets = [
+      clip('asset_001', 'PXL_1.mp4', { creation_time: '2026-05-17T09:00:00.000Z' }),
+      clip('asset_002', 'DSC_1.JPG', {
+        kind: 'image',
+        duration_ms: 0,
+        capture_time: {
+          source: 'exif',
+          precision: 'local',
+          raw: '2026:05:17 18:05:00',
+          local: '2026-05-17T18:05:00.000',
+        },
+      }),
+    ];
+    expect(orderingSummary(assets, placeAssets(assets)).lines[0]).toMatch(
+      /^ {2}asset_002 DSC_1\.JPG: its time \(2026:05:17 18:05:00\) has no zone, and the others are instants/,
+    );
+  });
+
+  it('warns only when nothing is dated, as it did', () => {
+    const assets = [clip('asset_001', 'B.MOV'), clip('asset_002', 'A.MOV')];
+    expect(orderingSummary(assets, placeAssets(assets))).toEqual({
+      headline: 'file name',
+      warning: 'no capture times in the metadata, so file name decides the order',
+      lines: [],
+    });
+    const dated = [clip('asset_001', 'B.MOV', { creation_time: '2026-05-17T10:00:00.000Z' })];
+    expect(orderingSummary(dated, placeAssets(dated))).toEqual({
+      headline: 'capture time',
+      lines: [],
+    });
   });
 });
