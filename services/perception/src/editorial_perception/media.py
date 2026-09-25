@@ -174,7 +174,10 @@ def probe_result(parsed: dict[str, Any], packet_count: int | None = None) -> dic
     )
 
     out: dict[str, Any] = {
-        "duration_ms": max(0, round(duration * 1000)),
+        # Half up, as `Math.round` does in the TypeScript probe. `round()` rounds
+        # half to even, and measured on an Ogg Opus file ffprobe reports 2.006500 s:
+        # 2007 ms from one runtime and 2006 from the other, for the same file.
+        "duration_ms": max(0, math.floor(duration * 1000 + 0.5)),
         "metadata": {**(fmt.get("tags") or {}), **((video or {}).get("tags") or {})},
     }
 
@@ -211,11 +214,92 @@ def probe_result(parsed: dict[str, Any], packet_count: int | None = None) -> dic
     if fmt.get("bit_rate"):
         out["bit_rate"] = int(_float(fmt["bit_rate"]) or 0)
 
-    creation = out["metadata"].get("creation_time") or out["metadata"].get("date")
+    creation = capture_tag(out["metadata"])
     if creation:
         out["creation_time"] = creation
+    timecode = start_timecode(video, streams, fmt.get("tags") or {})
+    if timecode:
+        out["start_timecode"] = timecode
 
     return out
+
+
+#: Where a container keeps its capture time, the one with an offset first. The
+#: same order as `captureTag` in the TypeScript probe.
+_CAPTURE_TAGS = ("com.apple.quicktime.creationdate", "creation_time", "date")
+
+
+def capture_tag(tags: dict[str, Any]) -> str | None:
+    """The capture time a container wrote, the one with an offset first.
+
+    `com.apple.quicktime.creationdate` carries the zone and survives an export or
+    a phone's trim that rewrites `creation_time` to the moment of the export.
+    """
+    for key in _CAPTURE_TAGS:
+        value = tag_value(tags, key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def tag_value(tags: dict[str, Any] | None, key: str) -> Any:
+    """A tag by name, whatever its case: Matroska's are in capitals (`TIMECODE`).
+
+    The exact name wins; otherwise the first match in name order. The same rule as
+    `tagValue` in the TypeScript probe.
+    """
+    if not tags:
+        return None
+    if key in tags:
+        return tags[key]
+    wanted = key.lower()
+    matches = sorted(name for name in tags if name.lower() == wanted)
+    return tags[matches[0]] if matches else None
+
+
+_SMPTE = re.compile(r"^(\d{1,2}):(\d{2}):(\d{2})([:;.,])(\d{2,3})$")
+
+
+def smpte_timecode(value: Any) -> str | None:
+    """`HH:MM:SS:FF`, with `;` before the frames for drop-frame, or nothing.
+
+    `.` and `,` are drop-frame from tools that cannot write a semicolon. The same
+    rule as `smpteTimecode` in the TypeScript probe.
+    """
+    if not isinstance(value, str):
+        return None
+    match = _SMPTE.match(value.strip())
+    if not match:
+        return None
+    hours, minutes, seconds, separator, frames = match.groups()
+    if int(hours) > 23 or int(minutes) > 59 or int(seconds) > 59:
+        return None
+    drop = ":" if separator == ":" else ";"
+    return f"{hours.zfill(2)}:{minutes}:{seconds}{drop}{frames}"
+
+
+def start_timecode(
+    picture: dict[str, Any] | None,
+    streams: list[dict[str, Any]],
+    format_tags: dict[str, Any],
+) -> str | None:
+    """The first frame's timecode: the picture's own, a `tmcd` track's, the container's.
+
+    Measured on ffmpeg 6.1: a MOV written with `-timecode 01:00:00;00` carries it
+    on the picture stream and on its `tmcd` data stream; an MXF and a DV only on the
+    container, and an MKV there too as `TIMECODE`. The same order as
+    `startTimecode` in the TypeScript probe.
+    """
+    candidates = [tag_value((picture or {}).get("tags"), "timecode")]
+    candidates += [
+        tag_value(s.get("tags"), "timecode") for s in streams if s.get("codec_type") == "data"
+    ]
+    candidates.append(tag_value(format_tags, "timecode"))
+    for candidate in candidates:
+        timecode = smpte_timecode(candidate)
+        if timecode:
+            return timecode
+    return None
 
 
 def _audio_stream(stream: dict[str, Any], index: int) -> dict[str, Any]:

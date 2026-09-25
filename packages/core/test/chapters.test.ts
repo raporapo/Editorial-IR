@@ -148,6 +148,41 @@ describe('a folder of clips', () => {
     ]);
     expect(sizes(buildChapters(list, {}, { assets }).chapters)).toEqual([2, 2]);
   });
+
+  it("measures a gap between two cameras' zone-less times, and never against a UTC one", () => {
+    // A zone-less 11:41 read as UTC was three and a half hours after a phone's
+    // 08:12Z, a gap nobody measured: the camera's zone is not known.
+    const zoneless = (id: string, local: string) =>
+      makeAsset({
+        id,
+        duration_ms: 540_000,
+        capture_time: { source: 'exif', precision: 'local', raw: local, local },
+      });
+    const clips = (assets: MediaAsset[]) => ({
+      assets,
+      materials: assets.map((a) => ({ asset_id: a.id, kind: 'clip' as const })),
+    });
+    const list = events([
+      { asset_id: 'asset_001', description: 'morning', event_type: 'travel' },
+      { asset_id: 'asset_001', description: 'morning', event_type: 'travel' },
+      { asset_id: 'asset_002', description: 'morning', event_type: 'travel' },
+      { asset_id: 'asset_002', description: 'morning', event_type: 'travel' },
+    ]);
+    const bothLocal = [
+      zoneless('asset_001', '2026-05-16T08:12:04.000'),
+      zoneless('asset_002', '2026-05-16T11:41:22.000'),
+    ];
+    expect(sizes(buildChapters(list, {}, clips(bothLocal)).chapters)).toEqual([2, 2]);
+    const mixed = [
+      makeAsset({
+        id: 'asset_001',
+        duration_ms: 540_000,
+        creation_time: '2026-05-16T08:12:04.000Z',
+      }),
+      zoneless('asset_002', '2026-05-16T11:41:22.000'),
+    ];
+    expect(sizes(buildChapters(list, {}, clips(mixed)).chapters)).toEqual([4]);
+  });
 });
 
 describe('the chapter cap', () => {

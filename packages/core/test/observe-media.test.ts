@@ -375,3 +375,62 @@ describe('frames a model is asked about', () => {
     expect(framesDir).not.toBe(record.ocr[0]?.frames_dir);
   });
 });
+
+describe('a one-shot screen recording', () => {
+  it('has every slide read, and each read ends when its slide does', async () => {
+    // The probe recording: six slides, one shot, still between the cursor's
+    // moves. It was read once, at 20 s.
+    const record = seen();
+    const base = suite(undefined, record);
+    const recording = asset({ duration_ms: 60_000, audio_streams: [] });
+    const result = await observeAssets([recording], {
+      projectRoot: root,
+      workDir: join(root, 'work-screen'),
+      runs: new ModelRunRecorder(() => '2026-09-01T00:00:00.000Z'),
+      suite: {
+        ...base,
+        shots: {
+          identity: identity('fake-shots'),
+          detectShots: async () => ({
+            shots: [{ start_ms: 0, end_ms: 60_000, representative_frame_ms: 20_000 }],
+          }),
+        },
+        video: {
+          identity: identity('fake-motion'),
+          analyzeVideo: async () => ({
+            model: 'fake',
+            hop_ms: 200,
+            motion: [],
+            luma: [],
+            events: [0, 1, 2, 3, 4, 5].map((i) => ({
+              start_ms: i * 10_000 + 2200,
+              end_ms: (i + 1) * 10_000,
+              event_type: 'static' as const,
+              confidence: 0.9,
+            })),
+          }),
+        },
+        ocr: {
+          identity: identity('fake-ocr'),
+          ocr: async (params: OcrParams) => {
+            record.ocr.push(params);
+            return {
+              observations: params.timestamps_ms.map((t) => ({
+                start_ms: t,
+                end_ms: t + 1000,
+                text: `slide ${Math.floor(t / 10_000) + 1}`,
+                confidence: 0.9,
+              })),
+            };
+          },
+        },
+      },
+    });
+    expect(record.ocr[0]?.timestamps_ms).toEqual([
+      9500, 19_500, 20_000, 29_500, 39_500, 49_500, 59_500,
+    ]);
+    expect(new Set(result.observations.ocr.map((o) => o.text)).size).toBe(6);
+    const beforeChange = result.observations.ocr.find((o) => o.start_ms === 9500);
+    expect(beforeChange?.end_ms).toBe(10_000);
+  });
+});

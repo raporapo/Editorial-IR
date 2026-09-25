@@ -72,8 +72,14 @@
     "creation_time": {
       "$ref": "#/$defs/__schema24"
     },
-    "metadata": {
+    "capture_time": {
       "$ref": "#/$defs/__schema25"
+    },
+    "start_timecode": {
+      "$ref": "#/$defs/__schema32"
+    },
+    "metadata": {
+      "$ref": "#/$defs/__schema33"
     }
   },
   "required": [
@@ -249,6 +255,76 @@
       "description": "ISO-8601 timestamp, always UTC with a trailing Z."
     },
     "__schema25": {
+      "$ref": "#/$defs/CaptureTime"
+    },
+    "CaptureTime": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/__schema26"
+        },
+        "precision": {
+          "$ref": "#/$defs/__schema27"
+        },
+        "raw": {
+          "$ref": "#/$defs/__schema28"
+        },
+        "local": {
+          "$ref": "#/$defs/__schema29"
+        },
+        "utc_offset_minutes": {
+          "$ref": "#/$defs/__schema30"
+        },
+        "date": {
+          "$ref": "#/$defs/__schema31"
+        }
+      },
+      "required": [
+        "source",
+        "precision",
+        "raw"
+      ],
+      "additionalProperties": false
+    },
+    "__schema26": {
+      "type": "string",
+      "enum": [
+        "quicktime",
+        "container",
+        "exif",
+        "xmp",
+        "png"
+      ]
+    },
+    "__schema27": {
+      "type": "string",
+      "enum": [
+        "instant",
+        "local",
+        "date"
+      ]
+    },
+    "__schema28": {
+      "type": "string"
+    },
+    "__schema29": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}$"
+    },
+    "__schema30": {
+      "type": "integer",
+      "minimum": -720,
+      "maximum": 840
+    },
+    "__schema31": {
+      "type": "string",
+      "pattern": "^\\d{4}(-\\d{2}(-\\d{2})?)?$"
+    },
+    "__schema32": {
+      "type": "string",
+      "pattern": "^\\d{2}:\\d{2}:\\d{2}[:;]\\d{2,3}$"
+    },
+    "__schema33": {
       "default": {},
       "type": "object",
       "propertyNames": {

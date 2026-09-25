@@ -26,6 +26,56 @@ export const AudioStream = obj({
 export type AudioStream = z.infer<typeof AudioStream>;
 
 /**
+ * When a file says it was recorded, as precisely as it says it.
+ *
+ * Three different things arrive in the one field a container calls a date, and
+ * each was taken for an instant in UTC:
+ *
+ * - a time with a zone (`2026-05-17T18:00:00+0900`), which is one;
+ * - a time with none, as EXIF writes without `OffsetTimeOriginal` and a
+ *   camcorder writes into an AVI, which is the wall clock where it was taken.
+ *   Read as UTC it was up to fourteen hours out, and then compared with a
+ *   phone's clip that did carry a zone as though both were UTC;
+ * - a date with no time of day (`2026`, the `date` tag of an MP3), which is not
+ *   a capture time at all. Read as midnight on New Year's Day, a podcast was
+ *   laid on the capture timeline before a whole year of footage.
+ *
+ * The first is `creation_time` on the asset as well. The other two are kept
+ * here, so they are known without being mistaken for something they are not.
+ */
+export const CaptureTime = obj({
+  /**
+   * Where it was read: `quicktime` is `com.apple.quicktime.creationdate`, which
+   * carries the offset and survives an export that rewrites `creation_time`;
+   * `container` is the container's own date tag; `exif` and `xmp` are read from
+   * a photo, since ffprobe gives a JPEG no tags at all; `png` is a PNG's
+   * `Creation Time` text.
+   */
+  source: z.enum(['quicktime', 'container', 'exif', 'xmp', 'png']),
+  precision: z.enum(['instant', 'local', 'date']),
+  /** The value as the file wrote it, for a person to check. */
+  raw: z.string(),
+  /**
+   * The wall clock where it was taken, with no zone: `2026-05-17T18:00:00.000`.
+   * Set for `local`, and for `instant` when the file wrote its offset — which
+   * is what lets a phone clip that knows its zone be ordered against a camera
+   * photo that does not, on the one clock they share.
+   */
+  local: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}$/)
+    .optional(),
+  /** Minutes east of UTC, when the file wrote an offset. */
+  utc_offset_minutes: z.int().min(-720).max(840).optional(),
+  /** `2026`, `2026-05` or `2026-05-17`, for `date`. */
+  date: z
+    .string()
+    .regex(/^\d{4}(-\d{2}(-\d{2})?)?$/)
+    .optional(),
+}).meta({ id: 'CaptureTime' });
+export type CaptureTime = z.infer<typeof CaptureTime>;
+
+/**
  * A registered source file.
  *
  * The original file is never modified and never moved. `path` is stored relative
@@ -84,8 +134,30 @@ export const MediaAsset = obj({
   variable_frame_rate: z.boolean().optional(),
   /** The measured average rate, when the rate varies. */
   avg_fps: z.number().min(0).optional(),
-  /** Capture time from container metadata, used to lay assets on the capture timeline. */
+  /**
+   * When it was recorded, as an instant — only when the file said which zone.
+   * Used to lay assets on the capture timeline. A time the file wrote with no
+   * zone is not here but in `capture_time.local`, because reading it as UTC is
+   * inventing an offset; see {@link CaptureTime}.
+   */
   creation_time: Iso8601.optional(),
+  /** Where the capture time came from and how precise it is. */
+  capture_time: CaptureTime.optional(),
+  /**
+   * The timecode of the first frame, as SMPTE `HH:MM:SS:FF`, with `;` before
+   * the frames for drop-frame (`01:00:00;00`). From the picture stream's tag,
+   * a QuickTime timecode track, or the container (MXF, DV).
+   *
+   * A professional camera starts its clips at the time of day or wherever the
+   * operator set it, and an EDL or FCPXML that places a clip at 00:00:00:00
+   * against a source that starts at 01:00:00;00 relinks an hour away from the
+   * picture — or not at all. Recorded as the file wrote it; frames are counted
+   * at the asset's own rate.
+   */
+  start_timecode: z
+    .string()
+    .regex(/^\d{2}:\d{2}:\d{2}[:;]\d{2,3}$/, 'expected SMPTE timecode, like 01:00:00;00')
+    .optional(),
   /** Container/stream metadata that no contract field claims. Free-form by design. */
   metadata: z.record(z.string(), z.unknown()).default({}),
 }).meta({ id: 'MediaAsset', title: 'MediaAsset' });
@@ -187,8 +259,38 @@ export const AssetPlacement = obj({
   offset_ms: Milliseconds,
   /** Position in capture order, 0-based. */
   order: z.int().min(0),
-  /** How the order was decided, for when metadata is missing or wrong. */
+  /**
+   * How this asset's place was decided, for when metadata is missing or wrong.
+   *
+   * Per asset, because it differs between them: in a folder of phone clips and
+   * one photo with no date, the clips are `creation_time` and the photo is
+   * `file_name` — placed beside the file its name sorts next to, which for a
+   * camera's own numbering (IMG_0041.JPG, IMG_0042.MOV) is the file shot
+   * before it. It was one value for the whole project, so the one undated photo
+   * put every clip in file-name order.
+   */
   ordered_by: z.enum(['creation_time', 'file_name', 'explicit', 'audio_sync']),
+  /**
+   * For `creation_time`: the clock the capture times were compared on.
+   *
+   * `utc` is the instant (`MediaAsset.creation_time`). `local` is the wall clock
+   * the files wrote (`MediaAsset.capture_time.local`), taken when more of the
+   * project has a wall clock than an instant — a camera's photos carry no zone
+   * and a phone's clips carry theirs — and only when every offset the files did
+   * write is the same one, because the local clock of a day that crossed a time
+   * zone is not one clock.
+   */
+  clock: z.enum(['utc', 'local']).optional(),
+  /**
+   * For `file_name` in a project where other assets are dated: the dated asset
+   * this one was placed next to, the one its name sorts after (or, when none
+   * does, before). An asset without a capture time is set beside its file-name
+   * neighbour rather than moving every other asset out of capture order.
+   */
+  beside: obj({
+    asset_id: AssetId,
+    side: z.enum(['after', 'before']),
+  }).optional(),
   /**
    * The audio match that placed this asset, when `ordered_by` is `audio_sync`.
    *

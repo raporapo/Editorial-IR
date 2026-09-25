@@ -1,5 +1,6 @@
 import {
   EditorialError,
+  compareText,
   type ProbeResult,
   ProbeResult as ProbeResultSchema,
   parseOrThrow,
@@ -57,10 +58,12 @@ export interface FfprobeOutput {
 /**
  * What the probe's output means changed in a way its cache key would not see:
  * the rate became the nominal one, cover art stopped being a picture, and every
- * audio stream is listed. A cached probe from before would be served forever —
- * ingest keys it on the file and the probe's identity, nothing else.
+ * audio stream is listed (2); the start timecode is read and the capture time
+ * prefers the one with an offset (3). A cached probe from before would be
+ * served forever — ingest keys it on the file and the probe's identity, nothing
+ * else.
  */
-export const PROBE_VERSION = '2';
+export const PROBE_VERSION = '3';
 
 export class FfprobeMediaProbe implements MediaProbe {
   readonly identity: ModelIdentity;
@@ -199,7 +202,8 @@ export function toProbeResult(
   const rates = still || !video ? undefined : frameRates(video, parsed, measured.packetCount);
 
   const tags = { ...(parsed.format?.tags ?? {}), ...(video?.tags ?? {}) };
-  const creation = tags.creation_time ?? tags.date;
+  const creation = captureTag(tags);
+  const timecode = startTimecode(video, streams, parsed.format?.tags);
 
   // Rotation arrives either as a display-matrix side datum or as a legacy tag.
   const sideRotation = video?.side_data_list?.find((d) => typeof d.rotation === 'number')?.rotation;
@@ -232,7 +236,95 @@ export function toProbeResult(
     result.rotation = ((Math.round(rotation) % 360) + 360) % 360;
   }
   if (creation) result.creation_time = creation;
+  if (timecode) result.start_timecode = timecode;
   return result;
+}
+
+/**
+ * The capture time a container wrote, the one with an offset first.
+ *
+ * `com.apple.quicktime.creationdate` is what an iPhone or a Mac writes with its
+ * zone (`2026-05-17T18:00:00+0900`), and it survives an export or a trim that
+ * rewrites `creation_time` to the moment of the export: a clip trimmed on the
+ * phone the next morning kept its place in the day only through this tag.
+ * `creation_time` is the container's own (UTC in QuickTime and Matroska); `date`
+ * is what audio files carry, often a year and nothing else.
+ */
+export function captureTag(tags: Record<string, string>): string | undefined {
+  for (const key of ['com.apple.quicktime.creationdate', 'creation_time', 'date']) {
+    const value = tagValue(tags, key)?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+/**
+ * A tag by name, whatever its case.
+ *
+ * Matroska keeps its tags as the file wrote them, and ffmpeg writes them in
+ * capitals: measured on ffmpeg 6.1, an MKV made with `-timecode 03:00:00:00`
+ * carries `TIMECODE` in the format's tags, where a MOV carries `timecode`. The
+ * exact name wins; otherwise the first match in name order, so which of two
+ * spellings is read does not depend on the order ffprobe listed them in.
+ */
+export function tagValue(
+  tags: Record<string, string> | undefined,
+  key: string,
+): string | undefined {
+  if (!tags) return undefined;
+  if (typeof tags[key] === 'string') return tags[key];
+  const wanted = key.toLowerCase();
+  const match = Object.keys(tags)
+    .filter((name) => name.toLowerCase() === wanted)
+    .sort(compareText)[0];
+  return match === undefined ? undefined : tags[match];
+}
+
+/**
+ * The timecode of the first frame, from wherever this container keeps it.
+ *
+ * A QuickTime file keeps it in a timecode track (`tmcd`), which ffprobe lists
+ * as a data stream; ffmpeg also copies it onto the picture stream when the
+ * track is referenced from it, and not when it is not. MXF, DV and Matroska
+ * keep it on the container. Measured on ffmpeg 6.1: a MOV written with
+ * `-timecode 01:00:00;00` carries it on stream 0 and on the `tmcd` stream 2; an
+ * MP4 the same; an MXF and a DV only in the format's tags; an MKV there too, as
+ * `TIMECODE`. The picture's own comes first because a file with two timecode
+ * tracks means the one the picture uses.
+ */
+export function startTimecode(
+  picture: FfprobeStream | undefined,
+  streams: readonly FfprobeStream[],
+  formatTags: Record<string, string> | undefined,
+): string | undefined {
+  const candidates = [
+    tagValue(picture?.tags, 'timecode'),
+    ...streams.filter((s) => s.codec_type === 'data').map((s) => tagValue(s.tags, 'timecode')),
+    tagValue(formatTags, 'timecode'),
+  ];
+  for (const candidate of candidates) {
+    const timecode = smpteTimecode(candidate);
+    if (timecode) return timecode;
+  }
+  return undefined;
+}
+
+/**
+ * `HH:MM:SS:FF`, with `;` before the frames for drop-frame, or nothing.
+ *
+ * Drop-frame is written with `;` by ffmpeg, and with `.` or `,` by tools that
+ * cannot write a semicolon; all three mean the same and become `;`. Anything
+ * that is not a time of day with a frame count — a camera that writes its reel
+ * name into the tag, an hour past 23 — is not a timecode, and a wrong start is
+ * worse in an EDL than none.
+ */
+export function smpteTimecode(value: string | undefined): string | undefined {
+  const match = /^(\d{1,2}):(\d{2}):(\d{2})([:;.,])(\d{2,3})$/.exec(value?.trim() ?? '');
+  if (!match) return undefined;
+  const [, hours, minutes, seconds, separator, frames] = match;
+  if (Number(hours) > 23 || Number(minutes) > 59 || Number(seconds) > 59) return undefined;
+  const drop = separator === ':' ? ':' : ';';
+  return `${hours!.padStart(2, '0')}:${minutes}:${seconds}${drop}${frames}`;
 }
 
 function audioStreamOf(stream: FfprobeStream, index: number): Record<string, unknown> {

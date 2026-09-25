@@ -243,6 +243,48 @@ def test_a_millisecond_clock_is_not_a_frame_rate():
     assert result["variable_frame_rate"] is True
 
 
+# --- capture time and timecode ----------------------------------------------------
+
+#: ffprobe output measured on ffmpeg 6.1, and what the probe must make of it. The
+#: TypeScript probe is tested against the same file, so an asset does not change
+#: with the runtime that read it.
+PROBE_CASES = json.loads(
+    (Path(__file__).parent / "data" / "probe_cases.json").read_text(encoding="utf-8")
+)["cases"]
+
+
+@pytest.mark.parametrize("case", PROBE_CASES, ids=[c["name"] for c in PROBE_CASES])
+def test_a_container_is_read_as_the_typescript_probe_reads_it(case):
+    result = media.probe_result(case["ffprobe"])
+    got = {"duration_ms": result["duration_ms"]}
+    for key in ("creation_time", "start_timecode"):
+        if key in result:
+            got[key] = result[key]
+    assert got == case["expected"]
+
+
+def test_apples_creationdate_wins_over_a_creation_time_a_trim_rewrote():
+    tags = {
+        "creation_time": "2026-05-18T00:00:00.000000Z",
+        "com.apple.quicktime.creationdate": "2026-05-17T18:00:00+0900",
+    }
+    assert media.capture_tag(tags) == "2026-05-17T18:00:00+0900"
+    assert media.capture_tag({"DATE": "2026"}) == "2026"
+
+
+def test_only_a_timecode_is_kept_with_a_semicolon_for_drop_frame():
+    assert media.smpte_timecode("01:00:00;00") == "01:00:00;00"
+    assert media.smpte_timecode("1:00:00,00") == "01:00:00;00"
+    assert media.smpte_timecode("A001C003") is None
+    assert media.smpte_timecode("10:61:00:00") is None
+
+
+def test_a_tag_is_found_whatever_its_case_the_exact_spelling_first():
+    assert media.tag_value({"TIMECODE": "03:00:00:00"}, "timecode") == "03:00:00:00"
+    assert media.tag_value({"Timecode": "b", "timecode": "a"}, "timecode") == "a"
+    assert media.tag_value({"Timecode": "b", "TIMECODE": "c"}, "timecode") == "c"
+
+
 # --- prepare -------------------------------------------------------------------
 
 

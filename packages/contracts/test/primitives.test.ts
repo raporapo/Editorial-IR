@@ -13,6 +13,7 @@ import {
   rangesOverlap,
   seqId,
   toIso8601,
+  parseCaptureTime,
   isCompatibleVersion,
   TimeRange,
 } from '../src/index.js';
@@ -139,13 +140,14 @@ describe('toIso8601', () => {
     // A local offset sorts before an earlier UTC instant as a string, which is
     // how a misread date reorders footage.
     expect(toIso8601('2026-05-17T18:00:00+09:00')).toBe('2026-05-17T09:00:00.000Z');
-    expect(toIso8601('2026-05-17 09:00:00')).toBe('2026-05-17T09:00:00.000Z');
+    expect(toIso8601('2026-05-17T18:00:00+0900')).toBe('2026-05-17T09:00:00.000Z');
+    expect(toIso8601('2026-05-17T09:00:00.000000Z')).toBe('2026-05-17T09:00:00.000Z');
     // EXIF spells the date with colons.
-    expect(toIso8601('2026:05:17 09:00:00')).toBe('2026-05-17T09:00:00.000Z');
+    expect(toIso8601('2026:05:17 18:00:00+09:00')).toBe('2026-05-17T09:00:00.000Z');
   });
 
   it('leaves the result parseable by the schema', () => {
-    expect(() => Iso8601.parse(toIso8601('2026-05-17 09:00:00')!)).not.toThrow();
+    expect(() => Iso8601.parse(toIso8601('2026-05-17 09:00:00Z')!)).not.toThrow();
   });
 
   it('gives nothing back for a date it cannot read', () => {
@@ -154,6 +156,76 @@ describe('toIso8601', () => {
     expect(toIso8601('yesterday')).toBeUndefined();
     expect(toIso8601('')).toBeUndefined();
     expect(toIso8601(undefined)).toBeUndefined();
+  });
+
+  it('gives no instant for a time with no zone, rather than inventing UTC', () => {
+    // Read as UTC, a camera set to Tokyo time was nine hours out, and was then
+    // sorted against phone clips that did carry their zone.
+    expect(toIso8601('2026-05-17 18:00:00')).toBeUndefined();
+    expect(toIso8601('2026:05:17 18:00:00')).toBeUndefined();
+  });
+
+  it('gives no instant for a year or a day, which is not a time of day', () => {
+    // An MP3's `date` of 2026 became 2026-01-01T00:00:00Z and put a podcast
+    // before a whole year of footage.
+    expect(toIso8601('2026')).toBeUndefined();
+    expect(toIso8601('2026-05-17')).toBeUndefined();
+  });
+});
+
+describe('parseCaptureTime', () => {
+  it('keeps the wall clock and the offset of a time that has both', () => {
+    expect(parseCaptureTime('2026-05-17T18:00:00+0900')).toEqual({
+      precision: 'instant',
+      instant: '2026-05-17T09:00:00.000Z',
+      local: '2026-05-17T18:00:00.000',
+      offsetMinutes: 540,
+    });
+    expect(parseCaptureTime('2026:05:17 07:15:30.25-03:30')).toEqual({
+      precision: 'instant',
+      instant: '2026-05-17T10:45:30.250Z',
+      local: '2026-05-17T07:15:30.250',
+      offsetMinutes: -210,
+    });
+  });
+
+  it('says a zone-less time is local, and invents no offset for it', () => {
+    expect(parseCaptureTime('2026:05:17 18:00:00')).toEqual({
+      precision: 'local',
+      local: '2026-05-17T18:00:00.000',
+    });
+    expect(parseCaptureTime('2026-05-17T18:00')).toEqual({
+      precision: 'local',
+      local: '2026-05-17T18:00:00.000',
+    });
+  });
+
+  it('says a year, a month or a day is only a date', () => {
+    expect(parseCaptureTime('2026')).toEqual({ precision: 'date', date: '2026' });
+    expect(parseCaptureTime('2026-05')).toEqual({ precision: 'date', date: '2026-05' });
+    expect(parseCaptureTime('2026:05:17')).toEqual({ precision: 'date', date: '2026-05-17' });
+  });
+
+  it('reads the written form a PNG keeps its creation time in', () => {
+    expect(parseCaptureTime('Sun, 17 May 2026 18:00:00 +0900')?.instant).toBe(
+      '2026-05-17T09:00:00.000Z',
+    );
+    expect(parseCaptureTime('17 May 2026 18:00:00')?.precision).toBe('local');
+  });
+
+  it('is nothing for a clock that was never set, or a date that does not exist', () => {
+    // 1904 is QuickTime's zero and 1970 Unix's; a camera fresh from its box
+    // stamps one of them, and a card of footage sorted before everything else.
+    expect(parseCaptureTime('1904-01-01T00:00:00.000000Z')).toBeUndefined();
+    expect(parseCaptureTime('1970-01-01 00:00:00')).toBeUndefined();
+    expect(parseCaptureTime('0000:00:00 00:00:00')).toBeUndefined();
+    expect(parseCaptureTime('2026-02-30 10:00:00')).toBeUndefined();
+    expect(parseCaptureTime('2026-05-17 24:00:00')).toBeUndefined();
+    expect(parseCaptureTime('2026-05-17T10:00:00+15:00')).toBeUndefined();
+  });
+
+  it('writes no negative zero into JSON for an offset of -00:00', () => {
+    expect(Object.is(parseCaptureTime('2026-05-17T10:00:00-00:00')?.offsetMinutes, 0)).toBe(true);
   });
 });
 

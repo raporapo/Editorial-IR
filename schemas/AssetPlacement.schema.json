@@ -15,8 +15,14 @@
     "ordered_by": {
       "$ref": "#/$defs/__schema1"
     },
-    "sync": {
+    "clock": {
       "$ref": "#/$defs/__schema2"
+    },
+    "beside": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "sync": {
+      "$ref": "#/$defs/__schema4"
     }
   },
   "required": [
@@ -52,6 +58,33 @@
       ]
     },
     "__schema2": {
+      "type": "string",
+      "enum": [
+        "utc",
+        "local"
+      ]
+    },
+    "__schema3": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "$ref": "#/$defs/assetId"
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "after",
+            "before"
+          ]
+        }
+      },
+      "required": [
+        "asset_id",
+        "side"
+      ],
+      "additionalProperties": false
+    },
+    "__schema4": {
       "type": "object",
       "properties": {
         "reference_asset_id": {

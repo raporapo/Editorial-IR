@@ -536,15 +536,12 @@ export async function observeAssets(
       let done = 0;
       for (const asset of ordered) {
         const prepared = derived.get(asset.id);
-        // One read per still, silent span rather than one per shot inside it: a
-        // screen nobody touches says the same thing at every shot boundary the
-        // detector found in its compression noise. OCR does not feed
-        // segmentation, so this moves no boundary.
-        const { kept: timestamps, dropped } = thinTimestamps(
-          pictureTimestamps(shots, asset),
-          inactive,
-          asset.id,
-        );
+        // Where the text is likely to have changed, thinned where nothing
+        // changes; see `ocrTimestamps`. Segmentation reads OCR only where scene
+        // text changes between two reads, and places that change where the
+        // picture changed, so a read added at the end of a still stretch moves
+        // no boundary the stretch had not already marked.
+        const { kept: timestamps, dropped } = ocrTimestamps(shots, videoEvents, inactive, asset);
         framesNotAnalysed += dropped;
         if (timestamps.length === 0) continue;
         options.onProgress?.('ocr', asset.file_name, done++, ordered.length);
@@ -568,13 +565,14 @@ export async function observeAssets(
         });
         if (!result) continue;
 
+        const still = stillSpansOf(videoEvents, asset.id);
         for (const observation of result.observations) {
           if (observation.text.trim().length === 0) continue;
           ocr.push({
             id: seqId('ocr', ++counters.ocr, 5),
             asset_id: asset.id,
             start_ms: observation.start_ms,
-            end_ms: Math.max(observation.end_ms, observation.start_ms + 1),
+            end_ms: readUntil(observation, still),
             text: observation.text,
             confidence: observation.confidence,
             ...(observation.bbox === undefined ? {} : { bbox: observation.bbox }),
@@ -788,6 +786,211 @@ function pictureTimestamps(
 ): number[] {
   if (asset.kind === 'image') return [0];
   return representativeFrames(shots, asset.id);
+}
+
+/**
+ * A shot longer than this gets reads beside its representative frame.
+ *
+ * One read per shot is enough when the shot is a camera's: its text — a sign, a
+ * menu — stays put. It is not enough when the shot is a screen or a programme:
+ * a 60 s screen recording of six slides was one shot, read once, and five of
+ * the six slides were never read; burned-in subtitles were sampled by shot
+ * count, so a long take with a dozen lines under it had one of them read.
+ */
+export const OCR_LONG_SHOT_MS = 10_000;
+
+/**
+ * How often a long shot is read where the picture moves.
+ *
+ * A subtitle line is on screen for a few seconds, and a slide for longer; five
+ * seconds catches every line that is up for five seconds or more, and most of
+ * the shorter ones. What it costs, measured on the worker (RapidOCR on four CPU
+ * cores, ffmpeg seeking the frame): 0.54-0.68 s a read on a 1080p slide of text,
+ * 0.21-0.39 s on a 720p frame with one subtitle line, plus 0.09-0.20 s to seek
+ * and decode the frame; about 1 s a read end to end in `oea analyze` on the
+ * screen recording. About a tenth to a fifth of real time over a long moving
+ * shot, paid once, since reads are cached.
+ */
+export const OCR_PERIOD_MS = 5_000;
+
+/**
+ * A read is taken this long before a still stretch ends: the last moment the
+ * picture is known to have been settled, at the resolution the motion analysis
+ * samples at (0.2 s) and with the same half second of slack the inactive mask
+ * keeps at its edges.
+ */
+export const OCR_BEFORE_CHANGE_MS = 500;
+
+/**
+ * Inside a still stretch, one read per this much, counted back from its end.
+ *
+ * The motion analysis calls a stretch still only when no cell of a 64x36
+ * thumbnail moves by half a grey level between samples, and on-screen text
+ * cannot change under that: measured, a subtitle line replaced by another of
+ * the same length on a still background moved it by 3.2-4.7, and each change
+ * ended the still stretch. So the read at the end of a stretch sees what the
+ * whole of it showed, and reading it every five seconds as well would read
+ * each slide twice. This is the safety net for what might creep in under the
+ * threshold — a very slow fade — and it is also the most that a still, silent
+ * span may be thinned to: it was one read per span, however long.
+ */
+export const OCR_QUIET_READ_EVERY_MS = 10_000;
+
+/**
+ * At most this many reads per asset beyond one per shot.
+ *
+ * At about a second a read, 120 is two minutes of worker time for one file —
+ * ten minutes of a single moving shot at one read per five seconds. A longer
+ * one is read as widely spaced as that allows, the moments the picture changed
+ * first.
+ */
+export const MAX_EXTRA_OCR_READS = 120;
+
+/**
+ * The moments of one asset to read on-screen text at.
+ *
+ * - One per shot, as before: the frame that represents it. Where the footage is
+ *   both still and silent these are thinned to one per
+ *   `OCR_QUIET_READ_EVERY_MS` (it was one per span, however long).
+ * - One at the end of every still stretch the motion analysis found, just
+ *   before the picture changed: a screen recording is still between slides, so
+ *   each slide is read once, in the state it settled into. Through a long still
+ *   stretch, one more every `OCR_QUIET_READ_EVERY_MS` back from its end.
+ * - Through a shot longer than `OCR_LONG_SHOT_MS`, one every `OCR_PERIOD_MS`
+ *   where the picture moves, for text that changes under a moving picture —
+ *   subtitles over a long take.
+ *
+ * A read added for coverage is not taken within half its interval of another
+ * read. Repeats that remain are expected and cost nothing downstream: the
+ * on-screen text stage collapses a line read twice.
+ *
+ * `dropped` counts only what the still-and-silent mask removed, which is what
+ * `frames_not_analysed` reports.
+ */
+export function ocrTimestamps(
+  shots: readonly Shot[],
+  videoEvents: readonly Pick<VideoEvent, 'asset_id' | 'start_ms' | 'end_ms' | 'event_type'>[],
+  inactive: readonly InactiveSpan[],
+  asset: Pick<MediaAsset, 'id' | 'kind' | 'duration_ms'>,
+): { kept: number[]; dropped: number } {
+  if (asset.kind === 'image') return { kept: [0], dropped: 0 };
+  if (asset.kind === 'audio') return { kept: [], dropped: 0 };
+
+  const perShot = thinTimestamps(
+    representativeFrames(shots, asset.id),
+    quietWindows(inactive, asset.id),
+    asset.id,
+  );
+  const last = asset.duration_ms > 0 ? asset.duration_ms - 1 : Infinity;
+  const still = stillSpansOf(videoEvents, asset.id);
+
+  const taken = new Set(perShot.kept);
+  const near = (t: number, within: number) =>
+    taken.has(t) || [...taken].some((other) => Math.abs(other - t) < within);
+
+  const changes: number[] = [];
+  const held: number[] = [];
+  for (const span of still) {
+    const end = Math.min(last, Math.max(span.start, span.end - OCR_BEFORE_CHANGE_MS));
+    if (!taken.has(end)) changes.push(end);
+    for (let t = end - OCR_QUIET_READ_EVERY_MS; t > span.start; t -= OCR_QUIET_READ_EVERY_MS) {
+      held.push(t);
+    }
+  }
+  for (const t of changes) taken.add(t);
+  const heldKept = unique(held).filter((t) => !near(t, OCR_QUIET_READ_EVERY_MS / 2));
+  for (const t of heldKept) taken.add(t);
+
+  const periodic: number[] = [];
+  for (const shot of shots) {
+    if (shot.asset_id !== asset.id || shot.end_ms - shot.start_ms <= OCR_LONG_SHOT_MS) continue;
+    for (let t = shot.start_ms + OCR_PERIOD_MS; t < shot.end_ms; t += OCR_PERIOD_MS) {
+      if (still.some((span) => t >= span.start && t < span.end)) continue;
+      if (near(t, OCR_PERIOD_MS / 2)) continue;
+      periodic.push(t);
+      taken.add(t);
+    }
+  }
+
+  // The cap, spent on what matters most first: a change of picture, then the
+  // net under a long still stretch, then the long moving shot.
+  let budget = MAX_EXTRA_OCR_READS;
+  const extra: number[] = [];
+  for (const group of [unique(changes), heldKept, unique(periodic)]) {
+    const chosen = spread(group, budget);
+    extra.push(...chosen);
+    budget -= chosen.length;
+  }
+  return { kept: unique([...perShot.kept, ...extra]), dropped: perShot.dropped };
+}
+
+/** Sorted, without repeats. */
+function unique(values: readonly number[]): number[] {
+  return [...new Set(values)].sort((a, b) => a - b);
+}
+
+/** At most `count` of `values`, evenly spaced through them, first and last kept. */
+function spread(values: readonly number[], count: number): number[] {
+  if (values.length <= count) return [...values];
+  if (count <= 0) return [];
+  if (count === 1) return [values[0]!];
+  return unique(
+    Array.from(
+      { length: count },
+      (_, i) => values[Math.round((i * (values.length - 1)) / (count - 1))]!,
+    ),
+  );
+}
+
+/**
+ * When text read at one moment stops being on screen.
+ *
+ * The worker says a second after the read, having no way to know; where the
+ * motion analysis saw the picture change sooner, the text went with it. A read
+ * half a second before a slide changed otherwise claimed the next slide's first
+ * half second, and every event after the first was described with the text of
+ * the slide before it.
+ */
+export function readUntil(
+  read: { start_ms: number; end_ms: number },
+  still: readonly { start: number; end: number }[],
+): number {
+  const end = Math.max(read.end_ms, read.start_ms + 1);
+  const span = still.find((s) => read.start_ms >= s.start && read.start_ms < s.end);
+  return span ? Math.max(read.start_ms + 1, Math.min(end, span.end)) : end;
+}
+
+/** One asset's still stretches, merged, in order. */
+function stillSpansOf(
+  videoEvents: readonly Pick<VideoEvent, 'asset_id' | 'start_ms' | 'end_ms' | 'event_type'>[],
+  assetId: string,
+): { start: number; end: number }[] {
+  const spans = videoEvents
+    .filter((e) => e.asset_id === assetId && e.event_type === 'static' && e.end_ms > e.start_ms)
+    .map((e) => ({ start: e.start_ms, end: e.end_ms }))
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+  const out: { start: number; end: number }[] = [];
+  for (const span of spans) {
+    const previous = out.at(-1);
+    if (previous && span.start <= previous.end) previous.end = Math.max(previous.end, span.end);
+    else out.push({ ...span });
+  }
+  return out;
+}
+
+/** One asset's still, silent spans, each cut into equal windows no longer than the read interval. */
+function quietWindows(spans: readonly InactiveSpan[], assetId: string): InactiveSpan[] {
+  return spans
+    .filter((span) => span.asset_id === assetId)
+    .flatMap((span) => {
+      const length = span.end_ms - span.start_ms;
+      const pieces = Math.max(1, Math.ceil(length / OCR_QUIET_READ_EVERY_MS));
+      return Array.from({ length: pieces }, (_, i) => ({
+        asset_id: assetId,
+        start_ms: span.start_ms + Math.round((i * length) / pieces),
+        end_ms: span.start_ms + Math.round(((i + 1) * length) / pieces),
+      }));
+    });
 }
 
 function representativeFrames(shots: readonly Shot[], assetId: string): number[] {
