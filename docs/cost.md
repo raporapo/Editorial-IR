@@ -188,8 +188,10 @@ it never costs a moment.
   half a second more allowed) is described and judged by the rules instead of
   the base models, and is never sent for a closer look. Judgement is the large
   half: 1,564 input tokens per event in the table above.
-- Frames for a closer look at any other event, and OCR reads, are taken once
-  per still span rather than once per sample inside it.
+- Frames for a closer look at any other event are taken once per still span
+  rather than once per sample inside it; OCR reads once per ten seconds of it
+  (see [what it reads](inputs.md#text-on-screen)), where they were once per span
+  however long.
 - Frame vectors are **not** thinned. Segmentation reads one per shot, and
   thinning them would move event boundaries — the one thing this may never do.
 - An event the user has annotated is always asked about, however still it is.

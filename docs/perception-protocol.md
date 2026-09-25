@@ -100,6 +100,12 @@ every JPEG, and that 25 once became a 30 fps project's sequence rate.
   made a constant-rate recording "variable".
 - `audio_streams` lists every audio stream; `index` is the position among audio
   streams, what `-map 0:a:<index>` means. Empty is "this file has no sound".
+- `creation_time` is the capture time as written, unparsed:
+  `com.apple.quicktime.creationdate` when there is one (it carries the offset
+  and survives a trim), else `creation_time`, else `date`. `start_timecode` is
+  the first frame's SMPTE timecode, from the picture stream, a `tmcd` track or
+  the container, with `;` for drop-frame. Tags are matched whatever their case.
+  [What it reads](inputs.md) has what ingest makes of both.
 
 **`prepare`** reads the file's streams itself and makes each derivative on its
 own: one that fails is reported in `failed` and the others are still made — a
