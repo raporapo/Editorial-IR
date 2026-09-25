@@ -7834,20 +7834,23 @@
         "creation_time": {
           "$ref": "#/$defs/__schema11"
         },
-        "audio_streams": {
+        "start_timecode": {
           "$ref": "#/$defs/__schema12"
         },
-        "avg_fps_num": {
+        "audio_streams": {
           "$ref": "#/$defs/__schema13"
         },
-        "avg_fps_den": {
+        "avg_fps_num": {
           "$ref": "#/$defs/__schema14"
         },
-        "variable_frame_rate": {
+        "avg_fps_den": {
           "$ref": "#/$defs/__schema15"
         },
-        "metadata": {
+        "variable_frame_rate": {
           "$ref": "#/$defs/__schema16"
+        },
+        "metadata": {
+          "$ref": "#/$defs/__schema17"
         }
       },
       "required": [
@@ -7982,6 +7985,12 @@
           ]
         },
         "__schema12": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "__schema13": {
           "anyOf": [
             {
               "type": "array",
@@ -8047,7 +8056,7 @@
             }
           ]
         },
-        "__schema13": {
+        "__schema14": {
           "anyOf": [
             {
               "type": "integer",
@@ -8059,7 +8068,7 @@
             }
           ]
         },
-        "__schema14": {
+        "__schema15": {
           "anyOf": [
             {
               "type": "integer",
@@ -8071,13 +8080,13 @@
             }
           ]
         },
-        "__schema15": {
+        "__schema16": {
           "type": [
             "boolean",
             "null"
           ]
         },
-        "__schema16": {
+        "__schema17": {
           "default": {},
           "type": "object",
           "propertyNames": {

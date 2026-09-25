@@ -1,5 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +16,7 @@ import {
   FfprobeMediaProbe,
   ScriptedCommandRunner,
   audioArgs,
+  captureTag,
   chooseAudioStream,
   createLocalSuite,
   frameTimestampsIn,
@@ -17,7 +25,10 @@ import {
   proxyArgs,
   proxyFileName,
   proxyFrameRate,
+  smpteTimecode,
   speechOf,
+  startTimecode,
+  tagValue,
   toProbeResult,
   type CommandResult,
   type FfprobeOutput,
@@ -832,3 +843,71 @@ function writeWav(path: string, samples: number[]): string {
   writeFileSync(path, Buffer.concat([header, data]));
   return path;
 }
+
+/* --- capture time and timecode ------------------------------------------------ */
+
+describe('what a container says about when and where it starts', () => {
+  // The same file is read by the Python probe's tests: an asset must not change
+  // because the other runtime happened to be installed.
+  const shared = JSON.parse(
+    readFileSync(
+      fileURLToPath(
+        new URL('../../../services/perception/tests/data/probe_cases.json', import.meta.url),
+      ),
+      'utf8',
+    ),
+  ) as {
+    cases: { name: string; ffprobe: FfprobeOutput; expected: Record<string, unknown> }[];
+  };
+
+  for (const { name, ffprobe, expected } of shared.cases) {
+    it(`reads ${name} as the Python probe does`, () => {
+      const result = toProbeResult(ffprobe) as Record<string, unknown>;
+      expect({
+        duration_ms: result.duration_ms,
+        ...(result.creation_time === undefined ? {} : { creation_time: result.creation_time }),
+        ...(result.start_timecode === undefined ? {} : { start_timecode: result.start_timecode }),
+      }).toEqual(expected);
+    });
+  }
+
+  it("prefers Apple's creationdate, which a trim on the phone does not rewrite", () => {
+    expect(
+      captureTag({
+        creation_time: '2026-05-18T00:00:00.000000Z',
+        'com.apple.quicktime.creationdate': '2026-05-17T18:00:00+0900',
+      }),
+    ).toBe('2026-05-17T18:00:00+0900');
+    expect(captureTag({ DATE: '2026' })).toBe('2026');
+  });
+
+  it('takes the picture stream timecode before a timecode track, and either before the container', () => {
+    expect(
+      startTimecode(
+        { codec_type: 'video', tags: { timecode: '01:00:00:00' } },
+        [{ codec_type: 'data', tags: { timecode: '02:00:00:00' } }],
+        { timecode: '03:00:00:00' },
+      ),
+    ).toBe('01:00:00:00');
+    expect(
+      startTimecode(
+        { codec_type: 'video' },
+        [{ codec_type: 'data', tags: { timecode: '02:00:00:00' } }],
+        { timecode: '03:00:00:00' },
+      ),
+    ).toBe('02:00:00:00');
+  });
+
+  it('keeps only what is a timecode, with ; for drop-frame', () => {
+    expect(smpteTimecode('01:00:00;00')).toBe('01:00:00;00');
+    expect(smpteTimecode('1:00:00,00')).toBe('01:00:00;00');
+    expect(smpteTimecode('A001C003')).toBeUndefined();
+    expect(smpteTimecode('10:61:00:00')).toBeUndefined();
+  });
+
+  it('finds a tag whatever its case, the exact spelling first', () => {
+    expect(tagValue({ TIMECODE: '03:00:00:00' }, 'timecode')).toBe('03:00:00:00');
+    expect(tagValue({ Timecode: 'b', timecode: 'a' }, 'timecode')).toBe('a');
+    expect(tagValue({ Timecode: 'b', TIMECODE: 'c' }, 'timecode')).toBe('c');
+  });
+});

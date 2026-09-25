@@ -354,7 +354,18 @@ export const ProbeResult = obj({
   container: jsonOptional(z.string()),
   bit_rate: jsonOptional(z.int().min(0)),
   rotation: jsonOptional(z.int()),
+  /**
+   * The capture time as the container wrote it, unparsed:
+   * `com.apple.quicktime.creationdate` when there is one, since it carries the
+   * offset, and otherwise `creation_time`, and otherwise `date`.
+   */
   creation_time: jsonOptional(z.string()),
+  /**
+   * The first frame's SMPTE timecode, `HH:MM:SS:FF` or `HH:MM:SS;FF` for
+   * drop-frame: from the picture stream, else a timecode track (`tmcd`), else
+   * the container. Anything else a tag holds is not a timecode and is left out.
+   */
+  start_timecode: jsonOptional(z.string()),
   /**
    * Every audio stream, in container order. Empty for a file with none, which
    * is how "no sound" is said rather than left to a missing `audio_codec`.
