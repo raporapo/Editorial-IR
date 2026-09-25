@@ -231,6 +231,15 @@ happened: still, silent footage was **found**; the picture was measured and
 **none was found**; it was **not measured** (no video had its picture analysed);
 or the mask was **off**.
 
+Switching it off changes which models are asked and nothing else. The still,
+silent spans are measured either way, and what the events and the judgement read
+from them — `observed.inactive_ratio`, which skill rules test, and the fact that
+two such stretches show the same nothing — is the same with the mask on or off.
+Where the rules answer in both cases (offline), the cut is identical. It was not:
+the spans were not measured at all with the mask off, and the integration sweep
+found a camera left running cut to two clips with the mask on and six with it
+off. `tests/activity-mask-follow-ups.test.ts` holds the two cuts equal.
+
 ### Screen recordings
 
 A screen has no sensor grain, and what changes on it is small. Measured through

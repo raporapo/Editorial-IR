@@ -1,5 +1,6 @@
 import { basename } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { planEdit } from '@editorial-ir/agent';
 import { compileProject } from '@editorial-ir/core';
 import { HeuristicDecisionBackend, type DecisionBackendIdentity } from '@editorial-ir/decision';
 import {
@@ -17,6 +18,7 @@ import type {
   TranscribeParams,
   TranscribeResult,
 } from '@editorial-ir/contracts';
+import { SkillRegistry } from '@editorial-ir/skills';
 import { exampleSuite, makeExampleProject } from './support/project.js';
 
 /**
@@ -203,6 +205,40 @@ describe('switched off', () => {
     });
     expect(context.calls).toBeGreaterThan(maskedContext.calls);
   }, 60_000);
+
+  it('changes which models are asked, never the cut', async () => {
+    // Offline, where the rules answer either way: the sweep found the cut of a
+    // camera left running went from two clips to six when the saving was
+    // switched off, because the still, silent spans were not measured at all
+    // then, and the judgement and the skill rules read them.
+    const cut = async (skipInactive: boolean) => {
+      const store = await makeExampleProject();
+      const { ir } = await compileProject({
+        store,
+        suite: mostlyQuiet(exampleSuite()),
+        decision: new HeuristicDecisionBackend(),
+        skipInactive,
+      });
+      const plan = planEdit({
+        ir,
+        skill: SkillRegistry.withBuiltIns().resolve('travel-vlog'),
+        targetDurationMs: 60_000,
+      });
+      return {
+        observed: ir.events.map((event) => event.observed.inactive_ratio ?? 0),
+        judged: ir.editorial.map((entry) => entry.current.metrics),
+        clips: plan.tracks.video.map((op) => [
+          op.source_asset_id,
+          op.source_in_ms,
+          op.source_out_ms,
+        ]),
+      };
+    };
+    const on = await cut(true);
+    const off = await cut(false);
+    expect(on.observed.some((ratio) => ratio > 0)).toBe(true);
+    expect(off).toEqual(on);
+  }, 120_000);
 
   it('never reuses observations made with the other setting', async () => {
     // OCR thinned inside still spans is baked into stored observations.

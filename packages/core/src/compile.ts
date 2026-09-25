@@ -304,7 +304,10 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   // reused analysis gets exactly the mask a fresh one would, and a change to the
   // rule never needs a re-analysis. Read only after segmentation has cut the
   // events: it decides where not to spend, never where anything begins or ends.
-  const inactive = skipInactive ? inactiveSpans(heard, assets, { materials, companions }) : [];
+  // Measured whether or not the saving is on: `--no-skip-inactive` decides
+  // which models are asked, never what the events say about themselves or how
+  // they are judged, so the cut is the same either way.
+  const inactive = inactiveSpans(heard, assets, { materials, companions });
 
   // ---- segmentation --------------------------------------------------------
   options.onProgress?.('segment', 'finding events', 0, 1);
@@ -342,6 +345,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     now,
     cache: store.cache,
     inactive,
+    skipQuiet: skipInactive,
     ...(options.frameFps === undefined ? {} : { frameFps: options.frameFps }),
     ...(options.onProgress
       ? { onProgress: (stage, done, total) => options.onProgress?.(stage, '', done, total) }
@@ -448,7 +452,9 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     budget,
     cache: store.cache,
     similarities,
-    quietEvents: built.savings.quietEvents,
+    // Spared the judge only when the saving is on. Which events are quiet is
+    // the same either way (`measuredNothing` above reads it).
+    quietEvents: skipInactive ? built.savings.quietEvents : [],
     ...(options.onProgress
       ? { onProgress: (stage, done, total) => options.onProgress?.(stage, '', done, total) }
       : {}),
@@ -663,7 +669,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   // was none, so an IR of footage with no such stretch is unchanged by all this.
   const inactiveMs = totalInactiveMs(inactive);
   const savings: AnalysisSavings | undefined =
-    inactiveMs > 0
+    skipInactive && inactiveMs > 0
       ? {
           inactive_ms: inactiveMs,
           describe_calls_skipped: built.savings.describeCallsSkipped,

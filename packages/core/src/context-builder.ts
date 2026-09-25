@@ -79,6 +79,15 @@ export interface BuildEventsOptions {
    * boundary and no time value depends on it — the events are already cut.
    */
   inactive?: readonly InactiveSpan[];
+  /**
+   * False asks the models about the quiet events too (`--no-skip-inactive`).
+   *
+   * Only the asking. The spans are a measurement, and what the events and the
+   * judgement read from them — `inactive_ratio`, which events are quiet — is
+   * the same either way: turning the saving off must not change the cut, or
+   * the saving was never only a saving.
+   */
+  skipQuiet?: boolean;
 
   onProgress?: (stage: string, done: number, total: number) => void;
   /**
@@ -220,6 +229,9 @@ export async function buildSemanticEvents(
     ).some((annotation) => annotation.target.kind !== 'project');
     if (!pointedAt) quiet.add(skeleton.id);
   }
+  // The quiet events the models are not asked about: all of them, unless the
+  // saving is switched off.
+  const spared = options.skipQuiet === false ? new Set<string>() : quiet;
   let describeCallsSkipped = 0;
   const framesSkipped = { count: 0 };
   // Prompt sizes and the tokens they measured, which is what a call not made is
@@ -262,10 +274,10 @@ export async function buildSemanticEvents(
     // were counted as described, which diluted a dead model's failures below
     // the line the tier is drawn at, and they sat between the model and the
     // events it had not yet been asked about when it gave up.
-    if (rules && quiet.size > 0) {
+    if (rules && spared.size > 0) {
       const rulesRun = options.runs.fromIdentity('context', rules.identity);
       for (const [index, skeleton] of skeletons.entries()) {
-        if (!quiet.has(skeleton.id)) continue;
+        if (!spared.has(skeleton.id)) continue;
         options.onProgress?.('describe', describing++, skeletons.length);
         const params = describeParams(skeleton, skeletons, index, options, {
           includeFrames: false,
@@ -288,7 +300,7 @@ export async function buildSemanticEvents(
         describeCallsSkipped++;
         skippedSizes.push(promptChars(stableParams(params)));
       }
-      describeAsked = skeletons.length - quiet.size;
+      describeAsked = skeletons.length - spared.size;
     }
 
     // What `--budget` was documented to bound and did not: `spend` was called
@@ -298,7 +310,7 @@ export async function buildSemanticEvents(
     let budgetReached = false;
     let firstUnpaid: string | undefined;
     for (const [index, skeleton] of skeletons.entries()) {
-      if (rules && quiet.has(skeleton.id)) continue;
+      if (rules && spared.has(skeleton.id)) continue;
       options.onProgress?.('describe', describing++, skeletons.length);
       const params = describeParams(skeleton, skeletons, index, options, { includeFrames: false });
       const key = describeKey(model, params);
@@ -396,7 +408,7 @@ export async function buildSemanticEvents(
         ),
         costUsd: costPerEvent,
       })),
-      quiet,
+      spared,
       withinBudget(options.escalation ?? {}, options.budget),
     );
     limitedBy = decision.limitedBy;
@@ -714,7 +726,7 @@ function framesFor(
   // Two frames of the same still, silent stretch are one frame sent twice.
   const { kept: points, dropped } = thinTimestamps(
     all,
-    options.inactive ?? [],
+    options.skipQuiet === false ? [] : (options.inactive ?? []),
     skeleton.draft.asset_id,
   );
   if (skipped) skipped.count += dropped;
