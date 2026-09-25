@@ -2,14 +2,28 @@ import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   AdapterCapabilities,
-  operationTimelineDuration,
-  operationsInOrder,
   type ApplyResult,
   type EditPlan,
-  type VideoOperation,
+  type MediaAsset,
 } from '@editorial-ir/contracts';
 import type { ApplyRequest, EditorAdapter } from './types.js';
-import { msToFrames, negotiate, resolveAssetPath, toFileUrl } from './types.js';
+import { negotiate, resolveAssetPath, toFileUrl } from './types.js';
+import {
+  assetById,
+  bedSpan,
+  countedRate,
+  layOnGrid,
+  mediaFramesOf,
+  pictureOf,
+  soundOf,
+  streamOf,
+  transitionsOf,
+  type ClipSound,
+  type FrameRate,
+  type GridSpan,
+  type PlacedTransition,
+} from './timeline.js';
+import { dbToGain, escapeXml } from './xml.js';
 
 /**
  * Premiere Pro, through Final Cut Pro 7 XML.
@@ -32,8 +46,9 @@ export const PREMIERE_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.pa
   output_extensions: ['.xml'],
   text: false,
   captions: false,
+  markers: true,
   basic_transition: true,
-  transition_types: ['cross_dissolve', 'dip_to_black', 'dip_to_white'],
+  transition_types: ['cross_dissolve', 'dip_to_black', 'dip_to_white', 'fade_in', 'fade_out'],
   keyframes: false,
   masking: false,
   nested_sequence: false,
@@ -47,7 +62,8 @@ export const PREMIERE_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.pa
   notes: [
     'Final Cut Pro 7 XML (xmeml v4), which Premiere imports as a sequence.',
     'Everything is measured in frames at the sequence rate; NTSC rates are written as timebase plus an ntsc flag.',
-    'Text and captions are not written: they belong to a live transport, not to this format.',
+    'Stills are still-frame clipitems; sound-only files are audio clipitems with no picture.',
+    'Chapters are sequence markers. Text and captions are not written: write captions with --editor srt.',
   ],
 });
 
@@ -56,7 +72,7 @@ export class PremiereAdapter implements EditorAdapter {
 
   async apply(request: ApplyRequest): Promise<ApplyResult> {
     const startedAt = Date.now();
-    const { plan, downgrades } = negotiate(request.plan, this.capabilities);
+    const { plan, downgrades } = negotiate(request.plan, this.capabilities, request.ir.assets);
     const warnings: string[] = [];
 
     const xml = buildFcpXml(plan, request, warnings);
@@ -82,63 +98,209 @@ export class PremiereAdapter implements EditorAdapter {
   }
 }
 
+/**
+ * The rate an xmeml can say: a whole timebase, slowed by 1000/1001 when the
+ * NTSC flag is set, and nothing else. See `countedRate`.
+ */
+export function xmemlRate(
+  num: number,
+  den: number,
+  warnings: string[] = [],
+): { timebase: number; ntsc: boolean; rate: FrameRate } {
+  return countedRate(num, den, 'FCP7 XML', warnings);
+}
+
 /** Exported so the XML can be checked without touching the filesystem. */
 export function buildFcpXml(
   plan: EditPlan,
   request: ApplyRequest,
   warnings: string[] = [],
 ): string {
-  const { frame_rate_num: rateNum, frame_rate_den: rateDen } = plan.sequence;
-  // NTSC rates are written as the rounded timebase plus a flag, which is how
-  // this format has always represented 29.97 and 23.976.
-  const ntsc = rateDen !== 1;
-  const timebase = Math.round(rateNum / rateDen);
-  const frames = (ms: number): number => msToFrames(ms, rateNum, rateDen);
-
-  const operations = operationsInOrder(plan);
-  const sequenceFrames = frames(
-    operations.reduce(
-      (end, operation) =>
-        Math.max(end, operation.timeline_start_ms + operationTimelineDuration(operation)),
-      0,
-    ),
+  const { timebase, ntsc, rate } = xmemlRate(
+    plan.sequence.frame_rate_num,
+    plan.sequence.frame_rate_den,
+    warnings,
   );
+  const grid = layOnGrid(plan, rate);
+  const frames = grid.frames;
+  const assets = request.ir.assets;
+  const rateXml = (indent: number): string => rateElement(timebase, ntsc, indent);
 
-  // One <file> definition per asset; later clips reference it by id, which is
-  // what stops a fifty-clip sequence from declaring the same media fifty times
-  // and importing it as fifty master clips.
+  /**
+   * How long each still's media is, and where its clips start in it.
+   *
+   * A photograph has no length, and a file declared zero frames long refused
+   * every dissolve that touched it as "not enough footage". Each still is given
+   * three times its longest use, and every clip of it starts one use-length in,
+   * so there is always a whole clip's worth of handle on both sides — more than
+   * any dissolve can take, since a dissolve never runs past the far end of the
+   * clip.
+   */
+  const stillUse = new Map<string, number>();
+  for (const spans of grid.tracks.values()) {
+    for (const span of spans) {
+      const asset = assetById(assets, span.operation.source_asset_id);
+      if (asset && pictureOf(asset) === 'still') {
+        stillUse.set(asset.id, Math.max(stillUse.get(asset.id) ?? 0, span.length));
+      }
+    }
+  }
+  const sourceRange = (asset: MediaAsset, span: GridSpan): { in: number; out: number } => {
+    const use = stillUse.get(asset.id);
+    return use === undefined ? { in: span.in, out: span.out } : { in: use, out: use + span.length };
+  };
+  const mediaLength = (asset: MediaAsset): number => {
+    const use = stillUse.get(asset.id);
+    return use === undefined ? frames(asset.duration_ms) : use * 3;
+  };
+
+  // One <file> definition per asset, at its first appearance in the document;
+  // every later clip references it by id. That is what stops a fifty-clip
+  // sequence from declaring the same media fifty times and importing it as fifty
+  // master clips — and a sound file used only as sound is defined where it is
+  // first used, in the audio tracks, rather than never.
   const fileIds = new Map<string, string>();
-  const lines: string[] = [];
+  const fileElement = (asset: MediaAsset, path: string, indent: number): string[] => {
+    const pad = ' '.repeat(indent);
+    const existing = fileIds.get(asset.id);
+    if (existing) return [`${pad}<file id="${existing}"/>`];
+    const fileId = `file-${fileIds.size + 1}`;
+    fileIds.set(asset.id, fileId);
+    const out = [
+      `${pad}<file id="${fileId}">`,
+      `${pad}  <name>${escapeXml(asset.file_name)}</name>`,
+      `${pad}  <pathurl>${escapeXml(toFileUrl(path))}</pathurl>`,
+      rateXml(indent + 2),
+      `${pad}  <duration>${mediaLength(asset)}</duration>`,
+      `${pad}  <media>`,
+    ];
+    const picture = pictureOf(asset);
+    if (picture !== 'none') {
+      out.push(`${pad}    <video>`);
+      if (picture === 'still') out.push(`${pad}      <stillframe>TRUE</stillframe>`);
+      out.push(
+        `${pad}      <samplecharacteristics>`,
+        `${pad}        <width>${asset.width ?? plan.sequence.width}</width>`,
+        `${pad}        <height>${asset.height ?? plan.sequence.height}</height>`,
+        `${pad}      </samplecharacteristics>`,
+        `${pad}    </video>`,
+      );
+    }
+    // One <audio> per stream of the file, in order, each with its own channel
+    // count: a sourcetrack's trackindex counts channels across them.
+    for (const stream of audioStreamsOf(asset)) {
+      out.push(`${pad}    <audio>`);
+      if (stream.sampleRate) {
+        out.push(
+          `${pad}      <samplecharacteristics>`,
+          `${pad}        <samplerate>${stream.sampleRate}</samplerate>`,
+          `${pad}      </samplecharacteristics>`,
+        );
+      }
+      out.push(`${pad}      <channelcount>${stream.channels}</channelcount>`, `${pad}    </audio>`);
+    }
+    out.push(`${pad}  </media>`, `${pad}</file>`);
+    return out;
+  };
 
+  const lines: string[] = [];
   lines.push('<?xml version="1.0" encoding="UTF-8"?>');
   lines.push('<!DOCTYPE xmeml>');
   lines.push('<xmeml version="4">');
   lines.push('  <sequence id="sequence-1">');
   lines.push(`    <name>${escapeXml(plan.sequence.name)}</name>`);
-  lines.push(`    <duration>${sequenceFrames}</duration>`);
-  lines.push(rateElement(timebase, ntsc, 4));
+  lines.push(`    <duration>${grid.length}</duration>`);
+  lines.push(rateXml(4));
+
+  // Chapters, where an editor looks for them: on the sequence's own ruler.
+  for (const marker of plan.markers) {
+    lines.push('    <marker>');
+    lines.push(`      <name>${escapeXml(marker.name)}</name>`);
+    lines.push(`      <comment>${marker.kind}</comment>`);
+    lines.push(`      <in>${frames(marker.timeline_ms)}</in>`);
+    lines.push('      <out>-1</out>');
+    lines.push('    </marker>');
+  }
+
   lines.push('    <media>');
   lines.push('      <video>');
   lines.push('        <format>');
   lines.push('          <samplecharacteristics>');
-  lines.push(rateElement(timebase, ntsc, 12));
+  lines.push(rateXml(12));
   lines.push(`            <width>${plan.sequence.width}</width>`);
   lines.push(`            <height>${plan.sequence.height}</height>`);
   lines.push('            <pixelaspectratio>square</pixelaspectratio>');
   lines.push('          </samplecharacteristics>');
   lines.push('        </format>');
 
-  const tracks = new Map<number, typeof operations>();
-  for (const operation of operations) {
-    const list = tracks.get(operation.track) ?? [];
-    list.push(operation);
-    tracks.set(operation.track, list);
+  // ---- who links to whom -----------------------------------------------------
+  // FCP7 XML links picture and sound by `linkclipref`: every member of a linked
+  // clip names every member, and the editor sees them as one clip that can
+  // still be unlinked. The ids are decided before anything is written, because
+  // the picture is written before the sound it names.
+  //
+  // They are numbered within their own track. Numbering the sound's partner by
+  // its position among *all* clips pointed a V2 clip's sound at a V1 clip id
+  // that did not exist — measured on the worked example's 38-clip cut with one
+  // cutaway added on V2: both its audio clipitems linked `clipitem-1-39`.
+  const pictureIdOf = new Map<string, string>();
+  const soundIdsOf = new Map<string, string[]>();
+  const sounds = new Map<string, ClipSound>();
+  const sourceSpecs = plan.tracks.audio.filter((spec) => spec.type === 'source_audio');
+  const soundTrackCount = new Map<string, number>();
+  for (const [track, spans] of grid.tracks) {
+    for (const [index, span] of spans.entries()) {
+      const asset = assetById(assets, span.operation.source_asset_id);
+      if (!asset || !resolveAssetPath(request, asset.id)) continue;
+      if (pictureOf(asset) !== 'none') {
+        pictureIdOf.set(span.operation.operation_id, `clipitem-${track + 1}-${index + 1}`);
+      }
+      const sound = soundOf(asset, span.operation, warnings);
+      if (!sound) {
+        if (pictureOf(asset) === 'none') {
+          warnings.push(
+            `${span.operation.operation_id} is sound only and does not use its sound; nothing of it was written`,
+          );
+        }
+        continue;
+      }
+      sounds.set(span.operation.operation_id, sound);
+      const ids: string[] = [];
+      for (const spec of sourceSpecs) {
+        const key = `${spec.track}:${track}`;
+        soundTrackCount.set(key, Math.max(soundTrackCount.get(key) ?? 0, sound.channels));
+        for (let channel = 0; channel < sound.channels; channel++) {
+          ids.push(audioClipId(spec.track, track, channel, index));
+        }
+      }
+      soundIdsOf.set(span.operation.operation_id, ids);
+    }
   }
+  const linksOf = (operationId: string): string[] => {
+    const picture = pictureIdOf.get(operationId);
+    return [...(picture ? [picture] : []), ...(soundIdsOf.get(operationId) ?? [])];
+  };
 
-  for (const [trackIndex, trackOperations] of [...tracks.entries()].sort((a, b) => a[0] - b[0])) {
+  const mediaFrames = mediaFramesOf(assets, frames);
+
+  for (const spans of grid.tracks.values()) {
+    const pictured = spans.filter((span) => pictureIdOf.has(span.operation.operation_id));
+    const placed = transitionsOf(pictured, frames, mediaFrames, warnings);
+    const before = new Map<string, PlacedTransition>();
+    const after = new Map<string, PlacedTransition[]>();
+    for (const transition of placed) {
+      if (transition.kind === 'head')
+        before.set(transition.incoming!.operation.operation_id, transition);
+      else {
+        const key = transition.outgoing!.operation.operation_id;
+        after.set(key, [...(after.get(key) ?? []), transition]);
+      }
+    }
+
     lines.push('        <track>');
-    for (const [index, operation] of trackOperations.entries()) {
-      const asset = request.ir.assets.find((a) => a.id === operation.source_asset_id);
+    for (const span of spans) {
+      const operation = span.operation;
+      const asset = assetById(assets, operation.source_asset_id);
       const path = resolveAssetPath(request, operation.source_asset_id);
       if (!asset || !path) {
         warnings.push(
@@ -146,47 +308,25 @@ export function buildFcpXml(
         );
         continue;
       }
+      const clipId = pictureIdOf.get(operation.operation_id);
+      if (!clipId) continue;
+      const still = pictureOf(asset) === 'still';
+      const range = sourceRange(asset, span);
 
-      const clipId = `clipitem-${trackIndex + 1}-${index + 1}`;
-      const span = spanOf(operation, trackOperations[index + 1], frames);
-      const { start: timelineStart, end: timelineEnd, in: sourceIn, out: sourceOut } = span;
+      const head = before.get(operation.operation_id);
+      if (head) lines.push(...transitionItem(head, rateXml));
 
       lines.push(`          <clipitem id="${clipId}">`);
       lines.push(`            <name>${escapeXml(asset.file_name)}</name>`);
-      lines.push(`            <duration>${frames(asset.duration_ms)}</duration>`);
-      lines.push(rateElement(timebase, ntsc, 12));
-      lines.push(`            <start>${timelineStart}</start>`);
-      lines.push(`            <end>${timelineEnd}</end>`);
-      lines.push(`            <in>${sourceIn}</in>`);
-      lines.push(`            <out>${sourceOut}</out>`);
+      lines.push(`            <duration>${mediaLength(asset)}</duration>`);
+      lines.push(rateXml(12));
+      lines.push(`            <start>${span.start}</start>`);
+      lines.push(`            <end>${span.end}</end>`);
+      lines.push(`            <in>${range.in}</in>`);
+      lines.push(`            <out>${range.out}</out>`);
       lines.push('            <enabled>TRUE</enabled>');
-
-      const existing = fileIds.get(asset.id);
-      if (existing) {
-        lines.push(`            <file id="${existing}"/>`);
-      } else {
-        const fileId = `file-${fileIds.size + 1}`;
-        fileIds.set(asset.id, fileId);
-        lines.push(`            <file id="${fileId}">`);
-        lines.push(`              <name>${escapeXml(asset.file_name)}</name>`);
-        lines.push(`              <pathurl>${escapeXml(toFileUrl(path))}</pathurl>`);
-        lines.push(rateElement(timebase, ntsc, 14));
-        lines.push(`              <duration>${frames(asset.duration_ms)}</duration>`);
-        lines.push('              <media>');
-        lines.push('                <video>');
-        lines.push('                  <samplecharacteristics>');
-        lines.push(`                    <width>${asset.width ?? plan.sequence.width}</width>`);
-        lines.push(`                    <height>${asset.height ?? plan.sequence.height}</height>`);
-        lines.push('                  </samplecharacteristics>');
-        lines.push('                </video>');
-        if (asset.audio_channels && asset.audio_channels > 0) {
-          lines.push('                <audio>');
-          lines.push(`                  <channelcount>${asset.audio_channels}</channelcount>`);
-          lines.push('                </audio>');
-        }
-        lines.push('              </media>');
-        lines.push('            </file>');
-      }
+      if (still) lines.push('            <stillframe>TRUE</stillframe>');
+      lines.push(...fileElement(asset, path, 12));
 
       // Why this clip is here, carried into the project so a human opening the
       // sequence sees the reasoning rather than a wall of unexplained cuts.
@@ -199,24 +339,20 @@ export function buildFcpXml(
         );
         lines.push('            </comments>');
       }
-
+      if (soundIdsOf.has(operation.operation_id)) {
+        for (const ref of linksOf(operation.operation_id)) {
+          lines.push('            <link>');
+          lines.push(`              <linkclipref>${ref}</linkclipref>`);
+          lines.push('            </link>');
+        }
+      }
       lines.push('          </clipitem>');
 
-      // The transition into the *next* clip, written between the two clipitems
-      // it joins, which is where this format expects it.
-      const next = trackOperations[index + 1];
-      if (next) {
-        const item = transitionItem(
-          operation,
-          next,
-          span,
-          request,
-          timebase,
-          ntsc,
-          frames,
-          warnings,
-        );
-        if (item) lines.push(...item);
+      // The transition into the next clip, written between the two clipitems
+      // it joins, which is where this format expects it; a fade out of the
+      // last clip follows it.
+      for (const transition of after.get(operation.operation_id) ?? []) {
+        lines.push(...transitionItem(transition, rateXml));
       }
     }
     lines.push('        </track>');
@@ -226,64 +362,90 @@ export function buildFcpXml(
 
   // ---- audio ---------------------------------------------------------------
   // A cut with no sound is not a rough cut. The plan names which clips carry
-  // their own audio and declares the tracks to lay it on; both were read here
-  // and neither was written, so every sequence imported silent while the
-  // capabilities advertised two audio tracks.
+  // their own audio and declares the tracks to lay it on.
   //
-  // FCP7 XML links picture and sound by `linkclipref`: one video clipitem and
-  // its audio clipitems name each other, and the editor sees them as one clip
-  // that can still be unlinked.
+  // One track per channel of the sound actually used: two for a stereo camera,
+  // one for a mono lavalier. Two were written for everything, so a mono file
+  // imported as a clip whose second channel pointed at nothing.
   lines.push('      <audio>');
   lines.push('        <numOutputChannels>2</numOutputChannels>');
 
-  const sourceAudio = plan.tracks.audio.filter((spec) => spec.type === 'source_audio');
-  if (plan.tracks.audio.some((spec) => spec.type === 'external')) {
-    warnings.push('an external audio bed was asked for; this adapter writes source audio only');
+  for (const spec of sourceSpecs) {
+    for (const [track, spans] of grid.tracks) {
+      const channels = soundTrackCount.get(`${spec.track}:${track}`) ?? 0;
+      for (let channel = 0; channel < channels; channel++) {
+        const written: string[] = [];
+        for (const [index, span] of spans.entries()) {
+          const operation = span.operation;
+          const sound = sounds.get(operation.operation_id);
+          if (!sound || channel >= sound.channels) continue;
+          const asset = assetById(assets, operation.source_asset_id)!;
+          const path = resolveAssetPath(request, asset.id)!;
+          const range = sourceRange(asset, span);
+          written.push(
+            ...audioClipitem({
+              id: audioClipId(spec.track, track, channel, index),
+              asset,
+              file: fileElement(asset, path, 12),
+              start: span.start,
+              end: span.end,
+              in: range.in,
+              out: range.out,
+              duration: mediaLength(asset),
+              trackIndex: sound.channelOffset + channel + 1,
+              gainDb: spec.gain_db,
+              links: linksOf(operation.operation_id),
+              rateXml,
+            }),
+          );
+        }
+        if (written.length === 0) continue;
+        lines.push('        <track>');
+        lines.push(...written);
+        lines.push('        </track>');
+      }
+    }
   }
 
-  // One track per channel of a stereo source, which is what the format expects
-  // and what an editor opening a sequence expects to find under the picture.
-  const AUDIO_CHANNELS = 2;
-
-  for (const spec of sourceAudio) {
-    for (let channel = 0; channel < AUDIO_CHANNELS; channel++) {
-      const written: string[] = [];
-      for (const [index, operation] of operations.entries()) {
-        if (!operation.use_source_audio) continue;
-        const asset = request.ir.assets.find((a) => a.id === operation.source_asset_id);
-        const fileId = fileIds.get(operation.source_asset_id);
-        if (!asset || !fileId) continue;
-
-        const span = spanOf(operation, operations[index + 1], frames);
-        const clipId = `clipitem-a${spec.track + 1}-${channel + 1}-${index + 1}`;
-
-        written.push(`          <clipitem id="${clipId}">`);
-        written.push(`            <name>${escapeXml(asset.file_name)}</name>`);
-        written.push(`            <duration>${frames(asset.duration_ms)}</duration>`);
-        written.push(rateElement(timebase, ntsc, 12));
-        written.push(`            <start>${span.start}</start>`);
-        written.push(`            <end>${span.end}</end>`);
-        written.push(`            <in>${span.in}</in>`);
-        written.push(`            <out>${span.out}</out>`);
-        written.push('            <enabled>TRUE</enabled>');
-        written.push(`            <file id="${fileId}"/>`);
-        written.push('            <sourcetrack>');
-        written.push('              <mediatype>audio</mediatype>');
-        written.push(`              <trackindex>${channel + 1}</trackindex>`);
-        written.push('            </sourcetrack>');
-        // Names the picture this sound belongs to, so the editor links them.
-        written.push('            <link>');
-        written.push(`              <linkclipref>clipitem-1-${index + 1}</linkclipref>`);
-        written.push('            </link>');
-        written.push('            <link>');
-        written.push(`              <linkclipref>${clipId}</linkclipref>`);
-        written.push('            </link>');
-        written.push('          </clipitem>');
-      }
-
-      if (written.length === 0) continue;
+  // An external bed — music, or a separate recorder — laid once across the
+  // sequence at its own level. It was warned about and left out, so a plan
+  // that asked for music exported without it.
+  for (const spec of plan.tracks.audio) {
+    if (spec.type !== 'external') continue;
+    const asset = assetById(assets, spec.asset_id);
+    const path = asset ? resolveAssetPath(request, asset.id) : undefined;
+    const sound = asset ? streamOf(asset, undefined, spec.asset_id, warnings) : undefined;
+    if (!asset || !path || !sound) {
+      warnings.push(`the bed on audio track ${spec.track} (${spec.asset_id}) has no sound to lay`);
+      continue;
+    }
+    const bed = bedSpan(spec, asset, grid.length, frames);
+    if (!bed) {
+      warnings.push(`the bed on audio track ${spec.track} starts after the cut ends; left out`);
+      continue;
+    }
+    const ids = Array.from(
+      { length: sound.channels },
+      (_, c) => `clipitem-b${spec.track + 1}-${c + 1}`,
+    );
+    for (let channel = 0; channel < sound.channels; channel++) {
       lines.push('        <track>');
-      lines.push(...written);
+      lines.push(
+        ...audioClipitem({
+          id: ids[channel]!,
+          asset,
+          file: fileElement(asset, path, 12),
+          start: bed.start,
+          end: bed.start + bed.length,
+          in: bed.in,
+          out: bed.in + bed.length,
+          duration: frames(asset.duration_ms),
+          trackIndex: sound.channelOffset + channel + 1,
+          gainDb: spec.gain_db,
+          links: ids,
+          rateXml,
+        }),
+      );
       lines.push('        </track>');
     }
   }
@@ -296,34 +458,94 @@ export function buildFcpXml(
   return `${lines.join('\n')}\n`;
 }
 
-/**
- * One clip, laid on the frame grid.
- *
- * A sequence is frames, not milliseconds, and three things have to hold at once:
- * a clip's two lengths must agree (`end - start` and `out - in`), no clip may
- * start before the one before it ends, and the cut must not gain gaps the plan
- * did not ask for. Rounding each edge independently from milliseconds satisfies
- * none of them reliably — it made the two lengths differ by a frame on 14 of the
- * 39 clips in the worked example, and fixing that alone pushed one clip's end a
- * frame past the next clip's start.
- *
- * So the length is decided once, on the grid, and the source out is derived from
- * it. Where the next clip starts sooner than this one's rounded length would
- * end, the length gives way: an overlap is a thing a sequence cannot represent,
- * and the importer resolves it by guessing.
- */
-function spanOf(
-  operation: VideoOperation,
-  next: VideoOperation | undefined,
-  frames: (ms: number) => number,
-): { start: number; end: number; in: number; out: number } {
-  const start = frames(operation.timeline_start_ms);
-  const wanted = Math.max(1, frames(operationTimelineDuration(operation)));
-  const nextStart = next ? frames(next.timeline_start_ms) : undefined;
-  const length =
-    nextStart !== undefined && nextStart > start ? Math.min(wanted, nextStart - start) : wanted;
-  const sourceIn = frames(operation.source_in_ms);
-  return { start, end: start + length, in: sourceIn, out: sourceIn + length };
+function audioClipId(
+  specTrack: number,
+  videoTrack: number,
+  channel: number,
+  index: number,
+): string {
+  return `clipitem-a${specTrack + 1}-${videoTrack + 1}-${channel + 1}-${index + 1}`;
+}
+
+function audioClipitem(clip: {
+  id: string;
+  asset: MediaAsset;
+  file: string[];
+  start: number;
+  end: number;
+  in: number;
+  out: number;
+  duration: number;
+  trackIndex: number;
+  gainDb: number;
+  links: string[];
+  rateXml: (indent: number) => string;
+}): string[] {
+  const out = [
+    `          <clipitem id="${clip.id}">`,
+    `            <name>${escapeXml(clip.asset.file_name)}</name>`,
+    `            <duration>${clip.duration}</duration>`,
+    clip.rateXml(12),
+    `            <start>${clip.start}</start>`,
+    `            <end>${clip.end}</end>`,
+    `            <in>${clip.in}</in>`,
+    `            <out>${clip.out}</out>`,
+    '            <enabled>TRUE</enabled>',
+    ...clip.file,
+    '            <sourcetrack>',
+    '              <mediatype>audio</mediatype>',
+    `              <trackindex>${clip.trackIndex}</trackindex>`,
+    '            </sourcetrack>',
+  ];
+  if (clip.gainDb !== 0) {
+    // FCP7 XML writes a level as a linear gain; 1 is unity.
+    out.push(
+      '            <filter>',
+      '              <effect>',
+      '                <name>Audio Levels</name>',
+      '                <effectid>audiolevels</effectid>',
+      '                <effectcategory>audiolevels</effectcategory>',
+      '                <effecttype>audiolevels</effecttype>',
+      '                <mediatype>audio</mediatype>',
+      '                <parameter>',
+      '                  <parameterid>level</parameterid>',
+      '                  <name>Level</name>',
+      '                  <valuemin>0</valuemin>',
+      '                  <valuemax>3.98109</valuemax>',
+      `                  <value>${dbToGain(clip.gainDb)}</value>`,
+      '                </parameter>',
+      '              </effect>',
+      '            </filter>',
+    );
+  }
+  for (const ref of clip.links) {
+    out.push(
+      '            <link>',
+      `              <linkclipref>${ref}</linkclipref>`,
+      '            </link>',
+    );
+  }
+  out.push('          </clipitem>');
+  return out;
+}
+
+/** Each audio stream of a file, in order, with what a file definition says of it. */
+function audioStreamsOf(asset: MediaAsset): { channels: number; sampleRate?: number }[] {
+  const streams = [...(asset.audio_streams ?? [])].sort((a, b) => a.index - b.index);
+  if (streams.length > 0) {
+    return streams.map((stream) => ({
+      channels: stream.channels && stream.channels > 0 ? stream.channels : 2,
+      ...(stream.sample_rate ? { sampleRate: stream.sample_rate } : {}),
+    }));
+  }
+  const first = streamOf(asset, undefined, asset.id);
+  if (!first) return [];
+  return [
+    {
+      channels: first.channels,
+      ...(asset.audio_sample_rate ? { sampleRate: asset.audio_sample_rate } : {}),
+    },
+  ];
 }
 
 /** What each transition type is called inside an FCP7 XML. */
@@ -336,64 +558,45 @@ const TRANSITION_EFFECTS: Record<string, { name: string; category: string }> = {
 };
 
 /**
- * The dissolve between two clips.
+ * One transition, where the track holds it.
  *
- * The capabilities advertised `basic_transition` and three dissolve types, so
- * negotiation let every transition through untouched — and nothing wrote one.
- * A skill asking for a dissolve at a chapter change produced a sequence of hard
- * cuts, with no downgrade recorded to say the request had been dropped.
- *
- * A dissolve is not free: it is made of frames neither clip is using, taken
- * from beyond the outgoing clip's out point and from before the incoming
- * clip's in point. Writing one the media cannot supply is how an FCP7 XML
- * imports with clips in the wrong places, so the length is cut to the handles
- * that exist, and a cut with no handles at all stays a cut and says so.
+ * A join is centred on the cut and made of the handles `transitionsOf` found. A
+ * fade at the head of a track is aligned `start-black`, and one out of the last
+ * clip `end-black`: the clip's own frames going from or to black, which needs no
+ * footage either side and which the format has always been able to say.
  */
-function transitionItem(
-  outgoing: VideoOperation,
-  incoming: VideoOperation,
-  span: { start: number; end: number; in: number; out: number },
-  request: ApplyRequest,
-  timebase: number,
-  ntsc: boolean,
-  frames: (ms: number) => number,
-  warnings: string[],
-): string[] | undefined {
-  const transition = incoming.transition_in ?? outgoing.transition_out;
-  if (!transition || transition.type === 'hard_cut') return undefined;
-  const effect = TRANSITION_EFFECTS[transition.type];
-  if (!effect) return undefined;
+function transitionItem(placed: PlacedTransition, rateXml: (indent: number) => string): string[] {
+  const effect =
+    placed.kind === 'between'
+      ? (TRANSITION_EFFECTS[placed.transition.type] ?? TRANSITION_EFFECTS.cross_dissolve!)
+      : placed.transition.type === 'dip_to_white'
+        ? TRANSITION_EFFECTS.dip_to_white!
+        : TRANSITION_EFFECTS.cross_dissolve!;
 
-  const wanted = frames(transition.duration_ms);
-  if (wanted < 1) return undefined;
-
-  // Handles: what the outgoing clip has left after its out point, and what the
-  // incoming clip has before its in point.
-  const outgoingAsset = request.ir.assets.find((a) => a.id === outgoing.source_asset_id);
-  const incomingAsset = request.ir.assets.find((a) => a.id === incoming.source_asset_id);
-  const after = outgoingAsset ? Math.max(0, frames(outgoingAsset.duration_ms) - span.out) : 0;
-  const before = incomingAsset ? Math.max(0, frames(incoming.source_in_ms)) : 0;
-
-  // Centred, so each side gives half. The shorter handle decides.
-  const half = Math.min(Math.floor(wanted / 2), after, before);
-  if (half < 1) {
-    warnings.push(
-      `${incoming.operation_id} asked for a ${transition.type}, and there is not enough footage ` +
-        'either side of the cut to make one; it stays a hard cut',
-    );
-    return undefined;
+  let start: number;
+  let end: number;
+  let alignment: string;
+  if (placed.kind === 'between') {
+    const cut = placed.outgoing!.end;
+    start = cut - placed.frames;
+    end = cut + placed.frames;
+    alignment = 'center';
+  } else if (placed.kind === 'head') {
+    start = placed.incoming!.start;
+    end = start + placed.frames;
+    alignment = 'start-black';
+  } else {
+    end = placed.outgoing!.end;
+    start = end - placed.frames;
+    alignment = 'end-black';
   }
-
-  const cut = span.end;
-  const start = cut - half;
-  const end = cut + half;
 
   return [
     '          <transitionitem>',
     `            <start>${start}</start>`,
     `            <end>${end}</end>`,
-    '            <alignment>center</alignment>',
-    rateElement(timebase, ntsc, 12),
+    `            <alignment>${alignment}</alignment>`,
+    rateXml(12),
     '            <effect>',
     `              <name>${escapeXml(effect.name)}</name>`,
     `              <effectid>${escapeXml(effect.name)}</effectid>`,
@@ -418,30 +621,4 @@ function rateElement(timebase: number, ntsc: boolean, indent: number): string {
     `${pad}  <ntsc>${ntsc ? 'TRUE' : 'FALSE'}</ntsc>`,
     `${pad}</rate>`,
   ].join('\n');
-}
-
-/**
- * Characters XML 1.0 cannot represent at all.
- *
- * Matching control characters is the whole point here, so the rule that warns
- * about them has nothing useful to say.
- */
-// eslint-disable-next-line no-control-regex
-const UNREPRESENTABLE = new RegExp('[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]', 'g');
-
-/**
- * Escapes text for XML.
- *
- * Not optional: file names and event descriptions in this project are user
- * content, routinely contain ampersands and Japanese punctuation, and one
- * unescaped ampersand makes the whole file unopenable.
- */
-export function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
-    .replace(UNREPRESENTABLE, '');
 }

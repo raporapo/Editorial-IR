@@ -1,0 +1,455 @@
+import { mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  AdapterCapabilities,
+  framesToSmpte,
+  smpteToFrames,
+  supportsDropFrame,
+  type ApplyResult,
+  type EditPlan,
+  type MediaAsset,
+} from '@editorial-ir/contracts';
+import type { ApplyRequest, EditorAdapter } from './types.js';
+import { negotiate, resolveAssetPath, stringOption } from './types.js';
+import {
+  assetById,
+  countedRate,
+  describeTimecodeOrigins,
+  layOnGrid,
+  mediaFramesOf,
+  pictureOf,
+  soundOf,
+  sourceTimecodeOf,
+  transitionsOf,
+  type ClipSound,
+  type GridSpan,
+  type PlacedTransition,
+  type SourceTimecode,
+} from './timeline.js';
+
+/**
+ * CMX 3600 edit decision list.
+ *
+ * The oldest interchange format still in use, and the one every finishing tool
+ * reads: Resolve, Avid, Baselight, a colourist's conform. It is also the most
+ * limited — one picture track, sound only as channels of the same events, no
+ * stills, reel names of eight characters — and those limits are declared here
+ * so that negotiation reports what does not fit instead of this file quietly
+ * holding less than the plan.
+ *
+ * Every source time is the media's own clock: its embedded start timecode where
+ * it has one. A camera or a broadcast master routinely starts at 01:00:00:00,
+ * and a list that counts from zero asks the conform for an hour of frames that
+ * do not exist.
+ */
+export const EDL_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.parse({
+  id: 'edl',
+  name: 'CMX 3600 EDL',
+  mode: 'file',
+  output_extensions: ['.edl'],
+  text: false,
+  captions: false,
+  markers: true,
+  basic_transition: true,
+  transition_types: ['cross_dissolve', 'fade_in', 'fade_out'],
+  keyframes: false,
+  masking: false,
+  nested_sequence: false,
+  speed_change: false,
+  still_images: false,
+  color_adjustment: false,
+  audio_tracks: 1,
+  max_video_tracks: 1,
+  reads_back_timeline: false,
+  renders_preview: false,
+  notes: [
+    'One picture track with its sound as channels of the same events (V, B, AA/V, A, AA), frame-accurate at the sequence rate.',
+    'Drop-frame timecode for 29.97 and 59.94; source timecodes start at each file’s embedded start timecode.',
+    'Reel names are made from file names within eight characters, with the full name in a FROM CLIP NAME comment; chapters are LOC comments.',
+    'No stills, no second video track and no music bed: negotiation reports each one it leaves out.',
+    'Options: record_start (the record timecode of the first frame, e.g. 01:00:00:00; default 00:00:00:00).',
+  ],
+});
+
+export class EdlAdapter implements EditorAdapter {
+  readonly capabilities = EDL_CAPABILITIES;
+
+  async apply(request: ApplyRequest): Promise<ApplyResult> {
+    const startedAt = Date.now();
+    const { plan, downgrades } = negotiate(request.plan, this.capabilities, request.ir.assets);
+    const warnings: string[] = [];
+    const { text, timecodes } = buildEdlDocument(plan, request, warnings);
+
+    const name = request.name ?? 'timeline';
+    mkdirSync(request.outputDir, { recursive: true });
+    const path = join(request.outputDir, `${name}.edl`);
+    writeFileSync(path, text);
+    return {
+      adapter: this.capabilities.id,
+      artifacts: [
+        {
+          path,
+          kind: 'interchange',
+          description: `A CMX 3600 edit list. ${describeTimecodeOrigins(timecodes)}`,
+          byte_size: statSync(path).size,
+        },
+      ],
+      downgrades,
+      warnings,
+      elapsed_ms: Date.now() - startedAt,
+    };
+  }
+}
+
+/** The list as text. */
+export function buildEdl(plan: EditPlan, request: ApplyRequest, warnings: string[] = []): string {
+  return buildEdlDocument(plan, request, warnings).text;
+}
+
+/**
+ * Reel names for every asset, in the order the cut first uses them.
+ *
+ * CMX reels are at most eight characters, and the asset ids this project uses
+ * (`asset_001`) are nine, so a reel is made from the file's own name — the
+ * letters and digits, upper-cased, and when that is too long the first three
+ * (the camera's prefix: IMG, DJI, PXL) and the last five (its counter) — which
+ * is what a conform by reel can be matched against. Two cards both holding a
+ * DJI_0001.MP4 collide, so a later duplicate gives up its last characters to a
+ * number. `BL` and `AX` are reserved: black, and "auxiliary".
+ */
+export function reelNames(assets: readonly MediaAsset[]): Map<string, string> {
+  const used = new Set(['BL', 'AX']);
+  const names = new Map<string, string>();
+  for (const asset of assets) {
+    if (names.has(asset.id)) continue;
+    const stem = asset.file_name.replace(/\.[^.]*$/, '');
+    let base = stem.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (base.length === 0) base = 'REEL';
+    if (base.length > 8) base = `${base.slice(0, 3)}${base.slice(-5)}`;
+    let reel = base;
+    for (let n = 2; used.has(reel); n++) {
+      const suffix = String(n);
+      reel = `${base.slice(0, 8 - suffix.length)}${suffix}`;
+    }
+    used.add(reel);
+    names.set(asset.id, reel);
+  }
+  return names;
+}
+
+interface EdlLine {
+  reel: string;
+  channel: string;
+  /** Undefined for a cut; the dissolve's length in frames otherwise. */
+  dissolve?: number;
+  sourceIn: number;
+  sourceOut: number;
+  recordIn: number;
+  recordOut: number;
+}
+
+interface EdlEvent {
+  lines: EdlLine[];
+  comments: string[];
+  recordIn: number;
+  recordOut: number;
+}
+
+/** The list and the clocks its source times were counted from. */
+export function buildEdlDocument(
+  plan: EditPlan,
+  request: ApplyRequest,
+  warnings: string[] = [],
+): { text: string; timecodes: SourceTimecode[] } {
+  const { num: planNum, den: planDen } = {
+    num: plan.sequence.frame_rate_num,
+    den: plan.sequence.frame_rate_den,
+  };
+  const { rate } = countedRate(planNum, planDen, 'an EDL', warnings);
+  const dropFrame = supportsDropFrame(rate.num, rate.den);
+  const grid = layOnGrid(plan, rate);
+  const assets = request.ir.assets;
+  const tc = (frames: number): string => framesToSmpte(frames, rate.num, rate.den, dropFrame);
+
+  const recordStartText = stringOption(request, 'record_start', '00:00:00:00');
+  const recordStart = smpteToFrames(recordStartText, rate.num, rate.den, dropFrame);
+  if (recordStart === undefined) {
+    warnings.push(
+      `record_start "${recordStartText}" is not a timecode; the list starts at 00:00:00:00`,
+    );
+  }
+  const record = (frames: number): number => (recordStart ?? 0) + frames;
+
+  const spans = [...grid.tracks.values()].flat().sort((a, b) => a.start - b.start);
+  const used = spans
+    .map((span) => assetById(assets, span.operation.source_asset_id))
+    .filter((asset): asset is MediaAsset => asset !== undefined);
+  const reels = reelNames(used);
+
+  // Each file's own clock, converted to the list's rate. A file at another rate
+  // cannot be addressed exactly by a list that counts at one rate: its
+  // timecodes are written at the list's, and a conform by timecode will miss.
+  const timecodes = new Map<string, SourceTimecode>();
+  const clockStart = new Map<string, number>();
+  for (const asset of used) {
+    if (timecodes.has(asset.id)) continue;
+    const clock = sourceTimecodeOf(asset, rate);
+    timecodes.set(asset.id, clock);
+    const sameRate = clock.rate.num * rate.den === rate.num * clock.rate.den;
+    clockStart.set(
+      asset.id,
+      sameRate
+        ? clock.frames
+        : Math.round((clock.frames * clock.rate.den * rate.num) / (clock.rate.num * rate.den)),
+    );
+    if (!sameRate && pictureOf(asset) === 'video') {
+      warnings.push(
+        `${asset.file_name} is ${clock.rate.num}/${clock.rate.den} fps in a ${rate.num}/${rate.den} list; ` +
+          'its source timecodes are counted at the list’s rate, so conform it by clip name rather than timecode',
+      );
+    }
+  }
+
+  interface Described {
+    span: GridSpan;
+    asset: MediaAsset;
+    reel: string;
+    channel: string;
+    sound: ClipSound | undefined;
+    clock: number;
+  }
+  const described: Described[] = [];
+  for (const span of spans) {
+    const asset = assetById(assets, span.operation.source_asset_id);
+    if (!asset || !resolveAssetPath(request, asset.id)) {
+      warnings.push(
+        `${span.operation.operation_id} refers to ${span.operation.source_asset_id}, which has no file`,
+      );
+      continue;
+    }
+    const picture = pictureOf(asset);
+    const sound = soundOf(asset, span.operation, warnings);
+    if (picture === 'still') continue; // negotiation has already said so
+    if (picture === 'none' && !sound) {
+      warnings.push(
+        `${span.operation.operation_id} is sound only and does not use its sound; nothing of it was written`,
+      );
+      continue;
+    }
+    described.push({
+      span,
+      asset,
+      reel: reels.get(asset.id)!,
+      channel: channelField(picture !== 'none', sound),
+      sound,
+      clock: clockStart.get(asset.id) ?? 0,
+    });
+  }
+
+  const pictured = described.filter((d) => pictureOf(d.asset) !== 'none');
+  const placed = transitionsOf(
+    pictured.map((d) => d.span),
+    grid.frames,
+    mediaFramesOf(assets, grid.frames),
+    warnings,
+  );
+  const into = new Map<string, PlacedTransition>();
+  const outOf = new Map<string, PlacedTransition>();
+  for (const transition of placed) {
+    if (transition.kind !== 'tail')
+      into.set(transition.incoming!.operation.operation_id, transition);
+    if (transition.kind !== 'head')
+      outOf.set(transition.outgoing!.operation.operation_id, transition);
+  }
+  const describedById = new Map(described.map((d) => [d.span.operation.operation_id, d]));
+
+  const events: EdlEvent[] = [];
+  for (const d of described) {
+    const id = d.span.operation.operation_id;
+    const incoming = into.get(id);
+    const outgoing = outOf.get(id);
+    let recordIn = d.span.start;
+    let sourceIn = d.span.in;
+    let recordOut = d.span.end;
+    let sourceOut = d.span.out;
+    if (incoming?.kind === 'between') {
+      // A centred dissolve starts half its length before the cut, on footage
+      // from before this clip's in point.
+      recordIn -= incoming.frames;
+      sourceIn -= incoming.frames;
+    }
+    if (outgoing) {
+      recordOut -= outgoing.frames;
+      sourceOut -= outgoing.frames;
+    }
+
+    const own: EdlLine = {
+      reel: d.reel,
+      channel: d.channel,
+      sourceIn: d.clock + sourceIn,
+      sourceOut: d.clock + sourceOut,
+      recordIn: record(recordIn),
+      recordOut: record(recordOut),
+    };
+    const comments = [`* FROM CLIP NAME: ${d.asset.file_name}`];
+    const path = resolveAssetPath(request, d.asset.id);
+    if (path) comments.push(`* SOURCE FILE: ${path}`);
+    if (d.sound && d.sound.streams > 1) {
+      // The list has no way to name a stream; this is for the person conforming.
+      comments.push(`* AUDIO STREAM: ${d.sound.stream + 1} OF ${d.sound.streams}`);
+    }
+
+    if (incoming?.kind === 'between') {
+      const from = describedById.get(incoming.outgoing!.operation.operation_id)!;
+      const at = from.clock + incoming.outgoing!.out - incoming.frames;
+      events.push({
+        lines: [
+          {
+            reel: from.reel,
+            channel: d.channel,
+            sourceIn: at,
+            sourceOut: at,
+            recordIn: record(recordIn),
+            recordOut: record(recordIn),
+          },
+          { ...own, dissolve: incoming.frames * 2 },
+        ],
+        comments: [
+          `* FROM CLIP NAME: ${from.asset.file_name}`,
+          `* TO CLIP NAME: ${d.asset.file_name}`,
+          ...comments.slice(1),
+        ],
+        recordIn: record(recordIn),
+        recordOut: record(recordOut),
+      });
+    } else if (incoming?.kind === 'head') {
+      // A fade in is a dissolve from black.
+      events.push({
+        lines: [
+          { ...blackLine(d.channel), recordIn: record(recordIn), recordOut: record(recordIn) },
+          { ...own, dissolve: incoming.frames },
+        ],
+        comments: [`* TO CLIP NAME: ${d.asset.file_name}`, ...comments.slice(1)],
+        recordIn: record(recordIn),
+        recordOut: record(recordOut),
+      });
+    } else {
+      events.push({
+        lines: [own],
+        comments,
+        recordIn: record(recordIn),
+        recordOut: record(recordOut),
+      });
+    }
+
+    if (outgoing?.kind === 'tail') {
+      // A fade out is a dissolve to black, from where this clip's cut ends.
+      const at = d.clock + d.span.out - outgoing.frames;
+      events.push({
+        lines: [
+          {
+            reel: d.reel,
+            channel: d.channel,
+            sourceIn: at,
+            sourceOut: at,
+            recordIn: record(recordOut),
+            recordOut: record(recordOut),
+          },
+          {
+            ...blackLine(d.channel),
+            dissolve: outgoing.frames,
+            sourceOut: outgoing.frames,
+            recordIn: record(recordOut),
+            recordOut: record(d.span.end),
+          },
+        ],
+        comments: [`* FROM CLIP NAME: ${d.asset.file_name}`],
+        recordIn: record(recordOut),
+        recordOut: record(d.span.end),
+      });
+    }
+  }
+
+  // Chapters as LOC comments under the event they fall in, which is where
+  // Avid-style readers look for them.
+  for (const marker of plan.markers) {
+    const at = record(grid.frames(marker.timeline_ms));
+    const event =
+      events.find((e) => e.recordIn <= at && at < e.recordOut) ??
+      [...events].reverse().find((e) => e.recordIn <= at) ??
+      events[0];
+    if (!event) continue;
+    const name = marker.name.replace(/\s+/g, ' ').trim();
+    event.comments.push(
+      `* LOC: ${tc(at)} ${marker.kind === 'chapter' ? 'GREEN' : 'YELLOW'}  ${name}`,
+    );
+  }
+
+  if (events.length > 999) {
+    warnings.push(
+      `the list has ${events.length} events; CMX 3600 numbers them to 999 and some readers stop there`,
+    );
+  }
+
+  const title = asciiTitle(plan.sequence.name, plan.skill.name);
+  const out: string[] = [
+    `TITLE: ${title}`,
+    `FCM: ${dropFrame ? 'DROP FRAME' : 'NON-DROP FRAME'}`,
+    '',
+  ];
+  for (const [index, event] of events.entries()) {
+    const number = String(index + 1).padStart(3, '0');
+    for (const line of event.lines) {
+      const transition =
+        line.dissolve === undefined ? 'C       ' : `D    ${String(line.dissolve).padStart(3, '0')}`;
+      out.push(
+        `${number}  ${line.reel.padEnd(8)} ${line.channel.padEnd(5)} ${transition} ` +
+          `${tc(line.sourceIn)} ${tc(line.sourceOut)} ${tc(line.recordIn)} ${tc(line.recordOut)}`,
+      );
+    }
+    out.push(...event.comments, '');
+  }
+
+  return { text: `${out.join('\n').trimEnd()}\n`, timecodes: [...timecodes.values()] };
+}
+
+/**
+ * The channel field: which of picture and sound an event carries.
+ *
+ * `B` is picture and one channel of sound, `AA/V` picture and a stereo pair,
+ * and the sound-only forms drop the `V`. A clip whose file has no audio is `V`
+ * — the list used to claim sound for every clip, and a conform then looked for
+ * channels a drone clip never had.
+ */
+function channelField(picture: boolean, sound: ClipSound | undefined): string {
+  if (!sound) return 'V';
+  const stereo = sound.channels >= 2;
+  if (!picture) return stereo ? 'AA' : 'A';
+  return stereo ? 'AA/V' : 'B';
+}
+
+function blackLine(channel: string): EdlLine {
+  return { reel: 'BL', channel, sourceIn: 0, sourceOut: 0, recordIn: 0, recordOut: 0 };
+}
+
+/**
+ * The title, in the characters the format was defined for.
+ *
+ * CMX 3600 is ASCII, and a title line of Japanese is where older readers
+ * choke first. The clip names below keep their own spelling in comments, which
+ * readers skip rather than parse. A name that is mostly not ASCII leaves a
+ * meaningless residue — `大阪1周年旅行 — 180s` became `1 180S` — so it gives
+ * way to the skill's name.
+ */
+function asciiTitle(name: string, skill: string): string {
+  const ascii = (value: string): string =>
+    value
+      .normalize('NFKD')
+      .replace(/[^\x20-\x7E]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+  const title = ascii(name);
+  const letters = title.replace(/[^A-Z]/g, '').length;
+  return (letters >= 3 ? title : ascii(`EDITORIAL IR ${skill}`)).slice(0, 70);
+}

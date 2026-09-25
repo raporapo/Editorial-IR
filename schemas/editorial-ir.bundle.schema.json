@@ -6207,44 +6207,47 @@
         "captions": {
           "$ref": "#/$defs/__schema5"
         },
-        "basic_transition": {
+        "markers": {
           "$ref": "#/$defs/__schema6"
         },
-        "transition_types": {
+        "basic_transition": {
           "$ref": "#/$defs/__schema7"
         },
-        "keyframes": {
+        "transition_types": {
           "$ref": "#/$defs/__schema8"
         },
-        "masking": {
+        "keyframes": {
           "$ref": "#/$defs/__schema9"
         },
-        "nested_sequence": {
+        "masking": {
           "$ref": "#/$defs/__schema10"
         },
-        "speed_change": {
+        "nested_sequence": {
           "$ref": "#/$defs/__schema11"
         },
-        "still_images": {
+        "speed_change": {
           "$ref": "#/$defs/__schema12"
         },
-        "color_adjustment": {
+        "still_images": {
           "$ref": "#/$defs/__schema13"
         },
-        "audio_tracks": {
+        "color_adjustment": {
           "$ref": "#/$defs/__schema14"
         },
-        "max_video_tracks": {
+        "audio_tracks": {
           "$ref": "#/$defs/__schema15"
         },
-        "reads_back_timeline": {
+        "max_video_tracks": {
           "$ref": "#/$defs/__schema16"
         },
-        "renders_preview": {
+        "reads_back_timeline": {
           "$ref": "#/$defs/__schema17"
         },
-        "notes": {
+        "renders_preview": {
           "$ref": "#/$defs/__schema18"
+        },
+        "notes": {
+          "$ref": "#/$defs/__schema19"
         }
       },
       "required": [
@@ -6290,6 +6293,10 @@
           "type": "boolean"
         },
         "__schema7": {
+          "default": false,
+          "type": "boolean"
+        },
+        "__schema8": {
           "default": [],
           "type": "array",
           "items": {
@@ -6306,10 +6313,6 @@
             "fade_in",
             "fade_out"
           ]
-        },
-        "__schema8": {
-          "default": false,
-          "type": "boolean"
         },
         "__schema9": {
           "default": false,
@@ -6332,26 +6335,30 @@
           "type": "boolean"
         },
         "__schema14": {
+          "default": false,
+          "type": "boolean"
+        },
+        "__schema15": {
           "default": 1,
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
         },
-        "__schema15": {
+        "__schema16": {
           "default": 1,
           "type": "integer",
           "minimum": 1,
           "maximum": 9007199254740991
-        },
-        "__schema16": {
-          "default": false,
-          "type": "boolean"
         },
         "__schema17": {
           "default": false,
           "type": "boolean"
         },
         "__schema18": {
+          "default": false,
+          "type": "boolean"
+        },
+        "__schema19": {
           "default": [],
           "type": "array",
           "items": {
@@ -6429,7 +6436,9 @@
             "interchange",
             "script",
             "report",
-            "preview"
+            "preview",
+            "subtitles",
+            "chapters"
           ]
         },
         "__schema4": {

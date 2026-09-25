@@ -2,13 +2,23 @@ import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   AdapterCapabilities,
-  operationTimelineDuration,
   operationsInOrder,
   type ApplyResult,
   type EditPlan,
+  type MediaAsset,
 } from '@editorial-ir/contracts';
 import type { ApplyRequest, EditorAdapter } from './types.js';
-import { msToFrames, negotiate, resolveAssetPath } from './types.js';
+import { negotiate, resolveAssetPath } from './types.js';
+import {
+  assetById,
+  bedSpan,
+  layOnGrid,
+  pictureOf,
+  soundOf,
+  streamOf,
+  type ClipSound,
+  type FrameGrid,
+} from './timeline.js';
 
 /**
  * AviUtl2.
@@ -35,7 +45,8 @@ export const AVIUTL2_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.par
   mode: 'file',
   output_extensions: ['.aviutl2.json', '.exo'],
   text: true,
-  captions: false,
+  captions: true,
+  markers: true,
   basic_transition: true,
   transition_types: ['cross_dissolve', 'fade_in', 'fade_out'],
   keyframes: true,
@@ -44,29 +55,35 @@ export const AVIUTL2_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.par
   speed_change: true,
   still_images: true,
   color_adjustment: true,
-  audio_tracks: 1,
+  audio_tracks: 2,
   max_video_tracks: 2,
   reads_back_timeline: false,
   renders_preview: false,
   notes: [
     'The JSON job is the supported output; a bridge reads it to build the timeline.',
-    'The .exo file follows the ExEdit object convention and is best effort.',
+    'The .exo file follows the ExEdit object convention and is best effort: pictures, stills and sound, but no text, transitions or markers, which are in the job.',
     'Positions are frames at the sequence rate, and layers are 1-based as AviUtl counts them.',
   ],
 });
 
-export const AVIUTL2_JOB_VERSION = '0.1.0';
+/**
+ * 0.2.0 added what a clip is made of (`media`, `audio_stream_index`,
+ * `audio_channels`), the external beds (`audio_beds`) and the chapters
+ * (`markers`), and made `use_source_audio` mean "this clip's sound is used" —
+ * false for a clip whose file has none, which 0.1.0 would have claimed.
+ */
+export const AVIUTL2_JOB_VERSION = '0.2.0';
 
 export class AviUtl2Adapter implements EditorAdapter {
   readonly capabilities = AVIUTL2_CAPABILITIES;
 
   async apply(request: ApplyRequest): Promise<ApplyResult> {
     const startedAt = Date.now();
-    const { plan, downgrades } = negotiate(request.plan, this.capabilities);
+    const { plan, downgrades } = negotiate(request.plan, this.capabilities, request.ir.assets);
     const warnings: string[] = [];
 
     const job = buildAviUtlJob(plan, request, warnings);
-    const exo = buildExo(plan, request);
+    const exo = buildExo(plan, request, warnings);
 
     const name = request.name ?? 'timeline';
     mkdirSync(request.outputDir, { recursive: true });
@@ -97,10 +114,17 @@ export class AviUtl2Adapter implements EditorAdapter {
         },
       ],
       downgrades,
-      warnings,
+      warnings: dedupe(warnings),
       elapsed_ms: Date.now() - startedAt,
     };
   }
+}
+
+/** What a job clip is: what the file shows, and whether its sound is used. */
+function mediaOf(asset: MediaAsset | undefined): 'video' | 'image' | 'audio' {
+  if (!asset) return 'video';
+  const picture = pictureOf(asset);
+  return picture === 'still' ? 'image' : picture === 'none' ? 'audio' : 'video';
 }
 
 /**
@@ -116,27 +140,38 @@ export function buildAviUtlJob(
   warnings: string[] = [],
 ): Record<string, unknown> {
   const { frame_rate_num: rateNum, frame_rate_den: rateDen } = plan.sequence;
-  const frames = (ms: number): number => msToFrames(ms, rateNum, rateDen);
+  // The same grid every other writer uses. Each edge was rounded on its own
+  // here, so a clip could end a frame after the next one began.
+  const grid = layOnGrid(plan);
+  const frames = grid.frames;
+  const assets = request.ir.assets;
 
   const clips = operationsInOrder(plan).map((operation) => {
+    const span = grid.span(operation.operation_id);
     const path = resolveAssetPath(request, operation.source_asset_id);
     if (!path) {
       warnings.push(
         `${operation.operation_id} refers to ${operation.source_asset_id}, which has no file`,
       );
     }
+    const asset = assetById(assets, operation.source_asset_id);
+    const media = mediaOf(asset);
+    const sound = asset ? soundOf(asset, operation, warnings) : undefined;
     const event = request.ir.events.find((e) => e.id === operation.event_id);
 
     return {
       id: operation.operation_id,
       file: path ?? '',
+      media,
       // AviUtl counts frames from 1 and treats the end frame as inclusive.
-      start_frame: frames(operation.timeline_start_ms) + 1,
-      end_frame: frames(operation.timeline_start_ms + operationTimelineDuration(operation)),
-      source_offset_frame: frames(operation.source_in_ms),
+      start_frame: span.start + 1,
+      end_frame: span.end,
+      // A still is the same at every instant; there is no offset into it.
+      source_offset_frame: media === 'image' ? 0 : span.in,
       layer: operation.track + 1,
       speed_percent: Math.round(operation.speed * 100),
-      use_source_audio: operation.use_source_audio,
+      use_source_audio: sound !== undefined,
+      ...(sound ? { audio_stream_index: sound.stream, audio_channels: sound.channels } : {}),
       ...(operation.transition_in && operation.transition_in.type !== 'hard_cut'
         ? {
             transition_in: {
@@ -155,9 +190,33 @@ export function buildAviUtlJob(
             },
           }
         : {}),
+      ...(operation.continues_previous ? { continues_previous: true } : {}),
       role: operation.role ?? null,
       description: event?.description.value ?? null,
     };
+  });
+
+  const beds = plan.tracks.audio.flatMap((spec) => {
+    if (spec.type !== 'external') return [];
+    const asset = assetById(assets, spec.asset_id);
+    const path = asset ? resolveAssetPath(request, asset.id) : undefined;
+    const sound = asset ? streamOf(asset, undefined, spec.asset_id, warnings) : undefined;
+    const bed = asset ? bedSpan(spec, asset, grid.length, frames) : undefined;
+    if (!asset || !path || !sound || !bed) {
+      warnings.push(`the bed on audio track ${spec.track} (${spec.asset_id}) was not written`);
+      return [];
+    }
+    return [
+      {
+        file: path,
+        start_frame: bed.start + 1,
+        end_frame: bed.start + bed.length,
+        source_offset_frame: bed.in,
+        gain_db: spec.gain_db,
+        duck_under_speech: spec.duck_under_speech,
+        audio_stream_index: sound.stream,
+      },
+    ];
   });
 
   return {
@@ -170,14 +229,10 @@ export function buildAviUtlJob(
       frame_rate_num: rateNum,
       frame_rate_den: rateDen,
       sample_rate: plan.sequence.sample_rate,
-      length_frames: frames(
-        plan.tracks.video.reduce(
-          (end, o) => Math.max(end, o.timeline_start_ms + operationTimelineDuration(o)),
-          0,
-        ),
-      ),
+      length_frames: grid.length,
     },
     clips,
+    audio_beds: beds,
     text: plan.tracks.text.map((text) => ({
       id: text.operation_id,
       start_frame: frames(text.timeline_start_ms) + 1,
@@ -185,6 +240,11 @@ export function buildAviUtlJob(
       text: text.text,
       kind: text.kind,
       layer: 3,
+    })),
+    markers: plan.markers.map((marker) => ({
+      frame: frames(marker.timeline_ms) + 1,
+      name: marker.name,
+      kind: marker.kind,
     })),
     source: {
       plan_id: plan.id,
@@ -199,20 +259,21 @@ export function buildAviUtlJob(
  * An ExEdit object file.
  *
  * The format is an INI-like list of numbered objects, each with numbered effect
- * blocks beneath it. This writes the two blocks every video clip needs: the
- * media itself and standard drawing.
+ * blocks beneath it. A video clip is a 動画ファイル and its drawing, a still a
+ * 画像ファイル, and sound a 音声ファイル with its playback block on a layer
+ * below the pictures, grouped with the picture it belongs to so the two move
+ * together.
+ *
+ * The file was silent: every clip, photographs and sound files included, was
+ * written as a 動画ファイル, which plays no audio in ExEdit. A cut dragged in
+ * from here arrived as pictures only, and an audio-only project as a stack of
+ * video objects pointing at .m4a files.
  */
-export function buildExo(plan: EditPlan, request: ApplyRequest): string {
+export function buildExo(plan: EditPlan, request: ApplyRequest, warnings: string[] = []): string {
   const { frame_rate_num: rateNum, frame_rate_den: rateDen } = plan.sequence;
-  const frames = (ms: number): number => msToFrames(ms, rateNum, rateDen);
+  const grid: FrameGrid = layOnGrid(plan);
+  const assets = request.ir.assets;
   const operations = operationsInOrder(plan);
-
-  const lengthFrames = frames(
-    operations.reduce(
-      (end, o) => Math.max(end, o.timeline_start_ms + operationTimelineDuration(o)),
-      0,
-    ),
-  );
 
   const lines: string[] = [
     '[exedit]',
@@ -223,47 +284,135 @@ export function buildExo(plan: EditPlan, request: ApplyRequest): string {
     // scale=1 declares a 30 fps project for frame numbers computed at 29.97:
     // everything plays a tenth of a percent fast, and audio drifts against
     // picture by about a fifth of a second every three minutes. The JSON job
-    // beside this, built from the same numbers a few lines up, carries the pair
-    // exactly.
+    // beside this, built from the same numbers, carries the pair exactly.
     `rate=${rateNum}`,
     `scale=${rateDen}`,
-    `length=${lengthFrames}`,
+    `length=${grid.length}`,
     `audio_rate=${plan.sequence.sample_rate}`,
     'audio_ch=2',
   ];
 
-  for (const [index, operation] of operations.entries()) {
-    const path = resolveAssetPath(request, operation.source_asset_id) ?? '';
-    const start = frames(operation.timeline_start_ms) + 1;
-    const end = frames(operation.timeline_start_ms + operationTimelineDuration(operation));
+  // Pictures keep the layers the plan gave them; sound goes below all of them,
+  // one layer per picture track, and beds below that.
+  const pictureLayers = Math.max(1, ...operations.map((operation) => operation.track + 1));
+  const seconds = (frameCount: number): string => ((frameCount * rateDen) / rateNum).toFixed(2);
 
-    lines.push(
-      `[${index}]`,
-      `start=${start}`,
-      `end=${Math.max(start, end)}`,
-      `layer=${operation.track + 1}`,
-      'overlay=1',
-      'camera=0',
-      `[${index}.0]`,
-      '_name=動画ファイル',
-      `再生位置=${frames(operation.source_in_ms) + 1}`,
-      `再生速度=${(operation.speed * 100).toFixed(1)}`,
+  let index = 0;
+  let group = 0;
+  const object = (header: string[], blocks: string[][]): void => {
+    lines.push(`[${index}]`, ...header);
+    blocks.forEach((block, n) => lines.push(`[${index}.${n}]`, ...block));
+    index++;
+  };
+  const soundBlocks = (path: string, offsetFrames: number, speed: number, gainDb: number) => [
+    [
+      '_name=音声ファイル',
+      // Seconds, not frames: the audio object counts its own position in time.
+      `再生位置=${seconds(offsetFrames)}`,
+      `再生速度=${(speed * 100).toFixed(1)}`,
       'ループ再生=0',
-      'アルファチャンネルを読み込む=0',
+      '動画ファイルと連携=0',
       `file=${path}`,
-      `[${index}.1]`,
-      '_name=標準描画',
-      'X=0.0',
-      'Y=0.0',
-      'Z=0.0',
-      '拡大率=100.00',
-      'transparency=0.0',
-      '回転=0.00',
-      'blend=0',
+    ],
+    ['_name=標準再生', `音量=${(100 * 10 ** (gainDb / 20)).toFixed(1)}`, '左右=0.0'],
+  ];
+
+  for (const operation of operations) {
+    const span = grid.span(operation.operation_id);
+    const asset = assetById(assets, operation.source_asset_id);
+    const path = resolveAssetPath(request, operation.source_asset_id) ?? '';
+    const picture = asset ? pictureOf(asset) : 'video';
+    const sound: ClipSound | undefined = asset ? soundOf(asset, operation, warnings) : undefined;
+    const start = span.start + 1;
+    const end = Math.max(start, span.end);
+    const grouped = picture !== 'none' && sound !== undefined;
+    if (grouped) group++;
+    const groupLine = grouped ? [`group=${group}`] : [];
+
+    if (picture !== 'none') {
+      const source =
+        picture === 'still'
+          ? ['_name=画像ファイル', `file=${path}`]
+          : [
+              '_name=動画ファイル',
+              `再生位置=${span.in + 1}`,
+              `再生速度=${(operation.speed * 100).toFixed(1)}`,
+              'ループ再生=0',
+              'アルファチャンネルを読み込む=0',
+              `file=${path}`,
+            ];
+      object(
+        [
+          `start=${start}`,
+          `end=${end}`,
+          `layer=${operation.track + 1}`,
+          ...groupLine,
+          'overlay=1',
+          'camera=0',
+        ],
+        [
+          source,
+          [
+            '_name=標準描画',
+            'X=0.0',
+            'Y=0.0',
+            'Z=0.0',
+            '拡大率=100.00',
+            'transparency=0.0',
+            '回転=0.00',
+            'blend=0',
+          ],
+        ],
+      );
+    }
+
+    if (sound) {
+      if (sound.stream > 0) {
+        warnings.push(
+          `${operation.operation_id}'s sound is audio stream ${sound.stream} of ${asset!.file_name}; ` +
+            'ExEdit’s audio object plays the first, so choose the stream in the input plugin or use the JSON job',
+        );
+      }
+      const gain = plan.tracks.audio.find((spec) => spec.type === 'source_audio')?.gain_db ?? 0;
+      object(
+        [
+          `start=${start}`,
+          `end=${end}`,
+          `layer=${pictureLayers + operation.track + 1}`,
+          ...groupLine,
+          'overlay=1',
+          'audio=1',
+        ],
+        soundBlocks(path, span.in, operation.speed, gain),
+      );
+    }
+  }
+
+  let bedLayer = pictureLayers * 2;
+  for (const spec of plan.tracks.audio) {
+    if (spec.type !== 'external') continue;
+    const asset = assetById(assets, spec.asset_id);
+    const path = asset ? resolveAssetPath(request, asset.id) : undefined;
+    const bed = asset ? bedSpan(spec, asset, grid.length, grid.frames) : undefined;
+    if (!asset || !path || !bed) continue;
+    bedLayer++;
+    object(
+      [
+        `start=${bed.start + 1}`,
+        `end=${bed.start + bed.length}`,
+        `layer=${bedLayer}`,
+        'overlay=1',
+        'audio=1',
+      ],
+      soundBlocks(path, bed.in, 1, spec.gain_db),
     );
   }
 
   // CRLF, because this format is exchanged on Windows and a bare LF confuses
   // some of the tools that read it.
   return `${lines.join('\r\n')}\r\n`;
+}
+
+function dedupe(values: string[]): string[] {
+  return [...new Set(values)];
 }
