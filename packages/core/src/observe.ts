@@ -364,12 +364,18 @@ export async function observeAssets(
       if (!result) continue;
 
       for (const event of result.events) {
-        if (event.end_ms <= event.start_ms) continue;
+        // Held to the file like shots and picture events are. The sound is
+        // measured in whole hops of the decoded stream, which runs a few
+        // milliseconds past what the container says (encoder priming), so the
+        // last hop of every probe file ended 100 ms after the file did: a
+        // silence from 30.2 s to 40.1 s in a 40-second podcast.
+        const end = Math.min(event.end_ms, asset.duration_ms || event.end_ms);
+        if (end <= event.start_ms) continue;
         audioEvents.push({
           id: seqId('aev', ++counters.aev, 5),
           asset_id: asset.id,
           start_ms: event.start_ms,
-          end_ms: event.end_ms,
+          end_ms: end,
           event_type: event.event_type,
           ...(event.raw_label === undefined ? {} : { raw_label: event.raw_label }),
           confidence: event.confidence,
