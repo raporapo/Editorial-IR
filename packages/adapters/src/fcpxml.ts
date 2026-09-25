@@ -5,6 +5,7 @@ import {
   smpteToFrames,
   supportsDropFrame,
   type ApplyResult,
+  type CapabilityDowngrade,
   type EditPlan,
   type MediaAsset,
   type TextOperation,
@@ -16,9 +17,11 @@ import {
   bedSpan,
   clipAudio,
   describeTimecodeOrigins,
+  furthestReads,
   layOnGrid,
   mediaFramesOf,
   pictureOf,
+  soundTransitionsOf,
   sourceTimecodeOf,
   streamChannels,
   streamOf,
@@ -29,6 +32,7 @@ import {
   type GridSpan,
   type PlacedTransition,
   type SourceTimecode,
+  type TrackClip,
 } from './timeline.js';
 import { escapeXml } from './xml.js';
 
@@ -72,6 +76,7 @@ export const FCPXML_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.pars
   notes: [
     'FCPXML 1.10 for Final Cut Pro and DaVinci Resolve: rational times on the sequence’s frame grid, media declared once.',
     'Stills are video elements on image assets; sound-only files are audio clips in the storyline; upper tracks and music beds are connected clips.',
+    'A dissolve between two sound-only clips is a storyline transition, whose Audio Crossfade is all it does, where the handles allow it.',
     'A clip whose sound is a separate recorder’s keeps its picture only, with the recorder as a connected audio clip below it.',
     'Chapters are chapter markers; captions are SRT-role captions, which Final Cut shows and Resolve ignores — use --editor srt for Resolve.',
     'Only standard frame rates: another rate is written as the nearest standard one, and the result says so.',
@@ -86,7 +91,7 @@ export class FcpxmlAdapter implements EditorAdapter {
     const startedAt = Date.now();
     const { plan, downgrades } = negotiate(request.plan, this.capabilities, request.ir.assets);
     const warnings: string[] = [];
-    const { xml, timecodes } = buildFcpxmlDocument(plan, request, warnings);
+    const { xml, timecodes } = buildFcpxmlDocument(plan, request, warnings, downgrades);
 
     const name = request.name ?? 'timeline';
     mkdirSync(request.outputDir, { recursive: true });
@@ -284,19 +289,25 @@ export function buildFcpxml(
   plan: EditPlan,
   request: ApplyRequest,
   warnings: string[] = [],
+  downgrades: CapabilityDowngrade[] = [],
 ): string {
-  return buildFcpxmlDocument(plan, request, warnings).xml;
+  return buildFcpxmlDocument(plan, request, warnings, downgrades).xml;
 }
 
-/** The document and the clocks its source times were counted from. */
+/**
+ * The document and the clocks its source times were counted from. `downgrades`
+ * receives the transitions between sound-only clips that stay cuts.
+ */
 export function buildFcpxmlDocument(
   plan: EditPlan,
   request: ApplyRequest,
   warnings: string[] = [],
+  downgrades: CapabilityDowngrade[] = [],
 ): { xml: string; timecodes: SourceTimecode[] } {
   const rate = fcpxmlRate(plan.sequence.frame_rate_num, plan.sequence.frame_rate_den, warnings);
   const grid = layOnGrid(plan, rate);
   const assets = request.ir.assets;
+  const reach = furthestReads(plan, grid, assets);
   const at = (frames: number): Rational => rational(frames * rate.den, rate.num);
   const time = (frames: number): string => formatTime(at(frames));
   const dropFrame = supportsDropFrame(rate.num, rate.den);
@@ -364,17 +375,37 @@ export function buildFcpxmlDocument(
       const clock = sourceTimecodeOf(asset, rate);
       clocks.set(asset.id, clock);
       start = rational(clock.frames * clock.rate.den, clock.rate.num);
-      let duration: Rational;
-      if (picture === 'video') {
-        const own = clock.rate;
-        duration = rational(
-          Math.round((asset.duration_ms / 1000) * (own.num / own.den)) * own.den,
-          own.num,
-        );
-      } else {
-        const sampleRate = asset.audio_sample_rate ?? 48_000;
-        duration = rational(Math.round((asset.duration_ms * sampleRate) / 1000), sampleRate);
+      // The length in the file's own units: frames at its own rate for a
+      // picture, samples for sound.
+      const unit =
+        picture === 'video'
+          ? { per: clock.rate.num, of: clock.rate.den }
+          : { per: asset.audio_sample_rate ?? 48_000, of: 1 };
+      let count =
+        picture === 'video'
+          ? Math.round((asset.duration_ms / 1000) * (unit.per / unit.of))
+          : Math.round((asset.duration_ms * unit.per) / 1000);
+      // Never shorter than the furthest frame a clip reads from it. The grid
+      // rounds a clip played to the end of its file up to a whole frame, and
+      // the file's own length is rarely one: a 2232 ms mp3 played to its end
+      // at 30 fps is a 67-frame clip (2233.3 ms) reading a file declared 2232 ms
+      // long, a clip past its asset's end, which an importer is entitled to
+      // refuse. The asset is declared as long as the clip reads, rounded up to
+      // the file's own unit so the value stays in the counting the rest of the
+      // declaration uses; the frame it covers is the file's last, part sound and
+      // part the silence after it. A file no clip reads past is declared exactly
+      // as it always was.
+      const read = reach.get(asset.id);
+      if (read !== undefined) {
+        // `read` frames at the sequence rate, in the file's units, rounded up:
+        // whole numbers throughout, so the comparison is exact.
+        const numerator = read * rate.den * unit.per;
+        const denominator = rate.num * unit.of;
+        let needed = Math.ceil(numerator / denominator);
+        if (needed * denominator < numerator) needed++;
+        count = Math.max(count, needed);
       }
+      const duration = rational(count * unit.of, unit.per);
       Object.assign(attributes, {
         name: stemOf(asset.file_name),
         start: formatTime(start),
@@ -614,7 +645,21 @@ export function buildFcpxmlDocument(
       asset !== undefined && pictureOf(asset) !== 'none' && resolveAssetPath(request, asset.id)
     );
   });
-  const placed = transitionsOf(pictured, grid.frames, mediaFramesOf(assets, grid.frames), warnings);
+  // A sound-only clip is in the storyline too, and a cross-fade between two of
+  // them is a transition there, as a picture's is: Final Cut's Cross Dissolve
+  // carries an Audio Crossfade, and between two clips with no picture that is
+  // all it does.
+  const storylineClips = main.flatMap((span): TrackClip[] => {
+    const asset = assetById(assets, span.operation.source_asset_id);
+    if (!asset || !resolveAssetPath(request, asset.id)) return [];
+    if (pictureOf(asset) !== 'none') return [{ span }];
+    const sound = clipAudio(span, lookup, grid.rate);
+    return sound && resolveAssetPath(request, sound.asset.id) ? [{ span, sound }] : [];
+  });
+  const placed = [
+    ...transitionsOf(pictured, grid.frames, mediaFramesOf(assets, grid.frames), warnings),
+    ...soundTransitionsOf(storylineClips, grid.frames, downgrades),
+  ];
   const leading = new Map<string, PlacedTransition>();
   const trailing = new Map<string, PlacedTransition>();
   for (const transition of placed) {

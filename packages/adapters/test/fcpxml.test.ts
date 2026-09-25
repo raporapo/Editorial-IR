@@ -6,10 +6,19 @@ import {
   negotiate,
   type ApplyRequest,
 } from '../src/index.js';
-import type { EditPlan } from '@editorial-ir/contracts';
+import type { CapabilityDowngrade, EditPlan } from '@editorial-ir/contracts';
 import { makeAsset } from '../../../tests/support/ir.js';
 import { findAll, parseXml, type XmlNode } from '../../../tests/support/xml.js';
-import { makePlan, mixedIr, mixedPlan, requestFor } from '../../../tests/support/plan.js';
+import {
+  endOfFileAssets,
+  endOfFilePlan,
+  makePlan,
+  mixedIr,
+  mixedPlan,
+  requestFor,
+  soundOnlyAssets,
+  soundOnlyPlan,
+} from '../../../tests/support/plan.js';
 
 /**
  * FCPXML, checked the way Final Cut checks it.
@@ -93,6 +102,51 @@ describe('the FCPXML document', () => {
     const { root } = document(plan);
     expect(findAll(root, 'asset')).toHaveLength(1);
     expect(findAll(root, 'asset-clip')).toHaveLength(2);
+  });
+
+  it('never has a clip read past the end its asset declares', () => {
+    // A 2232 ms mp3 played whole at 30 fps is a 67-frame clip, 2233.3 ms: the
+    // asset was declared 279/125 s (2232 ms) and the clip read 1.3 ms past it.
+    // A camera clip read from 23 ms to its 2215 ms end reads frames 1 to 67 of
+    // a file declared 66 frames long.
+    const plan = endOfFilePlan();
+    const { root, resources } = document(plan, requestFor(plan, mixedIr(endOfFileAssets())));
+    const exact = (value: string): number => {
+      const [n, d] = seconds(value);
+      return n / d;
+    };
+    const clips = findAll(root, 'asset-clip');
+    expect(clips).toHaveLength(2);
+    for (const clip of clips) {
+      const asset = resources.get(clip.attributes.ref!)!;
+      const [start, duration] = [clip.attributes.start!, clip.attributes.duration!].map(seconds);
+      const [assetStart, assetDuration] = [asset.attributes.start!, asset.attributes.duration!].map(
+        seconds,
+      );
+      // clip start + clip duration <= asset start + asset duration, in exact fractions.
+      const [n1, d1] = start!;
+      const [n2, d2] = duration!;
+      const [n3, d3] = assetStart!;
+      const [n4, d4] = assetDuration!;
+      expect(
+        (n1 * d2 + n2 * d1) * d3 * d4,
+        `${asset.attributes.name} read to ${clip.attributes.start}+${clip.attributes.duration}`,
+      ).toBeLessThanOrEqual((n3 * d4 + n4 * d3) * d1 * d2);
+    }
+    // Declared no longer than it must be: in the file's own units, rounded up.
+    const mp3 = [...resources.values()].find((node) => node.attributes.name === 'ep12_cover')!;
+    expect(mp3.attributes.duration).toBe('17867/8000s'); // 35734 samples at 16 kHz
+    expect(exact(mp3.attributes.duration!)).toBeGreaterThanOrEqual(67 / 30);
+    const camera = [...resources.values()].find((node) => node.attributes.name === 'C0031')!;
+    expect(camera.attributes.duration).toBe('67/30s');
+  });
+
+  it('declares a file no clip reads past exactly as long as it is', () => {
+    const { resources } = document(mixedPlan());
+    const byName = (name: string) =>
+      [...resources.values()].find((node) => node.attributes.name === name)!;
+    expect(byName('C0001').attributes.duration).toBe('60s');
+    expect(byName('memo').attributes.duration).toBe('30s');
   });
 
   it('puts every time on the sequence’s frame grid, at NTSC rates too', () => {
@@ -230,6 +284,31 @@ describe('the FCPXML document', () => {
     const transition = spine.children[1]!;
     expect(frames(transition.attributes.offset!, 30, 1)).toBe(105);
     expect(frames(transition.attributes.duration!, 30, 1)).toBe(30);
+  });
+
+  it('cross-fades two sound-only clips in the storyline, where there is sound to overlap', () => {
+    // The dissolve from one sound file into the next used to be left out, and
+    // nothing said so.
+    const plan = soundOnlyPlan();
+    const downgrades: CapabilityDowngrade[] = [];
+    const root = parseXml(
+      buildFcpxml(plan, requestFor(plan, mixedIr(soundOnlyAssets())), [], downgrades),
+    );
+    const spine = findAll(root, 'spine')[0]!;
+    expect(spine.children.map((child) => child.tag)).toEqual([
+      'asset-clip',
+      'transition',
+      'asset-clip',
+      'asset-clip',
+      'transition',
+    ]);
+    const join = spine.children[1]!;
+    expect(frames(join.attributes.offset!, 30, 1)).toBe(114);
+    expect(frames(join.attributes.duration!, 30, 1)).toBe(12);
+    expect(findAll(join, 'filter-audio')[0]!.attributes.name).toBe('Audio Crossfade');
+    expect(downgrades).toEqual([
+      expect.objectContaining({ operation_id: 'op_0003', capability: 'transition_in' }),
+    ]);
   });
 
   it('fades the last clip to black instead of losing it', () => {

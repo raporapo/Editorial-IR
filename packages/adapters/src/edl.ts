@@ -6,6 +6,7 @@ import {
   smpteToFrames,
   supportsDropFrame,
   type ApplyResult,
+  type CapabilityDowngrade,
   type EditPlan,
   type MediaAsset,
 } from '@editorial-ir/contracts';
@@ -20,8 +21,10 @@ import {
   mediaFramesOf,
   pictureOf,
   recordersOf,
+  soundTransitionsOf,
   sourceTimecodeOf,
   transitionsOf,
+  type ClipAudio,
   type ClipSound,
   type GridSpan,
   type PlacedTransition,
@@ -65,10 +68,13 @@ export const EDL_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.parse({
   renders_preview: false,
   notes: [
     'One picture track with its sound as channels of the same events (V, B, AA/V, A, AA), frame-accurate at the sequence rate.',
+    'A dissolve is written on the channels both clips carry; a channel only one side has comes in or goes out on the cut, as an event of its own at the same record time.',
+    'A dissolve between two sound-only clips is a D event on their sound channels, where the handles allow it.',
     'A clip whose sound is a separate recorder’s is two events at the same record time: the picture (V) from the camera’s reel, the sound (A, AA) from the recorder’s.',
     'Drop-frame timecode for 29.97 and 59.94; source timecodes start at each file’s embedded start timecode.',
     'Reel names are made from file names within eight characters, with the full name in a FROM CLIP NAME comment; chapters are LOC comments.',
     'No stills, no second video track and no music bed: negotiation reports each one it leaves out.',
+    'Black is a BL event: from the first frame to each channel’s first event, and wherever no event covers the cut.',
     'Options: record_start (the record timecode of the first frame, e.g. 01:00:00:00; default 00:00:00:00).',
   ],
 });
@@ -80,7 +86,7 @@ export class EdlAdapter implements EditorAdapter {
     const startedAt = Date.now();
     const { plan, downgrades } = negotiate(request.plan, this.capabilities, request.ir.assets);
     const warnings: string[] = [];
-    const { text, timecodes } = buildEdlDocument(plan, request, warnings);
+    const { text, timecodes } = buildEdlDocument(plan, request, warnings, downgrades);
 
     const name = request.name ?? 'timeline';
     mkdirSync(request.outputDir, { recursive: true });
@@ -104,8 +110,13 @@ export class EdlAdapter implements EditorAdapter {
 }
 
 /** The list as text. */
-export function buildEdl(plan: EditPlan, request: ApplyRequest, warnings: string[] = []): string {
-  return buildEdlDocument(plan, request, warnings).text;
+export function buildEdl(
+  plan: EditPlan,
+  request: ApplyRequest,
+  warnings: string[] = [],
+  downgrades: CapabilityDowngrade[] = [],
+): string {
+  return buildEdlDocument(plan, request, warnings, downgrades).text;
 }
 
 /**
@@ -153,17 +164,49 @@ interface EdlLine {
 interface EdlEvent {
   lines: EdlLine[];
   comments: string[];
+  /** The channels the event records. */
+  channels: Channels;
   recordIn: number;
   recordOut: number;
-  /** A separate recorder's sound under a picture event, which chapters are not put under. */
-  recorded?: true;
+  /** Black (and silence) where the cut has nothing the list can hold. */
+  black?: true;
+  /**
+   * Sound under a picture event, as an event of its own: a separate recorder's,
+   * or a clip's own sound split from its picture at a dissolve. Chapters are
+   * not put under it.
+   */
+  underPicture?: true;
 }
 
-/** The list and the clocks its source times were counted from. */
+/**
+ * What an event carries: the picture, and which of the first two sound
+ * channels. A list can name these sets and no others (`channelCode`).
+ */
+interface Channels {
+  picture: boolean;
+  /** Sound channels, from 1: `[1]` for mono, `[1, 2]` for a pair. */
+  sound: number[];
+}
+
+/** A clip's channels: its picture if it has one, and one or two of sound. */
+function channelsOf(picture: boolean, sound: ClipSound | undefined): Channels {
+  return { picture, sound: sound ? (sound.channels >= 2 ? [1, 2] : [1]) : [] };
+}
+
+/** The channels two clips both carry. */
+function common(a: Channels, b: Channels): Channels {
+  return { picture: a.picture && b.picture, sound: a.sound.filter((c) => b.sound.includes(c)) };
+}
+
+/**
+ * The list and the clocks its source times were counted from. `downgrades`
+ * receives the transitions between sound-only clips that stay cuts.
+ */
 export function buildEdlDocument(
   plan: EditPlan,
   request: ApplyRequest,
   warnings: string[] = [],
+  downgrades: CapabilityDowngrade[] = [],
 ): { text: string; timecodes: SourceTimecode[] } {
   const { num: planNum, den: planDen } = {
     num: plan.sequence.frame_rate_num,
@@ -231,9 +274,13 @@ export function buildEdlDocument(
   }
   interface Described extends Source {
     span: GridSpan;
+    channels: Channels;
+    /** `channels` as the list writes them. */
     channel: string;
     /** A separate recorder whose sound goes under this clip's picture. */
     recorder?: Source & { sound: ClipSound };
+    /** For a sound-only clip, the sound it plays: it has no picture. */
+    soundOnly?: ClipAudio;
   }
   const sourceOf = <S extends ClipSound | undefined>(
     asset: MediaAsset,
@@ -271,7 +318,9 @@ export function buildEdlDocument(
       described.push({
         span,
         ...sourceOf(audio!.asset, audio!.sound, audio!.in, audio!.out),
-        channel: channelField(false, audio!.sound),
+        channels: channelsOf(false, audio!.sound),
+        channel: channelCode(channelsOf(false, audio!.sound)),
+        soundOnly: audio!,
       });
       continue;
     }
@@ -283,20 +332,33 @@ export function buildEdlDocument(
     described.push({
       span,
       ...sourceOf(asset, sound, span.in, span.out),
-      channel: channelField(true, sound),
+      channels: channelsOf(true, sound),
+      channel: channelCode(channelsOf(true, sound)),
       ...(recorder
         ? { recorder: sourceOf(recorder.asset, recorder.sound, recorder.in, recorder.out) }
         : {}),
     });
   }
 
-  const pictured = described.filter((d) => pictureOf(d.asset) !== 'none');
-  const placed = transitionsOf(
-    pictured.map((d) => d.span),
-    grid.frames,
-    mediaFramesOf(assets, grid.frames),
-    warnings,
-  );
+  // The file a sound-only clip reads is its sound's (`asset` above), which may
+  // be a recorder with a picture of its own; whether the clip has a picture is
+  // what it was described as.
+  const pictured = described.filter((d) => !d.soundOnly);
+  const placed = [
+    ...transitionsOf(
+      pictured.map((d) => d.span),
+      grid.frames,
+      mediaFramesOf(assets, grid.frames),
+      warnings,
+    ),
+    // A dissolve between two sound-only clips is a dissolve on their sound
+    // channels (`AA D`), which the list writes like any other.
+    ...soundTransitionsOf(
+      described.map((d) => (d.soundOnly ? { span: d.span, sound: d.soundOnly } : { span: d.span })),
+      grid.frames,
+      downgrades,
+    ),
+  ];
   const into = new Map<string, PlacedTransition>();
   const outOf = new Map<string, PlacedTransition>();
   for (const transition of placed) {
@@ -312,78 +374,127 @@ export function buildEdlDocument(
     const id = d.span.operation.operation_id;
     const incoming = into.get(id);
     const outgoing = outOf.get(id);
-    let recordIn = d.span.start;
-    let sourceIn = d.in;
-    let recordOut = d.span.end;
-    let sourceOut = d.out;
-    if (incoming?.kind === 'between') {
+    // Where a fade out of this clip begins.
+    const fadeOutAt = d.span.end - (outgoing?.kind === 'tail' ? outgoing.frames : 0);
+
+    // A dissolve is written on the channels both clips carry, and nothing else.
+    // It was written on the incoming clip's channels whatever the outgoing one
+    // had: measured on the worked example's memory-film cut, a picture-only clip
+    // (op_0003, its sound not used) into one with stereo sound gave
+    // `004 IMG1001 AA/V C` and `004 IMG1001 AA/V D 024` — a conform asked for
+    // op_0003's sound through the dissolve, the sound the plan left out, and
+    // OpenTimelineIO refused the file, since the list's first sound was a
+    // transition from nothing ("Transitions can't be at the very beginning of a
+    // track"). The other way round, a clip with sound into one without, ended
+    // the outgoing sound half a dissolve before the cut.
+    //
+    // So each channel of a clip is placed on its own. One the dissolve into it
+    // carries starts half the dissolve before the cut, as part of it; one the
+    // dissolve out of it carries ends half the dissolve before the cut, where
+    // the next clip's dissolve takes it over. Any other channel starts and ends
+    // on the cut, where the plan puts the clip, as a straight cut in an event
+    // of its own at the same record time — the shape a separate recorder's
+    // sound already has below. A fade at an edge carries every channel. Where
+    // both clips carry the same channels, every channel is placed alike and
+    // the clip is one event, exactly as before.
+    const carried = (transition: PlacedTransition | undefined, other: 'outgoing' | 'incoming') =>
+      transition?.kind === 'between'
+        ? common(d.channels, describedById.get(transition[other]!.operation.operation_id)!.channels)
+        : undefined;
+    const carriedIn = carried(incoming, 'outgoing');
+    const carriedOut = carried(outgoing, 'incoming');
+    const has = (set: Channels | undefined, channel: 'V' | number): boolean =>
+      set !== undefined && (channel === 'V' ? set.picture : set.sound.includes(channel));
+
+    interface Part {
+      channels: Channels;
+      begins: 'dissolve' | 'fade' | 'cut';
+      /** Frames before the clip's end at which this part hands over or fades out. */
+      endsEarly: number;
+    }
+    const parts: Part[] = [];
+    for (const channel of [...(d.channels.picture ? ['V' as const] : []), ...d.channels.sound]) {
+      const begins = has(carriedIn, channel)
+        ? 'dissolve'
+        : incoming?.kind === 'head'
+          ? 'fade'
+          : 'cut';
+      const endsEarly =
+        outgoing && (outgoing.kind === 'tail' || has(carriedOut, channel)) ? outgoing.frames : 0;
+      let part = parts.find((p) => p.begins === begins && p.endsEarly === endsEarly);
+      if (!part) {
+        part = { channels: { picture: false, sound: [] }, begins, endsEarly };
+        parts.push(part);
+      }
+      if (channel === 'V') part.channels.picture = true;
+      else part.channels.sound.push(channel);
+    }
+
+    const path = resolveAssetPath(request, d.asset.id);
+    for (const part of parts) {
+      const channel = channelCode(part.channels);
       // A centred dissolve starts half its length before the cut, on footage
       // from before this clip's in point.
-      recordIn -= incoming.frames;
-      sourceIn -= incoming.frames;
-    }
-    if (outgoing) {
-      recordOut -= outgoing.frames;
-      sourceOut -= outgoing.frames;
-    }
+      const lead = part.begins === 'dissolve' ? incoming!.frames : 0;
+      const recordIn = d.span.start - lead;
+      const recordOut = d.span.end - part.endsEarly;
+      const own: EdlLine = {
+        reel: d.reel,
+        channel,
+        sourceIn: d.clock + d.in - lead,
+        sourceOut: d.clock + d.out - part.endsEarly,
+        recordIn: record(recordIn),
+        recordOut: record(recordOut),
+      };
+      const comments = [`* FROM CLIP NAME: ${d.asset.file_name}`];
+      if (path) comments.push(`* SOURCE FILE: ${path}`);
+      if (d.sound && d.sound.streams > 1 && part.channels.sound.length > 0) {
+        // The list has no way to name a stream; this is for the person conforming.
+        comments.push(`* AUDIO STREAM: ${d.sound.stream + 1} OF ${d.sound.streams}`);
+      }
+      const placement = {
+        channels: part.channels,
+        recordIn: record(recordIn),
+        recordOut: record(recordOut),
+        // The clip's own sound split from its picture: chapters go under the picture.
+        ...(d.channels.picture && !part.channels.picture ? { underPicture: true as const } : {}),
+      };
 
-    const own: EdlLine = {
-      reel: d.reel,
-      channel: d.channel,
-      sourceIn: d.clock + sourceIn,
-      sourceOut: d.clock + sourceOut,
-      recordIn: record(recordIn),
-      recordOut: record(recordOut),
-    };
-    const comments = [`* FROM CLIP NAME: ${d.asset.file_name}`];
-    const path = resolveAssetPath(request, d.asset.id);
-    if (path) comments.push(`* SOURCE FILE: ${path}`);
-    if (d.sound && d.sound.streams > 1) {
-      // The list has no way to name a stream; this is for the person conforming.
-      comments.push(`* AUDIO STREAM: ${d.sound.stream + 1} OF ${d.sound.streams}`);
-    }
-
-    if (incoming?.kind === 'between') {
-      const from = describedById.get(incoming.outgoing!.operation.operation_id)!;
-      const at = from.clock + from.out - incoming.frames;
-      events.push({
-        lines: [
-          {
-            reel: from.reel,
-            channel: d.channel,
-            sourceIn: at,
-            sourceOut: at,
-            recordIn: record(recordIn),
-            recordOut: record(recordIn),
-          },
-          { ...own, dissolve: incoming.frames * 2 },
-        ],
-        comments: [
-          `* FROM CLIP NAME: ${from.asset.file_name}`,
-          `* TO CLIP NAME: ${d.asset.file_name}`,
-          ...comments.slice(1),
-        ],
-        recordIn: record(recordIn),
-        recordOut: record(recordOut),
-      });
-    } else if (incoming?.kind === 'head') {
-      // A fade in is a dissolve from black.
-      events.push({
-        lines: [
-          { ...blackLine(d.channel), recordIn: record(recordIn), recordOut: record(recordIn) },
-          { ...own, dissolve: incoming.frames },
-        ],
-        comments: [`* TO CLIP NAME: ${d.asset.file_name}`, ...comments.slice(1)],
-        recordIn: record(recordIn),
-        recordOut: record(recordOut),
-      });
-    } else {
-      events.push({
-        lines: [own],
-        comments,
-        recordIn: record(recordIn),
-        recordOut: record(recordOut),
-      });
+      if (part.begins === 'dissolve') {
+        const from = describedById.get(incoming!.outgoing!.operation.operation_id)!;
+        const at = from.clock + from.out - incoming!.frames;
+        events.push({
+          lines: [
+            {
+              reel: from.reel,
+              channel,
+              sourceIn: at,
+              sourceOut: at,
+              recordIn: record(recordIn),
+              recordOut: record(recordIn),
+            },
+            { ...own, dissolve: incoming!.frames * 2 },
+          ],
+          comments: [
+            `* FROM CLIP NAME: ${from.asset.file_name}`,
+            `* TO CLIP NAME: ${d.asset.file_name}`,
+            ...comments.slice(1),
+          ],
+          ...placement,
+        });
+      } else if (part.begins === 'fade') {
+        // A fade in is a dissolve from black.
+        events.push({
+          lines: [
+            { ...blackLine(channel), recordIn: record(recordIn), recordOut: record(recordIn) },
+            { ...own, dissolve: incoming!.frames },
+          ],
+          comments: [`* TO CLIP NAME: ${d.asset.file_name}`, ...comments.slice(1)],
+          ...placement,
+        });
+      } else {
+        events.push({ lines: [own], comments, ...placement });
+      }
     }
 
     if (d.recorder) {
@@ -402,7 +513,7 @@ export function buildEdlDocument(
         lines: [
           {
             reel: r.reel,
-            channel: channelField(false, r.sound),
+            channel: channelCode(channelsOf(false, r.sound)),
             sourceIn: r.clock + r.in,
             sourceOut: r.clock + r.out,
             recordIn: record(d.span.start),
@@ -410,14 +521,16 @@ export function buildEdlDocument(
           },
         ],
         comments: soundComments,
+        channels: channelsOf(false, r.sound),
         recordIn: record(d.span.start),
         recordOut: record(d.span.end),
-        recorded: true,
+        underPicture: true,
       });
     }
 
     if (outgoing?.kind === 'tail') {
       // A fade out is a dissolve to black, from where this clip's cut ends.
+      // Every channel ends here, so one event carries them all.
       const at = d.clock + d.out - outgoing.frames;
       events.push({
         lines: [
@@ -426,32 +539,38 @@ export function buildEdlDocument(
             channel: d.channel,
             sourceIn: at,
             sourceOut: at,
-            recordIn: record(recordOut),
-            recordOut: record(recordOut),
+            recordIn: record(fadeOutAt),
+            recordOut: record(fadeOutAt),
           },
           {
             ...blackLine(d.channel),
             dissolve: outgoing.frames,
             sourceOut: outgoing.frames,
-            recordIn: record(recordOut),
+            recordIn: record(fadeOutAt),
             recordOut: record(d.span.end),
           },
         ],
         comments: [`* FROM CLIP NAME: ${d.asset.file_name}`],
-        recordIn: record(recordOut),
+        channels: d.channels,
+        recordIn: record(fadeOutAt),
         recordOut: record(d.span.end),
       });
     }
   }
 
+  fillWithBlack(events, record(0));
+
   // Chapters as LOC comments under the event they fall in, which is where
   // Avid-style readers look for them: the picture's, not a recorder's sound
-  // under it.
-  const located = events.filter((e) => !e.recorded);
+  // under it, and black only where there is nothing else.
+  const located = events.filter((e) => !e.underPicture && !e.black);
+  const black = events.filter((e) => e.black);
   for (const marker of plan.markers) {
     const at = record(grid.frames(marker.timeline_ms));
+    const within = (e: EdlEvent): boolean => e.recordIn <= at && at < e.recordOut;
     const event =
-      located.find((e) => e.recordIn <= at && at < e.recordOut) ??
+      located.find(within) ??
+      black.find(within) ??
       [...located].reverse().find((e) => e.recordIn <= at) ??
       located[0];
     if (!event) continue;
@@ -493,15 +612,109 @@ export function buildEdlDocument(
  * The channel field: which of picture and sound an event carries.
  *
  * `B` is picture and one channel of sound, `AA/V` picture and a stereo pair,
- * and the sound-only forms drop the `V`. A clip whose file has no audio is `V`
- * — the list used to claim sound for every clip, and a conform then looked for
- * channels a drone clip never had.
+ * and the sound-only forms drop the `V`; `A2` and `A2/V` are the second
+ * channel without the first, which is what is left of a stereo clip when a
+ * dissolve takes its first channel with the picture. A clip whose file has no
+ * audio is `V` — the list used to claim sound for every clip, and a conform
+ * then looked for channels a drone clip never had.
  */
-function channelField(picture: boolean, sound: ClipSound | undefined): string {
-  if (!sound) return 'V';
-  const stereo = sound.channels >= 2;
-  if (!picture) return stereo ? 'AA' : 'A';
-  return stereo ? 'AA/V' : 'B';
+function channelCode(channels: Channels): string {
+  const sound = channels.sound.join(',');
+  const audio = sound === '1,2' ? 'AA' : sound === '1' ? 'A' : sound === '2' ? 'A2' : '';
+  if (!channels.picture) return audio;
+  return audio === '' ? 'V' : audio === 'A' ? 'B' : `${audio}/V`;
+}
+
+/**
+ * Black, and silence, where the list would otherwise say nothing: from the
+ * list's first frame to each channel's first event, and across any stretch no
+ * event covers at all. `BL` is CMX 3600's own source for it, and the list
+ * already uses it for fades.
+ *
+ * A cut that opens on something a list cannot hold (a still, left out by
+ * negotiation) made the first event start after 00:00:00:00, and a reader that
+ * starts a track at its first event had nothing to say the head was black.
+ * OpenTimelineIO's reader kept it as the track's own offset, after which every
+ * `trimmed_range_in_parent()` on the track raised — measured on the sweep's
+ * stills case, whose only video starts 9 s in. It does the same to each sound
+ * track separately: the worked example's memory-film list opens on clips that
+ * use no sound, and its sound tracks were read 228 frames short at the end.
+ * So every channel is held from the first frame.
+ *
+ * A stretch in the middle that no event covers (a still left out between two
+ * clips) was an unmarked jump in the record times. Every reader fills that
+ * with a gap, but a list that writes black at the head and says nothing in the
+ * middle says the same thing two ways, so it is black too, on the channels in
+ * use there. A channel simply not used by the events around it — the sound
+ * under a clip whose sound is not used, the picture over a sound-only clip —
+ * is left empty, as every list leaves it. The end is not filled: nothing
+ * follows it for a reader to misplace.
+ */
+function fillWithBlack(events: EdlEvent[], start: number): void {
+  if (events.length === 0) return;
+  const blackEvent = (channels: Channels, from: number, to: number): EdlEvent => ({
+    lines: [
+      {
+        reel: 'BL',
+        channel: channelCode(channels),
+        sourceIn: 0,
+        sourceOut: to - from,
+        recordIn: from,
+        recordOut: to,
+      },
+    ],
+    comments: [],
+    channels,
+    recordIn: from,
+    recordOut: to,
+    black: true,
+  });
+
+  // Where each channel's first event starts.
+  const first = new Map<'V' | number, number>();
+  for (const event of events) {
+    for (const channel of [
+      ...(event.channels.picture ? ['V' as const] : []),
+      ...event.channels.sound,
+    ]) {
+      first.set(channel, Math.min(first.get(channel) ?? Infinity, event.recordIn));
+    }
+  }
+  /** The channels whose first event starts where `keep` says. */
+  const channelsFrom = (keep: (firstAt: number) => boolean): Channels => ({
+    picture: first.has('V') && keep(first.get('V')!),
+    sound: [1, 2].filter((c) => first.has(c) && keep(first.get(c)!)),
+  });
+
+  // The middle: each stretch no event covers, on the channels already in use,
+  // placed in the list where the record reaches it.
+  const ordered = [...events].sort((a, b) => a.recordIn - b.recordIn);
+  let reached = ordered[0]!.recordIn;
+  for (const event of ordered) {
+    if (event.recordIn > reached) {
+      const hole = blackEvent(
+        channelsFrom((at) => at <= reached),
+        reached,
+        event.recordIn,
+      );
+      const at = events.findIndex((e) => !e.black && e.recordIn >= hole.recordOut);
+      events.splice(at === -1 ? events.length : at, 0, hole);
+    }
+    reached = Math.max(reached, event.recordOut);
+  }
+
+  // The head: each channel from the first frame to its first event, the
+  // channels that start together in one event.
+  const starts = [...new Set(first.values())].filter((at) => at > start).sort((a, b) => a - b);
+  events.unshift(
+    ...starts.map((at) =>
+      blackEvent(
+        channelsFrom((f) => f === at),
+        start,
+        at,
+      ),
+    ),
+  );
 }
 
 function blackLine(channel: string): EdlLine {

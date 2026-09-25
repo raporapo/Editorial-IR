@@ -4,6 +4,7 @@ import {
   operationTimelineDuration,
   operationsInOrder,
   smpteToFrames,
+  type CapabilityDowngrade,
   type EditPlan,
   type MediaAsset,
   type Transition,
@@ -522,7 +523,10 @@ export function describeTimecodeOrigins(timecodes: Iterable<SourceTimecode>): st
 /* Transitions                                                                 */
 /* -------------------------------------------------------------------------- */
 
-/** A transition as it will be written: at a join between two pictures, or at an edge. */
+/**
+ * A transition as it will be written: at a join between two pictures or two
+ * sound-only clips, or at an edge.
+ */
 export interface PlacedTransition {
   kind: 'between' | 'head' | 'tail';
   transition: Transition;
@@ -562,39 +566,83 @@ export function transitionsOf(
   mediaFrames: (span: GridSpan) => number | 'unbounded',
   warnings: string[],
 ): PlacedTransition[] {
+  return placeTransitions(
+    spans,
+    frames,
+    {
+      after: (span) => {
+        const length = mediaFrames(span);
+        return length === 'unbounded' ? Infinity : Math.max(0, length - span.out);
+      },
+      before: (span) => (mediaFrames(span) === 'unbounded' ? Infinity : Math.max(0, span.in)),
+    },
+    ({ outgoing, incoming, transition, why }) => {
+      warnings.push(
+        why === 'jump_cut'
+          ? `${incoming.operation.operation_id} continues ${outgoing.operation.operation_id}'s take, and a ` +
+              `jump cut is always a cut; its ${transition.type} was not written`
+          : `${incoming.operation.operation_id} asked for a ${transition.type}, and there is not enough footage ` +
+              'either side of the cut to make one; it stays a hard cut',
+      );
+    },
+  );
+}
+
+/** A join that asked for a transition and stays a cut, and why. */
+interface RefusedJoin {
+  outgoing: GridSpan;
+  incoming: GridSpan;
+  transition: Transition;
+  /** Which side asked: the incoming clip's `transition_in`, or the outgoing one's `transition_out`. */
+  askedBy: 'transition_in' | 'transition_out';
+  why: 'jump_cut' | 'no_handles';
+  /** Frames of media past the outgoing clip's out point and before the incoming one's in point. */
+  handles: { after: number; before: number };
+}
+
+/** Frames of media either side of what a clip uses. */
+interface Handles {
+  /** Past its last frame. */
+  after: (span: GridSpan) => number;
+  /** Before its first frame. */
+  before: (span: GridSpan) => number;
+}
+
+/** The rule `transitionsOf` states, over whatever media the handles are measured in. */
+function placeTransitions(
+  spans: readonly GridSpan[],
+  frames: (ms: number) => number,
+  handles: Handles,
+  refuse: (refused: RefusedJoin) => void,
+): PlacedTransition[] {
   const placed: PlacedTransition[] = [];
   const wanted = (t: Transition | undefined): Transition | undefined =>
     t && t.type !== 'hard_cut' && t.duration_ms > 0 ? t : undefined;
 
   /** The dissolve at a join, or nothing: no transition asked for, a jump cut, no handles. */
   const join = (previous: GridSpan, span: GridSpan): PlacedTransition | undefined => {
-    const transition =
-      wanted(span.operation.transition_in) ?? wanted(previous.operation.transition_out);
+    const own = wanted(span.operation.transition_in);
+    const transition = own ?? wanted(previous.operation.transition_out);
     if (!transition) return undefined;
+    const askedBy = own ? 'transition_in' : 'transition_out';
+    const refused = { outgoing: previous, incoming: span, transition, askedBy } as const;
     if (span.operation.continues_previous) {
-      warnings.push(
-        `${span.operation.operation_id} continues ${previous.operation.operation_id}'s take, and a ` +
-          `jump cut is always a cut; its ${transition.type} was not written`,
-      );
+      refuse({ ...refused, why: 'jump_cut', handles: { after: 0, before: 0 } });
       return undefined;
     }
-    const after = mediaFrames(previous);
-    const handleAfter = after === 'unbounded' ? Infinity : Math.max(0, after - previous.out);
-    const handleBefore = mediaFrames(span) === 'unbounded' ? Infinity : Math.max(0, span.in);
+    const after = handles.after(previous);
+    const before = handles.before(span);
     // Centred, so each side gives half; the shorter handle decides, and a
     // dissolve may not reach past the far end of either clip.
     const half = Math.min(
       Math.floor(frames(transition.duration_ms) / 2),
-      handleAfter,
-      handleBefore,
+      after,
+      before,
       previous.length,
       span.length,
     );
     if (half < 1) {
-      warnings.push(
-        `${span.operation.operation_id} asked for a ${transition.type}, and there is not enough footage ` +
-          'either side of the cut to make one; it stays a hard cut',
-      );
+      refuse({ ...refused, why: 'no_handles', handles: { after, before } });
       return undefined;
     }
     return { kind: 'between', transition, outgoing: previous, incoming: span, frames: half };
@@ -633,6 +681,105 @@ export function transitionsOf(
   return placed;
 }
 
+/**
+ * One clip on a track as a writer writes it: a picture (with or without its
+ * sound), or a sound-only clip with the sound it plays.
+ */
+export interface TrackClip {
+  span: GridSpan;
+  /** Present for a sound-only clip: what it plays, and from which file. */
+  sound?: ClipAudio;
+}
+
+/**
+ * The cross-fades and fades one track of sound-only clips really has.
+ *
+ * `transitionsOf` is asked about pictures, and a sound file has none, so a
+ * dissolve from one sound file into another reached no picture track and every
+ * writer but AviUtl's dropped it without a word. Measured on the sweep's
+ * audio-only case (three recordings, travel-vlog at 60 s): two 400 ms cross
+ * dissolves between recordings, and not one transition in the OTIO, the FCP7
+ * XML, the FCPXML or the EDL, and nothing in the result to say so.
+ *
+ * The rule is the picture's, over the sound: a cross-fade is centred on the cut
+ * and made of sound neither clip is using — past the outgoing clip's out point
+ * in the file it reads (a separate recorder's, where it has one) and before the
+ * incoming clip's in point — so the handles decide; a fade from or to silence
+ * at an edge needs none; a jump cut is a cut. What differs is how a join that
+ * stays a cut is reported: as a downgrade, listed under "changed to fit" with
+ * its reason, because nothing else in the output shows it was asked for. Both
+ * joins the sweep found are of that kind: each plays one recording to its last
+ * frame, or the next from its first, and there is no sound on that side to
+ * overlap.
+ *
+ * `clips` is every clip the writer puts on the track, in order, so that a
+ * sound-only clip is known to touch a picture. That join is not a cross-fade
+ * between two sounds, and a fade from silence there would be read as one: in
+ * OTIO, an FCPXML spine and an FCP7 track, a transition joins whatever is
+ * either side of it. A transition the sound-only clip asks for there is
+ * reported and left a cut; the picture's side is `transitionsOf`'s, unchanged.
+ */
+export function soundTransitionsOf(
+  clips: readonly TrackClip[],
+  frames: (ms: number) => number,
+  downgrades: CapabilityDowngrade[],
+): PlacedTransition[] {
+  const sounding = clips.filter((clip): clip is Required<TrackClip> => clip.sound !== undefined);
+  const soundOf = new Map(sounding.map((clip) => [clip.span.operation.operation_id, clip.sound]));
+  const sound = (span: GridSpan): ClipAudio => soundOf.get(span.operation.operation_id)!;
+  const placed = placeTransitions(
+    sounding.map((clip) => clip.span),
+    frames,
+    {
+      after: (span) => Math.max(0, frames(sound(span).asset.duration_ms) - sound(span).out),
+      before: (span) => Math.max(0, sound(span).in),
+    },
+    ({ outgoing, incoming, transition, askedBy, why, handles }) => {
+      const owner = askedBy === 'transition_in' ? incoming : outgoing;
+      const [from, to] = [outgoing.operation.operation_id, incoming.operation.operation_id];
+      const reason =
+        why === 'jump_cut'
+          ? `${to} continues ${from}'s take, and a jump cut is always a cut`
+          : handles.after >= 1 && handles.before >= 1
+            ? `${from} or ${to} is too short to hold half of it`
+            : 'a cross-fade centred on the cut needs sound neither clip uses on both sides of ' +
+              `it, and there ${handles.after === 1 ? 'is 1 frame' : `are ${handles.after} frames`} ` +
+              `of it after ${from}'s out point and ${handles.before} before ${to}'s in point`;
+      downgrades.push({
+        operation_id: owner.operation.operation_id,
+        capability: askedBy,
+        action: `${transition.type} between two sound-only clips became a cut: ${reason}`,
+      });
+    },
+  );
+
+  const position = new Map(clips.map((clip, index) => [clip.span.operation.operation_id, index]));
+  /** The picture a sound-only clip touches on one side, if it touches one. */
+  const pictureBeside = (span: GridSpan, side: -1 | 1): GridSpan | undefined => {
+    const neighbour = clips[position.get(span.operation.operation_id)! + side];
+    if (!neighbour || neighbour.sound) return undefined;
+    const touches =
+      side < 0 ? neighbour.span.end === span.start : span.end === neighbour.span.start;
+    return touches ? neighbour.span : undefined;
+  };
+  return placed.filter((placement) => {
+    if (placement.kind === 'between') return true;
+    const head = placement.kind === 'head';
+    const clip = (head ? placement.incoming : placement.outgoing)!;
+    const picture = pictureBeside(clip, head ? -1 : 1);
+    if (!picture) return true;
+    downgrades.push({
+      operation_id: clip.operation.operation_id,
+      capability: head ? 'transition_in' : 'transition_out',
+      action:
+        `${placement.transition.type} became a cut: ${clip.operation.operation_id} is sound only and ` +
+        `${picture.operation.operation_id} beside it has a picture, and a transition is written ` +
+        'between two pictures or two sound-only clips',
+    });
+    return false;
+  });
+}
+
 /** How many frames of media an asset has at the grid's rate; stills are unbounded. */
 export function mediaFramesOf(
   assets: readonly MediaAsset[],
@@ -649,6 +796,71 @@ export function mediaFramesOf(
 /** Looks an asset up by id. */
 export function assetById(assets: readonly MediaAsset[], id: string): MediaAsset | undefined {
   return assets.find((asset) => asset.id === id);
+}
+
+/* -------------------------------------------------------------------------- */
+/* How far into each file the cut reads                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One past the last frame the cut reads from each file, counted at the grid's
+ * rate: a picture's own file, the file its sound is read from, and a bed's.
+ * Stills are not counted; they have no length to read past.
+ *
+ * The grid places whole frames, and a file is not a whole number of them. A
+ * clip the plan plays to the very end of a sound file therefore reads a
+ * fraction of a frame the file does not have: measured on a 2232 ms mp3 played
+ * 0–2232 ms at 30 fps, the clip is 67 frames (2233.3 ms) and the file 66.96. A
+ * clip that starts a fraction of a frame into its file and rounds up at both
+ * ends can overshoot by a whole frame (a 2215 ms file read from 23 ms: frames 1
+ * to 67 of a file that rounds to 66).
+ *
+ * A writer that declares a file's length says it with this as the floor
+ * (`mediaLengthOf`). The alternative, trimming the clip to the whole frames the
+ * file has, leaves a frame of silence or black in this writer's timeline that
+ * the others beside it do not have, and moves the cut off the grid every writer
+ * shares. Declaring the file a fraction of a frame longer asks the importer for
+ * nothing it cannot give: the last frame is the file's last, part sound and
+ * part the silence after it.
+ */
+export function furthestReads(
+  plan: EditPlan,
+  grid: FrameGrid,
+  assets: readonly MediaAsset[],
+): Map<string, number> {
+  const reach = new Map<string, number>();
+  const note = (id: string, frame: number): void => {
+    reach.set(id, Math.max(reach.get(id) ?? 0, frame));
+  };
+  const lookup = (id: string): MediaAsset | undefined => assetById(assets, id);
+  for (const spans of grid.tracks.values()) {
+    for (const span of spans) {
+      const asset = lookup(span.operation.source_asset_id);
+      if (asset && pictureOf(asset) === 'video') note(asset.id, span.out);
+      // No warnings: the writer asks for the same sound again and says it then.
+      const audio = clipAudio(span, lookup, grid.rate);
+      if (audio) note(audio.asset.id, audio.out);
+    }
+  }
+  for (const spec of plan.tracks.audio) {
+    if (spec.type !== 'external') continue;
+    const asset = lookup(spec.asset_id);
+    const bed = asset ? bedSpan(spec, asset, grid.length, grid.frames) : undefined;
+    if (asset && bed) note(asset.id, bed.in + bed.length);
+  }
+  return reach;
+}
+
+/**
+ * A file's length in frames at the grid's rate, and never less than the cut
+ * reads of it (`furthestReads`).
+ */
+export function mediaLengthOf(
+  asset: MediaAsset,
+  frames: (ms: number) => number,
+  reach: ReadonlyMap<string, number>,
+): number {
+  return Math.max(frames(asset.duration_ms), reach.get(asset.id) ?? 0);
 }
 
 /** Where an external bed sits, in frames: from its start to its end or the cut's. */

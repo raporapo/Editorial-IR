@@ -51,9 +51,53 @@ adapter writes (`pictureOf`, `soundOf` in
   so.
 - **Channels** come from the stream: a mono lavalier is one track, not a stereo
   pair whose second channel points at nothing.
+- **A file played to its very end** is declared at least as long as the cut
+  reads of it (`furthestReads`). The grid lays whole frames and a file is rarely
+  a whole number of them: a 2232 ms mp3 played whole at 30 fps is a 67-frame
+  clip, 1.3 ms longer than the file, and FCPXML declared the asset 2232 ms long
+  under it. Such an asset is now declared as long as the clip reads, rounded up
+  to the file's own unit (a sample, or a frame at its own rate). OTIO's
+  `available_range` and Premiere's `<file><duration>` take the same floor; they
+  needed it where a clip starts a fraction of a frame into its file and rounds
+  up at both ends (frames 1 to 67 of a 2215 ms file that rounds to 66). A file
+  no clip reads past is declared exactly as before. The AviUtl job and `.exo`
+  declare no media length, so there is nothing there to read past.
 - **An external bed** (`AudioTrackSpec` `external`: music, a separate
   recorder) is laid on a track of its own at its level, in OTIO, Premiere,
   FCPXML, AviUtl and the preview. It used to be warned about and dropped.
+
+### Dissolves between sound-only clips
+
+A dissolve from one sound file into another has no picture to go on, and every
+writer but AviUtl's left it out without a word: on the audio-only probe case,
+two 400 ms cross dissolves and not one transition in the OTIO, the FCP7 XML, the
+FCPXML or the EDL. [`soundTransitionsOf`](../packages/adapters/src/timeline.ts)
+applies the picture's rule to the sound: a cross-fade centred on the cut, made
+of sound neither clip uses (past the outgoing clip's out point in the file it
+reads, before the incoming clip's in point), as long as the shorter handle
+allows; a fade from or to silence at an edge, which needs none; a jump cut stays
+a cut. Each writer says it where the sound is:
+
+- **OTIO**: a `Transition` on the audio track, between the two audio clips.
+- **Premiere**: a `Cross Fade (+3dB)` `transitionitem` (`mediatype` audio) on
+  every audio track both clips are on; a stereo file's second channel beside a
+  mono one comes in on the cut.
+- **FCPXML**: a storyline `transition`, like a picture's; its Audio Crossfade is
+  all it does between two clips with no picture.
+- **EDL**: a `D` event on the clips' sound channels (`A`, `AA`).
+- **AviUtl**: the job carries the plan's transitions as before; the `.exo` has
+  none.
+
+A join that stays a cut is listed under "changed to fit" (a downgrade, with the
+clip and the reason), because nothing else in the output shows it was asked for.
+That is what both of the probe case's joins are: each plays one recording to
+its last frame or the next from its first, and there is no sound on that side
+to overlap. A sound-only clip that touches a picture is not cross-faded with it
+— a transition there would be read as one between the picture's sound and the
+clip, made of handles nobody measured — and a transition it asks for there is
+reported the same way. Dissolves between pictures are unchanged: their sound is
+a straight cut under the picture's dissolve in OTIO and Premiere, and part of
+it in FCPXML and the EDL, as before.
 
 ### Sound from a separate recorder
 
@@ -195,10 +239,29 @@ and Resolve ignores — give Resolve the `.srt`.
 (`V`, `B`, `AA/V`, `A`, `AA`). Reel names are made from file names within eight
 characters, deterministic and never colliding, with the full name in a
 `* FROM CLIP NAME:` comment and the path in `* SOURCE FILE:`. Dissolves are
-`D nnn` with the outgoing clip's zero-length line before them; fades go through
-the `BL` reel; chapters are `* LOC:` comments under the event they fall in. No
-stills, no second track, no music bed, no speed changes, and a list of more than
-999 events is warned about.
+`D nnn` with the outgoing clip's zero-length line before them, on the channels
+both clips carry. A channel only one side has comes in or goes out on the cut,
+where the plan puts the clip, as an event of its own at the same record time
+(`A2` and `A2/V` name a stereo pair's second channel alone): a clip whose sound
+is not used, dissolving into one with stereo sound, is a `V` dissolve and the
+second clip's `AA` from the cut. It used to be an `AA/V` dissolve that asked the
+conform for the first clip's sound, which OpenTimelineIO refused as a
+transition at the start of the sound tracks; the other way round, the outgoing
+sound stopped half a dissolve early. Fades go through the `BL` reel, and so
+does black: every channel the list uses is held from the first frame by a `BL`
+event until its first event, and a stretch no event covers (a still left out
+between two clips) is a `BL` event on the channels in use there. A cut that
+opened on a still used to start the list after 00:00:00:00, which
+OpenTimelineIO's reader kept as the track's own offset (after which every
+`trimmed_range_in_parent()` raised), and it did the same to sound tracks whose
+first event came late: the memory-film list's were read 228 frames short. The
+middle of the list used to be an unmarked jump in the record times; it is black
+now so the list says the same thing the same way wherever it says it. A
+channel the events around it do not use (the sound under a clip whose sound is
+not used) is left empty, as every list leaves it, and the end is not filled.
+Chapters are `* LOC:` comments under the picture's event they fall in, or the
+black where nothing else is. No stills, no second track, no music bed, no speed
+changes, and a list of more than 999 events is warned about.
 
 **AviUtl2** proves independence with an editor that shares nothing with
 Premiere. The JSON job is the supported output (version 0.2.0 says what each clip
@@ -356,7 +419,8 @@ three adapters rounding three ways disagreed by a frame here and there, and a
 source in rounded apart from its clip's start read up to 1.3 frames past a
 planned out point — on an edited programme, the first frame of the next shot.
 `transitionsOf` then says which joins can really have a dissolve (handles
-permitting) and where a fade sits. Use both.
+permitting) and where a fade sits, and `soundTransitionsOf` says the same of
+sound-only clips, reporting each join it leaves a cut. Use all three.
 
 ### File or live
 
