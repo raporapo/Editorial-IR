@@ -195,11 +195,70 @@ it never costs a moment.
 - An event the user has annotated is always asked about, however still it is.
 
 The IR records it in `quality.savings` — footage judged still and silent, calls
-not made, frames not sent, and tokens avoided as an estimate from what the calls
-that were made actually measured. It is kept apart from `stand_ins` on purpose:
-a model that was there and was not asked is not a model that failed, and a
-project with long still stretches does not read as degraded. The rules'
-judgements carry their own model run, so the IR never claims the model answered.
+not made, closer looks not taken (or given to other events instead), frames not
+sent, and tokens and dollars avoided. It is kept apart from `stand_ins` on
+purpose: a model that was there and was not asked is not a model that failed,
+and a project with long still stretches does not read as degraded. The rules'
+descriptions and judgements carry their own model run, so the IR never claims
+the model answered.
+
+### Counted honestly
+
+- **A call the cache would have answered for free is not a saving**, and it is
+  not skipped either: when the model's own answer for a quiet event is already
+  cached — an earlier analysis made without the mask — that answer is used, at
+  no cost and better than the rules'.
+- **Tokens avoided are an estimate** and are labelled as one: each skipped call
+  is priced by the length of its own prompt, at the tokens per character the
+  calls that were made measured in the same run. With nothing measured, nothing
+  is estimated.
+- **Closer looks** a quiet event would have taken are counted by selecting
+  again without the mask; where a count or cost limit applies, the look is not
+  saved but given to another event, and is counted as redirected.
+- **A dead model is not hidden.** The rules' quiet-event descriptions do not
+  count as the model's: the share of fallbacks that marks a run `degraded` is
+  taken over the events the model was asked about. Before this, with 53 of 73
+  events quiet, a model that refused every call left the IR stamped `standard`.
+
+### Switching it off
+
+`oea analyze --no-skip-inactive` asks the models about every second. It is part
+of the observations fingerprint, because OCR reads thinned inside a still span
+are stored with the observations. The analysis report says which of four things
+happened: still, silent footage was **found**; the picture was measured and
+**none was found**; it was **not measured** (no video had its picture analysed);
+or the mask was **off**.
+
+### Screen recordings
+
+A screen has no sensor grain, and what changes on it is small. Measured through
+the pipeline's own path on synthetic 1920x1080 captures, typing at five
+characters a second read 0.14 grey levels at 32 px text and 0.016-0.031 at
+14-16 px — all far under the 0.5 that separates camera grain from motion, so a
+silent tutorial read as still from end to end. A screen recording is therefore
+held to a stillness of 0.003 — below the smallest change the envelope can record
+— recomputed from the stored motion envelope, and its on-screen text is never
+thinned. An untouched capture read exactly 0 in 149 of 150 samples.
+
+### Smaller frames for the closer look
+
+Frames sent to a vision-language model were full-size source JPEGs. They are
+now extracted with the long edge bounded at 768 px (never enlarged). By the
+per-image formulas the providers publish, a 1280x720 frame is 1,105 tokens at
+OpenAI's high detail, about 1,490 on 32-pixel-patch models and about 1,229 on
+Anthropic's; at 768x432 it is 425, 544 and 442 — a third of the cost for every
+frame of every closer look, with no time value involved. Small text on a
+1920-wide screen becomes unreadable at this size; that is what OCR is for, and
+its reads reach the model as text.
+
+### The budget binds the base pass
+
+`--budget` bounded only the closer looks, so a hosted model describing every
+event (`OEA_VLM_SCOPE=base`) or judging every event spent past any limit. Both
+base passes now stop asking when the limit is reached: the rest of the events
+are described or judged by the rules, the compile continues, the report says
+where it stopped, and the stage is marked `failed_during_run` with the remedy
+"raise --budget".
 
 ## Three ways to run it
 
