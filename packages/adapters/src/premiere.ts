@@ -16,6 +16,7 @@ import {
   mediaFramesOf,
   pictureOf,
   soundOf,
+  streamChannels,
   streamOf,
   transitionsOf,
   type ClipSound,
@@ -534,7 +535,7 @@ function audioStreamsOf(asset: MediaAsset): { channels: number; sampleRate?: num
   const streams = [...(asset.audio_streams ?? [])].sort((a, b) => a.index - b.index);
   if (streams.length > 0) {
     return streams.map((stream) => ({
-      channels: stream.channels && stream.channels > 0 ? stream.channels : 2,
+      channels: streamChannels(asset, stream),
       ...(stream.sample_rate ? { sampleRate: stream.sample_rate } : {}),
     }));
   }

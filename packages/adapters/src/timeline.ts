@@ -288,8 +288,7 @@ export function streamOf(
     );
     stream = streams[0]!;
   }
-  const channelsOf = (s: (typeof streams)[number]): number =>
-    positive(s.channels) ?? (s.index === 0 ? (positive(asset.audio_channels) ?? 2) : 2);
+  const channelsOf = (s: (typeof streams)[number]): number => streamChannels(asset, s);
   let channelOffset = 0;
   for (const earlier of streams) {
     if (earlier.index >= stream.index) break;
@@ -301,6 +300,27 @@ export function streamOf(
     channelOffset,
     streams: streams.length,
   };
+}
+
+/**
+ * How many channels one audio stream of a file has, by the one rule every
+ * writer uses.
+ *
+ * The stream's own count; for the first stream, the probe's first-stream field
+ * when the stream carries none; two otherwise, which is what every adapter
+ * assumed before it asked. A file definition that counted a stream one way and
+ * a clip that counted it another addressed the wrong channel: Premiere declared
+ * a stream with no count as two channels while the clip reading the stream
+ * after it counted the first as the probe's one, and so linked the first
+ * stream's second channel instead of the lavalier.
+ */
+export function streamChannels(
+  asset: Pick<MediaAsset, 'audio_channels'>,
+  stream: { index: number; channels?: number | undefined },
+): number {
+  return (
+    positive(stream.channels) ?? (stream.index === 0 ? (positive(asset.audio_channels) ?? 2) : 2)
+  );
 }
 
 function positive(value: number | undefined): number | undefined {
