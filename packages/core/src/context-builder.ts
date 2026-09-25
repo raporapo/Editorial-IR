@@ -16,7 +16,14 @@ import {
 import { HeuristicContextModel, type ContextModel } from '@editorial-ir/perception';
 import type { SegmentDraft } from './segment.js';
 import { annotationsFor, applyAnnotations, withOverrides } from './annotations.js';
-import { selectForEscalation, type EscalationPolicy, type CostBudget } from './budget.js';
+import {
+  TokenRate,
+  promptChars,
+  selectLeavingOut,
+  withinBudget,
+  type EscalationPolicy,
+  type CostBudget,
+} from './budget.js';
 import type { ModelRunRecorder } from './model-runs.js';
 import { framePathFor } from './observe.js';
 import { linkKnownEntities, withKnownEntities } from './entities.js';
@@ -129,16 +136,39 @@ export interface BuildEventsResult {
    * description came from a template looked like a run where three did.
    */
   describedByFallback: number;
+  /**
+   * Events the base model was meant to describe: every event, less the still,
+   * silent ones the rules described instead. What `describedByFallback` is a
+   * share of.
+   *
+   * Measured against every event, a dead model hid behind the quiet ones: with
+   * 53 of 73 events described by the rules, a model that answered none of the
+   * three calls it was sent — and was never sent the other seventeen — left 20
+   * fallbacks among 73 events, under half, and the IR was stamped `standard`.
+   */
+  describeAsked: number;
+  /** Events described from their observations because the cost limit had been reached. */
+  budgetStopped: number;
   /** Model work not done because the event, or part of it, was still and silent. */
   savings: {
-    /** Events the rules described instead of the base model. */
+    /**
+     * Events the rules described instead of the base model, where asking the
+     * model would have cost something: one the cache would have answered for
+     * free is not a saving.
+     */
     describeCallsSkipped: number;
-    /** Frames not attached to a closer look because another one from the same span was. */
+    /** Frames not attached to a closer look that was actually taken, because another from the same span was. */
     framesNotSent: number;
     /** Events that were quiet throughout, for the judgement stage to read. */
     quietEvents: string[];
-    /** Skipped calls times the tokens measured per base call in this run. */
+    /** An estimate: each skipped call priced by its own prompt, at this run's measured tokens per character. */
     estimatedTokensAvoided: number;
+    /** Closer looks the quiet events would have taken, net of the ones given to other events instead. */
+    escalationsAvoided: number;
+    /** Closer looks given to other events because the quiet ones were not candidates. */
+    escalationsRedirected: number;
+    /** An estimate, from the per-event cost each pass already charges. */
+    estimatedCostAvoidedUsd: number;
   };
 }
 
@@ -192,10 +222,17 @@ export async function buildSemanticEvents(
   }
   let describeCallsSkipped = 0;
   const framesSkipped = { count: 0 };
-  // Measured tokens per base call this run, which is what an estimate of the
-  // calls not made is scaled from. Nothing measured, nothing estimated.
-  let baseCalls = 0;
-  let baseTokens = 0;
+  // Prompt sizes and the tokens they measured, which is what a call not made is
+  // priced from. Nothing measured, nothing estimated.
+  const baseRate = new TokenRate();
+  const skippedSizes: number[] = [];
+  let baseCostPerEvent = 0;
+  // Which run produced a description, where it was not the base model's own.
+  const describedBy = new Map<string, string>();
+  let describeAsked = skeletons.length;
+  let describedByModel = 0;
+  let budgetStopped = 0;
+  let describing = 0;
 
   // ---- cheap pass ----------------------------------------------------------
   const descriptions = new Map<string, Awaited<ReturnType<ContextModel['describe']>>>();
@@ -211,47 +248,85 @@ export async function buildSemanticEvents(
     // base model precisely so it can describe every event. An eleven-event run
     // against a local model reported "cost: nothing" having made eleven calls.
     //
-    // It is not only a reporting gap. `OEA_VLM_SCOPE=base` is documented as the
-    // way to have a *hosted* model describe everything, and with the base pass
-    // uncounted `--budget` could not see that spending at all — a limit that
-    // does not bind is worse than no limit, because the documentation promises
-    // it does.
     // Zero for a model on this machine, because it is. For a hosted one this
     // is an estimate and the tokens beside it are not — which is the right way
     // round: a price per token is a property of whichever provider you chose,
     // and the token count is a property of this pipeline.
-    const baseCostPerEvent =
-      model.identity.locality === 'remote_api' ? ESTIMATED_COST_PER_EVENT_USD : 0;
+    baseCostPerEvent = model.identity.locality === 'remote_api' ? ESTIMATED_COST_PER_EVENT_USD : 0;
     // Only worth doing when the base model is a model. When it is already the
     // rules, asking the rules instead saves nothing and would be counted as a
     // saving that never happened.
     const rules = model.identity.standIn === undefined ? new HeuristicContextModel() : undefined;
-    for (const [index, skeleton] of skeletons.entries()) {
-      options.onProgress?.('describe', index, skeletons.length);
-      const params = describeParams(skeleton, skeletons, index, options, { includeFrames: false });
-      if (rules && quiet.has(skeleton.id)) {
+
+    // The quiet events first, and on their own. Inside the model's loop they
+    // were counted as described, which diluted a dead model's failures below
+    // the line the tier is drawn at, and they sat between the model and the
+    // events it had not yet been asked about when it gave up.
+    if (rules && quiet.size > 0) {
+      const rulesRun = options.runs.fromIdentity('context', rules.identity);
+      for (const [index, skeleton] of skeletons.entries()) {
+        if (!quiet.has(skeleton.id)) continue;
+        options.onProgress?.('describe', describing++, skeletons.length);
+        const params = describeParams(skeleton, skeletons, index, options, {
+          includeFrames: false,
+        });
+        // The model's own description, when the cache already holds it, costs
+        // nothing and says more than the rules can: a re-run of an analysis made
+        // without the mask keeps it, and nothing is counted as saved.
+        const known = options.cache?.peek<Awaited<ReturnType<ContextModel['describe']>>>(
+          describeKey(model, params),
+        );
+        if (known) {
+          descriptions.set(skeleton.id, known);
+          continue;
+        }
         // Described from what was measured, which for a still, silent stretch is
         // all there is to say. Not a fallback and not a failure: the model was
         // there and was not asked, and `savings` says so.
         descriptions.set(skeleton.id, await rules.describe(params));
+        describedBy.set(skeleton.id, rulesRun);
         describeCallsSkipped++;
+        skippedSizes.push(promptChars(stableParams(params)));
+      }
+      describeAsked = skeletons.length - quiet.size;
+    }
+
+    // What `--budget` was documented to bound and did not: `spend` was called
+    // only for the closer looks, so a hosted model describing every event
+    // (OEA_VLM_SCOPE=base) spent past any limit. Past the limit the pass stops
+    // asking; an answer the cache holds is still free and still taken.
+    let budgetReached = false;
+    let firstUnpaid: string | undefined;
+    for (const [index, skeleton] of skeletons.entries()) {
+      if (rules && quiet.has(skeleton.id)) continue;
+      options.onProgress?.('describe', describing++, skeletons.length);
+      const params = describeParams(skeleton, skeletons, index, options, { includeFrames: false });
+      const key = describeKey(model, params);
+      const hit = options.cache?.get<Awaited<ReturnType<ContextModel['describe']>>>(key);
+      if (hit) {
+        descriptions.set(skeleton.id, hit);
+        describedByModel++;
+        baseRate.observe(promptChars(stableParams(params)), hit.input_tokens, hit.output_tokens);
+        continue;
+      }
+      if (budgetReached || (options.budget && !options.budget.canAfford(baseCostPerEvent))) {
+        budgetReached = true;
+        budgetStopped++;
+        firstUnpaid ??= skeleton.id;
         continue;
       }
       try {
-        const { result, cached } = await describeCached(model, params, options.cache);
+        const result = await model.describe(params);
+        options.cache?.set(key, result);
         descriptions.set(skeleton.id, result);
-        // A cache hit is free, which is the whole point of the cache; counting
-        // it would make a re-run look as expensive as the first one.
-        if (!cached) {
-          baseCalls++;
-          baseTokens += (result.input_tokens ?? 0) + (result.output_tokens ?? 0);
-          options.runs.addCost(
-            baseRun,
-            baseCostPerEvent,
-            result.input_tokens,
-            result.output_tokens,
-          );
-        }
+        describedByModel++;
+        baseRate.observe(
+          promptChars(stableParams(params)),
+          result.input_tokens,
+          result.output_tokens,
+        );
+        options.budget?.charge(baseCostPerEvent);
+        options.runs.addCost(baseRun, baseCostPerEvent, result.input_tokens, result.output_tokens);
       } catch (error) {
         // Leave the map empty for this one and let `fallbackDescription` below
         // do the job it was written for, at confidence 0.15 — the honest record
@@ -266,15 +341,30 @@ export async function buildSemanticEvents(
         if (failures.length >= GIVE_UP_AFTER) break;
       }
     }
+    if (firstUnpaid !== undefined) {
+      failures.push({
+        eventId: firstUnpaid,
+        stage: 'describe',
+        reason: `the cost limit of $${options.budget?.limit} was reached; ${budgetStopped} event(s) from here on were described from what was observed`,
+      });
+    }
+  } else {
+    describeAsked = 0;
   }
   // Counted after the loop rather than inside it, so that giving up early is
-  // included: what matters downstream is how many events have a model's
-  // description, not how many errors were worth printing.
-  const describedByFallback = skeletons.length - descriptions.size;
+  // included: what matters downstream is how many of the events the model was
+  // meant to describe have its description, not how many errors were worth
+  // printing.
+  const describedByFallback = options.baseModel
+    ? describeAsked - describedByModel
+    : skeletons.length - descriptions.size;
 
   // ---- escalation ----------------------------------------------------------
   const escalated: string[] = [];
   let limitedBy = 'nothing';
+  let escalationsAvoided = 0;
+  let escalationsRedirected = 0;
+  let escalationCostAvoided = 0;
   if (options.escalationModel) {
     const model = options.escalationModel;
     // Free when the closer look runs on this machine, for the same reason the
@@ -285,23 +375,37 @@ export async function buildSemanticEvents(
     const costPerEvent =
       model.identity.locality === 'remote_api' ? ESTIMATED_COST_PER_EVENT_USD : 0;
     const totalDuration = skeletons.reduce((sum, s) => sum + (s.endMs - s.startMs), 0) || 1;
+    const indexOf = new Map(skeletons.map((skeleton, index) => [skeleton.id, index]));
+    const lookParams = (id: string) => {
+      const index = indexOf.get(id)!;
+      return describeParams(skeletons[index]!, skeletons, index, options, { includeFrames: true });
+    };
+    const wouldPay = (id: string) =>
+      options.cache?.peek(describeKey(model, lookParams(id))) === undefined;
 
-    const decision = selectForEscalation(
-      // A closer look at a lens cap finds a lens cap.
-      skeletons
-        .filter((skeleton) => !quiet.has(skeleton.id))
-        .map((skeleton) => ({
-          id: skeleton.id,
-          value: escalationValue(
-            descriptions.get(skeleton.id)?.confidence ?? 0,
-            (skeleton.endMs - skeleton.startMs) / totalDuration,
-            skeleton.observed,
-          ),
-          costUsd: costPerEvent,
-        })),
-      options.escalation ?? {},
+    // A closer look at a lens cap finds a lens cap. Selected twice — once as it
+    // is, once as it would have been with the quiet events in — so that leaving
+    // them out is counted rather than assumed.
+    const { decision, leftOutPicked, redirected } = selectLeavingOut(
+      skeletons.map((skeleton) => ({
+        id: skeleton.id,
+        value: escalationValue(
+          descriptions.get(skeleton.id)?.confidence ?? 0,
+          (skeleton.endMs - skeleton.startMs) / totalDuration,
+          skeleton.observed,
+        ),
+        costUsd: costPerEvent,
+      })),
+      quiet,
+      withinBudget(options.escalation ?? {}, options.budget),
     );
     limitedBy = decision.limitedBy;
+    escalationsRedirected = redirected.length;
+    escalationsAvoided = Math.max(
+      0,
+      leftOutPicked.filter(wouldPay).length - redirected.filter(wouldPay).length,
+    );
+    escalationCostAvoided = escalationsAvoided * costPerEvent;
 
     const runId = options.runs.fromIdentity('context', model.identity);
     const selected = new Set(decision.selected);
@@ -310,19 +414,33 @@ export async function buildSemanticEvents(
       if (!selected.has(skeleton.id)) continue;
       options.onProgress?.('inspect', done++, decision.selected.length);
 
+      // Frames thinned from this look are counted only if the look is taken:
+      // an answer from the cache sends no frames at all, so none were saved.
+      const thinned = { count: 0 };
       const params = describeParams(skeleton, skeletons, index, options, {
         includeFrames: true,
-        framesSkipped,
+        framesSkipped: thinned,
       });
-      const cached = options.cache?.get<Awaited<ReturnType<ContextModel['describe']>>>(
-        describeKey(model, params),
-      );
-      // Only spend from the budget when the call is actually going to happen.
-      if (!cached) options.budget?.spend(costPerEvent, `a closer look at ${skeleton.id}`);
+      // One lookup. This asked the cache once here and again inside the call
+      // below, so every look actually taken was counted as two misses.
+      const key = describeKey(model, params);
+      const cached = options.cache?.get<Awaited<ReturnType<ContextModel['describe']>>>(key);
+      if (!cached && options.budget && !options.budget.canAfford(costPerEvent)) {
+        limitedBy = 'cost';
+        break;
+      }
 
       let result;
       try {
-        result = cached ?? (await describeCached(model, params, options.cache)).result;
+        if (cached) {
+          result = cached;
+        } else {
+          // Only spend from the budget when the call is actually going to happen.
+          options.budget?.spend(costPerEvent, `a closer look at ${skeleton.id}`);
+          result = await model.describe(params);
+          options.cache?.set(key, result);
+          framesSkipped.count += thinned.count;
+        }
       } catch (error) {
         // The cheap description already in the map stands. A closer look that
         // could not be taken is worth less than the analysis.
@@ -364,7 +482,9 @@ export async function buildSemanticEvents(
         value: described?.description ?? fallbackDescription(skeleton.observed),
         provenance: 'inferred',
         confidence: described?.confidence ?? 0.15,
-        ...(described ? { model_run_id: undefined } : {}),
+        // The rules' run on a quiet event, so the IR says who described it; every
+        // other event exactly as before.
+        ...(described ? { model_run_id: describedBy.get(skeleton.id) } : {}),
       },
       event_type: {
         value: described?.event_type || 'moment',
@@ -451,12 +571,16 @@ export async function buildSemanticEvents(
     escalationLimitedBy: limitedBy,
     failures,
     describedByFallback,
+    describeAsked,
+    budgetStopped,
     savings: {
       describeCallsSkipped,
       framesNotSent: framesSkipped.count,
       quietEvents: [...quiet],
-      estimatedTokensAvoided:
-        baseCalls > 0 ? Math.round((describeCallsSkipped * baseTokens) / baseCalls) : 0,
+      estimatedTokensAvoided: skippedSizes.reduce((sum, size) => sum + baseRate.estimate(size), 0),
+      escalationsAvoided,
+      escalationsRedirected,
+      estimatedCostAvoidedUsd: describeCallsSkipped * baseCostPerEvent + escalationCostAvoided,
     },
   };
 }
@@ -475,7 +599,8 @@ export function describeKey(
   model: ContextModel,
   params: Parameters<ContextModel['describe']>[0],
 ): Parameters<PerceptionCache['get']>[0] {
-  const { frame_paths, event_id: _event_id, ...stable } = params;
+  const stable = stableParams(params);
+  const { frame_paths } = params;
   return {
     operation: 'describe',
     // Which frames, by where they sit under the project rather than the whole
@@ -503,18 +628,10 @@ function frameIdentity(path: string): string {
   return path.split(/[\\/]/).slice(-3).join('/');
 }
 
-/** The description, and whether it cost anything to get. */
-async function describeCached(
-  model: ContextModel,
-  params: Parameters<ContextModel['describe']>[0],
-  cache: PerceptionCache | undefined,
-): Promise<{ result: Awaited<ReturnType<ContextModel['describe']>>; cached: boolean }> {
-  const key = describeKey(model, params);
-  const hit = cache?.get<Awaited<ReturnType<ContextModel['describe']>>>(key);
-  if (hit) return { result: hit, cached: true };
-  const result = await model.describe(params);
-  cache?.set(key, result);
-  return { result, cached: false };
+/** What a describe call is about, without what only locates it: the event id and the frame paths. */
+function stableParams(params: Parameters<ContextModel['describe']>[0]) {
+  const { frame_paths: _frames, event_id: _event_id, ...stable } = params;
+  return stable;
 }
 
 /**

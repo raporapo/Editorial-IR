@@ -6,6 +6,7 @@ import {
 } from '@editorial-ir/contracts';
 import {
   INACTIVE_MARGIN_MS,
+  SCREEN_STILL_MOTION,
   inactiveMsWithin,
   inactiveSpans,
   isInactive,
@@ -303,5 +304,72 @@ describe('using the spans', () => {
 
   it('changes nothing without spans', () => {
     expect(thinTimestamps([1, 2, 3], [], 'asset_001')).toEqual({ kept: [1, 2, 3], dropped: 0 });
+  });
+});
+
+describe('a screen recording', () => {
+  const screen = [{ asset_id: 'asset_001', kind: 'screen_recording' as const }];
+  /**
+   * A minute of a silent capture as the envelope saw it, 5 samples a second:
+   * typing for the first 30 s, then nothing touched. The typing values are the
+   * ones measured on a synthetic 1920x1080 capture at 16 px (0.021-0.052, with
+   * the odd sample where no keystroke landed), far under the 0.5 camera
+   * threshold — which is why the picture analysis reported the whole minute
+   * static.
+   */
+  const typingThenIdle = (idle: number) => ({
+    asset_id: 'asset_001',
+    hop_ms: 200,
+    motion: Array.from({ length: 300 }, (_, i) =>
+      i < 150 ? (i % 7 === 3 ? 0 : [0.026, 0.042, 0.031, 0.021, 0.036, 0.052][i % 6]!) : idle,
+    ),
+    luma: Array(300).fill(230),
+  });
+  const silentMinute = {
+    video_events: [staticEvent(0, 60_000)],
+    audio_events: [silence(0, 60_000)],
+    audio_profiles: [audioProfile],
+  };
+
+  it('keeps typing active that the camera threshold calls still', () => {
+    const measured = observations({ ...silentMinute, motion_profiles: [typingThenIdle(0)] });
+    // Read as camera footage, the whole minute is skipped, typing and all.
+    expect(inactiveSpans(measured, [asset])).toEqual([
+      { asset_id: 'asset_001', start_ms: 500, end_ms: 59_500 },
+    ]);
+    // Read as a screen, only the stretch nobody touched.
+    expect(inactiveSpans(measured, [asset], { materials: screen })).toEqual([
+      { asset_id: 'asset_001', start_ms: 30_000 + INACTIVE_MARGIN_MS, end_ms: 59_500 },
+    ]);
+  });
+
+  it('counts the smallest change the envelope can record as a change', () => {
+    // One grey level on one pixel of a 16x12 cell is 1/192, stored as 0.005.
+    const flicker = observations({ ...silentMinute, motion_profiles: [typingThenIdle(0.005)] });
+    expect(SCREEN_STILL_MOTION).toBeLessThan(0.005);
+    expect(inactiveSpans(flicker, [asset], { materials: screen })).toEqual([]);
+  });
+
+  it('is still where nothing on it changed, and silent', () => {
+    const idle = observations({
+      ...silentMinute,
+      motion_profiles: [{ ...typingThenIdle(0), motion: Array(300).fill(0) }],
+    });
+    expect(inactiveSpans(idle, [asset], { materials: screen })).toEqual([
+      { asset_id: 'asset_001', start_ms: 500, end_ms: 59_500 },
+    ]);
+  });
+
+  it('is unknown, not still, when its picture was never measured', () => {
+    const unmeasured = observations({ ...silentMinute });
+    expect(inactiveSpans(unmeasured, [asset], { materials: screen })).toEqual([]);
+  });
+
+  it('holds only screen recordings to it, not the camera footage beside them', () => {
+    const other = { asset_id: 'asset_002', kind: 'screen_recording' as const };
+    const measured = observations({ ...silentMinute, motion_profiles: [typingThenIdle(0)] });
+    expect(inactiveSpans(measured, [asset], { materials: [other] })).toEqual(
+      inactiveSpans(measured, [asset]),
+    );
   });
 });

@@ -50,6 +50,7 @@ const OPTIONS = {
   'max-escalations': { type: 'string' as const },
   force: { type: 'boolean' as const },
   'offline-minimal': { type: 'boolean' as const },
+  'no-skip-inactive': { type: 'boolean' as const },
   json: { type: 'boolean' as const },
   full: { type: 'boolean' as const },
   quiet: { type: 'boolean' as const },
@@ -126,6 +127,7 @@ export async function main(argv: string[]): Promise<number> {
         ...(values.decision ? { decision: values.decision } : {}),
         ...(values['offline-minimal'] ? { offlineMinimal: true } : {}),
         ...(values.force ? { force: true } : {}),
+        ...(values['no-skip-inactive'] ? { skipInactive: false } : {}),
         ...(number(values.budget) === undefined ? {} : { budget: number(values.budget) }),
         ...(number(values['max-escalations']) === undefined
           ? {}
@@ -357,6 +359,7 @@ function printHelp(command: string | undefined): void {
   line('  --decision heuristic|local-system-one|jev');
   line('  --budget <usd>               refuse to spend more than this');
   line('  --force                      re-run perception even if nothing changed');
+  line('  --no-skip-inactive           ask the models about still, silent footage too');
   line('  --json                       machine-readable output');
   line('  --quiet                      the summary without the list of clips');
 

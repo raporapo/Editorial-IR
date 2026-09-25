@@ -2716,6 +2716,15 @@
         },
         "estimated_tokens_avoided": {
           "$ref": "#/$defs/__schema184"
+        },
+        "escalations_avoided": {
+          "$ref": "#/$defs/__schema185"
+        },
+        "escalations_redirected": {
+          "$ref": "#/$defs/__schema186"
+        },
+        "estimated_cost_avoided_usd": {
+          "$ref": "#/$defs/__schema187"
         }
       },
       "additionalProperties": false
@@ -2754,41 +2763,58 @@
       "minimum": 0,
       "maximum": 9007199254740991
     },
+    "__schema185": {
+      "default": 0,
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema186": {
+      "default": 0,
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema187": {
+      "default": 0,
+      "type": "number",
+      "minimum": 0
+    },
     "IrStats": {
       "type": "object",
       "properties": {
         "asset_count": {
-          "$ref": "#/$defs/__schema185"
+          "$ref": "#/$defs/__schema188"
         },
         "total_media_duration_ms": {
           "$ref": "#/$defs/Milliseconds"
         },
         "event_count": {
-          "$ref": "#/$defs/__schema186"
-        },
-        "chapter_count": {
-          "$ref": "#/$defs/__schema187"
-        },
-        "relation_count": {
-          "$ref": "#/$defs/__schema188"
-        },
-        "utterance_count": {
           "$ref": "#/$defs/__schema189"
         },
-        "shot_count": {
+        "chapter_count": {
           "$ref": "#/$defs/__schema190"
+        },
+        "relation_count": {
+          "$ref": "#/$defs/__schema191"
+        },
+        "utterance_count": {
+          "$ref": "#/$defs/__schema192"
+        },
+        "shot_count": {
+          "$ref": "#/$defs/__schema193"
         },
         "mean_event_duration_ms": {
           "$ref": "#/$defs/Milliseconds"
         },
         "total_cost_usd": {
-          "$ref": "#/$defs/__schema191"
+          "$ref": "#/$defs/__schema194"
         },
         "compile_ms": {
           "$ref": "#/$defs/Milliseconds"
         },
         "embedding_kinds": {
-          "$ref": "#/$defs/__schema192"
+          "$ref": "#/$defs/__schema195"
         }
       },
       "required": [
@@ -2804,21 +2830,6 @@
         "compile_ms"
       ],
       "additionalProperties": false
-    },
-    "__schema185": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 9007199254740991
-    },
-    "__schema186": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 9007199254740991
-    },
-    "__schema187": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 9007199254740991
     },
     "__schema188": {
       "type": "integer",
@@ -2836,10 +2847,25 @@
       "maximum": 9007199254740991
     },
     "__schema191": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema192": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema193": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "__schema194": {
       "type": "number",
       "minimum": 0
     },
-    "__schema192": {
+    "__schema195": {
       "default": [],
       "type": "array",
       "items": {
