@@ -55,6 +55,49 @@ adapter writes (`pictureOf`, `soundOf` in
   recorder) is laid on a track of its own at its level, in OTIO, Premiere,
   FCPXML, AviUtl and the preview. It used to be warned about and dropped.
 
+### Sound from a separate recorder
+
+When the analysis lines a lavalier or a field recorder up with a camera, the
+planner takes a clip's sound from it (`VideoOperation.audio_source`: the
+recorder's asset, its `source_in_ms` in the recorder's own time, and its
+stream). The picture still comes from the camera, which may have no audio
+stream at all. Every adapter reads this through one helper,
+[`clipAudio`](../packages/adapters/src/timeline.ts): the recorder's in point is
+placed on the frame grid exactly as the picture's is, so the two move together
+with the clip's rounding; the sound runs for the clip's length; and the camera's
+own sound is not used. No adapter read it before, so every export played the
+camera's microphone — or nothing, from a camera with its microphone off.
+
+- **OTIO**: the audio clip's media reference is the recorder, its source range
+  in the recorder's frames; `metadata['editorial-ir'].audio_source` keeps the
+  plan's millisecond value.
+- **Premiere**: the audio clipitems read a `<file>` for the recorder, defined at
+  its first use with its own path and channel count, and link to the picture as
+  the camera's sound would.
+- **FCPXML**: the recorder is an audio-only asset; the picture keeps no camera
+  sound (`srcEnable="video"` where the camera has some), and the recorder is a
+  connected `asset-clip` with the `dialogue` role below it — lane −1 under the
+  storyline, −2 under V2's clips, with beds below those.
+- **EDL**: one reel per event, so the picture is a `V` event from the camera's
+  reel and the sound an `A` or `AA` event from the recorder's, at the same record
+  time, each with its `* FROM CLIP NAME:`. The sound is a straight cut under any
+  dissolve or fade on the picture, and chapters go under the picture.
+- **AviUtl**: the job's clip carries `audio_source` (`file`,
+  `source_offset_frame`, stream, channels), and such a job says version 0.3.0 so
+  a bridge built for 0.2.0 refuses it rather than playing the camera; every
+  other job stays 0.2.0. The `.exo` audio object plays the recorder from its own
+  position.
+- **Preview**: each piece reads the recorder as a second input from its own
+  time. It is checked with ffprobe like every other file; a recorder ffmpeg
+  cannot read gives way to the camera's own sound, with a warning.
+
+A recorder that is not among the media or has no audio stream falls back to the
+clip's own sound, and the result says so. Checked by reading the OTIO, FCP7 XML
+and EDL back with OpenTimelineIO 0.18 (the recorder under each picture at its
+own frames), the FCPXML with `xmllint --dtdvalid FCPXMLv1_10.dtd`, and by
+rendering a camera with no audio stream against a recorder that is silent for
+five seconds and then carries a tone: the preview hears the tone.
+
 ### Captions
 
 Captions are planning, not formatting, so no adapter works them out. `oea plan
@@ -159,7 +202,9 @@ stills, no second track, no music bed, no speed changes, and a list of more than
 
 **AviUtl2** proves independence with an editor that shares nothing with
 Premiere. The JSON job is the supported output (version 0.2.0 says what each clip
-is made of, which stream and how many channels, carries beds and markers). The
+is made of, which stream and how many channels, carries beds and markers; 0.3.0,
+written only when a clip's sound is a separate recorder's, adds
+`audio_source`). The
 `.exo` is best effort: pictures, stills (画像ファイル) and sound (音声ファイル,
 grouped with its picture), but no text, transitions or markers, and it plays the
 first audio stream of a file.
