@@ -1,4 +1,11 @@
-import { compareText, type MediaAsset, type ObservationTimeline } from '@editorial-ir/contracts';
+import {
+  STATIC_MIN_MS,
+  compareText,
+  type MaterialProfile,
+  type MediaAsset,
+  type MotionProfile,
+  type ObservationTimeline,
+} from '@editorial-ir/contracts';
 
 /**
  * Where the footage is both still and silent, so the expensive stages need not
@@ -37,6 +44,48 @@ import { compareText, type MediaAsset, type ObservationTimeline } from '@editori
  * a missing measurement costs tokens, it never costs a moment. The only case that
  * counts as silent without a measurement is a file that has no audio at all.
  */
+
+/**
+ * Which rules decided the spans, for the observations fingerprint.
+ *
+ * The spans themselves are recomputed on every compile and never stored, but
+ * one thing made from them is: OCR reads thinned inside a span are baked into
+ * the stored observations, and those are reused whenever the fingerprint
+ * matches. The thresholds here changed twice — the -45 dBFS music-bed floor,
+ * then the padding around each word — and neither changed the fingerprint; only
+ * an unrelated pipeline version bump happened to throw the old reads away.
+ *
+ * Change this whenever a change here would thin a different set of reads.
+ *
+ * 1. The rules as first written: still and silent, a -45 dBFS floor on relative
+ *    silence, words padded by 250 ms.
+ * 2. Screen recordings held to a much stricter stillness, and their text never
+ *    thinned.
+ */
+export const ACTIVITY_MASK_VERSION = '2';
+
+/**
+ * Below this, a sample of a screen recording has not changed at all.
+ *
+ * The ordinary threshold, 0.5 grey levels, was measured on camera footage, where
+ * it sits above sensor grain. A screen has no grain, and what changes on it is
+ * small: measured through the pipeline's own path (480p proxy, 64x36, largest
+ * cell) on synthetic 1920x1080 captures, typing at five characters a second read
+ * 0.14 at 32 px, 0.031 at 16 px, 0.026 in a dark theme and 0.016 at 14 px on a
+ * 1440p screen (medians) — all of it far under 0.5, so every one of those
+ * captures was reported still from end to end, and a silent tutorial would have
+ * been described by the rules as nothing. A blinking caret read 0.047 at each
+ * blink, and a small pointer crossing the page 0.12-0.58.
+ *
+ * An untouched capture read exactly 0 in 149 of 150 samples. The smallest change
+ * the envelope can record is one grey level on one pixel of a 16x12 cell, 1/192,
+ * stored as 0.005; this is half of it, so only a sample in which nothing at all
+ * changed counts. The price is paid in tokens, never in moments: a blinking caret
+ * keeps an idle editor active, because at this size a blink and a keystroke are
+ * the same number, and an encoder keyframe (0.16-0.22, once in each of the
+ * captures) breaks a still stretch in two.
+ */
+export const SCREEN_STILL_MOTION = 0.003;
 
 /** A stretch of one asset, in asset time, that was both still and silent. */
 export interface InactiveSpan {
@@ -151,6 +200,29 @@ function belowLevel(rmsDb: readonly number[], hopMs: number, levelDb: number): I
   return out;
 }
 
+/**
+ * Stretches of a motion envelope under a level, cut the way the picture
+ * analysis cuts its own static spans: sample i covers [i x hop, (i+1) x hop), and
+ * a run shorter than {@link STATIC_MIN_MS} is not a span. Clamped to the asset,
+ * as its static events are.
+ */
+function stillRuns(profile: MotionProfile, level: number, durationMs: number): Interval[] {
+  const out: Interval[] = [];
+  let start = -1;
+  for (let i = 0; i <= profile.motion.length; i++) {
+    const still = i < profile.motion.length && profile.motion[i]! < level;
+    if (still && start < 0) start = i;
+    if (!still && start >= 0) {
+      const from = start * profile.hop_ms;
+      const to = i * profile.hop_ms;
+      const clamped = Math.min(to, durationMs || to);
+      if (to - from >= STATIC_MIN_MS && clamped > from) out.push({ start: from, end: clamped });
+      start = -1;
+    }
+  }
+  return out;
+}
+
 /** Whether the file carries sound at all, as far as ingest could tell. */
 function hasAudioTrack(asset: MediaAsset): boolean {
   if (asset.kind === 'audio') return true;
@@ -221,14 +293,26 @@ export function silentSpans(
 export function inactiveSpans(
   observations: ObservationTimeline,
   assets: readonly MediaAsset[],
-  options: { marginMs?: number; minMs?: number } = {},
+  options: {
+    marginMs?: number;
+    minMs?: number;
+    /**
+     * What kind of material each asset is. A screen recording is held to
+     * {@link SCREEN_STILL_MOTION}; everything else to the picture analysis's own
+     * static spans. Absent, every asset is treated as camera footage.
+     */
+    materials?: readonly Pick<MaterialProfile, 'asset_id' | 'kind'>[];
+  } = {},
 ): InactiveSpan[] {
   const margin = options.marginMs ?? INACTIVE_MARGIN_MS;
   const minimum = options.minMs ?? MIN_INACTIVE_MS;
   const spans: InactiveSpan[] = [];
 
   for (const asset of assets) {
-    const still = inactiveCandidatesFor(observations, asset);
+    const screen = options.materials?.some(
+      (profile) => profile.asset_id === asset.id && profile.kind === 'screen_recording',
+    );
+    const still = inactiveCandidatesFor(observations, asset, screen === true);
     for (const interval of still) {
       const start = interval.start + margin;
       const end = interval.end - margin;
@@ -238,7 +322,11 @@ export function inactiveSpans(
   return spans.sort((a, b) => compareText(a.asset_id, b.asset_id) || a.start_ms - b.start_ms);
 }
 
-function inactiveCandidatesFor(observations: ObservationTimeline, asset: MediaAsset): Interval[] {
+function inactiveCandidatesFor(
+  observations: ObservationTimeline,
+  asset: MediaAsset,
+  screen: boolean,
+): Interval[] {
   const whole: Interval[] = [{ start: 0, end: asset.duration_ms }];
   if (asset.kind === 'image') return [];
 
@@ -247,6 +335,12 @@ function inactiveCandidatesFor(observations: ObservationTimeline, asset: MediaAs
   let visuallyQuiet: Interval[];
   if (asset.kind === 'audio') {
     visuallyQuiet = whole;
+  } else if (screen) {
+    // Recomputed from the envelope rather than read from the static events,
+    // which were cut at a threshold a keystroke never reaches.
+    const profile = observations.motion_profiles.find((p) => p.asset_id === asset.id);
+    if (!profile) return [];
+    visuallyQuiet = stillRuns(profile, SCREEN_STILL_MOTION, asset.duration_ms);
   } else {
     const analysed = observations.motion_profiles.some((p) => p.asset_id === asset.id);
     // Only `static`. Black is recorded but is not by itself quiet: a city at night

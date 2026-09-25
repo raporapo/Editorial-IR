@@ -53,6 +53,14 @@ export interface ObserveOptions {
   frameFps?: number;
   /** Hop for the loudness envelope. */
   audioHopMs?: number;
+  /** False reads every OCR frame, still and silent or not: `oea analyze --no-skip-inactive`. */
+  skipInactive?: boolean;
+  /**
+   * Assets known to be screen recordings before any text is read — by name or
+   * by the user's word. Their text is never thinned: on a screen the text is the
+   * content, and a keystroke never moves the picture enough to count.
+   */
+  screenRecordings?: ReadonlySet<string>;
   onProgress?: (stage: string, message: string, done: number, total: number) => void;
 }
 
@@ -445,7 +453,10 @@ export async function observeAssets(
       video_events: videoEvents,
       motion_profiles: motionProfiles,
     },
-    ordered,
+    // No asset at all when switched off, and never a screen recording.
+    options.skipInactive === false
+      ? []
+      : ordered.filter((asset) => !options.screenRecordings?.has(asset.id)),
   );
   let framesNotAnalysed = 0;
 

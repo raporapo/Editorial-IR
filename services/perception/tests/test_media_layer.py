@@ -310,7 +310,7 @@ def test_one_derivative_failing_takes_no_other_down(monkeypatch, tmp_path):
     ffmpeg = FakeFfmpeg(audio=[speech], frames=3, fail=("audio",))
     result = _prepare(monkeypatch, tmp_path, probed, ffmpeg, frame_fps=1.0)
     assert result["proxy_path"].endswith("proxy-480p-cfr30.mp4")
-    assert result["frames_dir"].endswith("frames-1fps")
+    assert result["frames_dir"].endswith("frames-1fps-768px")
     # The same one line the TypeScript preparer writes: ffmpeg's first word, not
     # the consequences after it.
     assert result["failed"] == [{"derivative": "audio", "reason": "ffmpeg failed: audio broke"}]

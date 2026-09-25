@@ -12,6 +12,15 @@ import { cacheKey, type CacheKeyParts } from './fingerprint.js';
  */
 export interface PerceptionCache {
   get<T>(parts: CacheKeyParts): T | undefined;
+  /**
+   * The entry, if there is one, without counting a hit or a miss.
+   *
+   * For asking whether a call that is *not* going to be made would have been
+   * free. A skipped call that the cache would have answered saved nothing, and
+   * finding that out with `get` counted a miss for every call not made — so the
+   * report's "N computed" grew with every saving.
+   */
+  peek<T>(parts: CacheKeyParts): T | undefined;
   set(parts: CacheKeyParts, value: unknown): void;
   readonly hits: number;
   readonly misses: number;
@@ -31,18 +40,19 @@ export class FileCache implements PerceptionCache {
   }
 
   get<T>(parts: CacheKeyParts): T | undefined {
+    const value = this.peek<T>(parts);
+    if (value === undefined) this.misses++;
+    else this.hits++;
+    return value;
+  }
+
+  peek<T>(parts: CacheKeyParts): T | undefined {
     const path = this.pathFor(parts);
-    if (!existsSync(path)) {
-      this.misses++;
-      return undefined;
-    }
+    if (!existsSync(path)) return undefined;
     try {
-      const parsed = JSON.parse(readFileSync(path, 'utf8')) as { value: T };
-      this.hits++;
-      return parsed.value;
+      return (JSON.parse(readFileSync(path, 'utf8')) as { value: T }).value;
     } catch {
       // A truncated entry from an interrupted write is a miss, not a crash.
-      this.misses++;
       return undefined;
     }
   }
@@ -74,6 +84,9 @@ export class NullCache implements PerceptionCache {
     this.misses++;
     return undefined;
   }
+  peek(): undefined {
+    return undefined;
+  }
   set(): void {
     // Intentionally empty.
   }
@@ -86,13 +99,14 @@ export class MemoryCache implements PerceptionCache {
   private readonly entries = new Map<string, unknown>();
 
   get<T>(parts: CacheKeyParts): T | undefined {
-    const value = this.entries.get(cacheKey(parts));
-    if (value === undefined) {
-      this.misses++;
-      return undefined;
-    }
-    this.hits++;
-    return value as T;
+    const value = this.peek<T>(parts);
+    if (value === undefined) this.misses++;
+    else this.hits++;
+    return value;
+  }
+
+  peek<T>(parts: CacheKeyParts): T | undefined {
+    return this.entries.get(cacheKey(parts)) as T | undefined;
   }
 
   set(parts: CacheKeyParts, value: unknown): void {

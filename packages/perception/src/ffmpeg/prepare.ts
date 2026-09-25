@@ -305,8 +305,31 @@ export function audioFileName(streamIndex: number): string {
   return `audio-a${streamIndex}.wav`;
 }
 
+/**
+ * The longest edge of a sampled frame, in pixels. Never enlarged past the source.
+ *
+ * These frames are what a vision-language model is sent, as base64 JPEGs, and
+ * they were taken at the source's full size: 1280x720 from the probe footage,
+ * 90 KB a frame, where the model is billed by the pixel. At 768 a 16:9 frame is
+ * 768x432. By the formulas the providers publish, a 1280x720 frame is 1,105
+ * tokens at OpenAI's high detail (85 + 170 a 512-pixel tile), 1,490 on the
+ * 32-pixel-patch models (x1.62), about 1,229 on Anthropic's (w x h / 750); at
+ * 768x432 it is 425, 544 and 442. Gemini 2's tiling scales its tile with the
+ * picture and charges 1,548 either way, so there it saves bytes and nothing
+ * else. No time value is involved: the frames are named by their index, and
+ * the index is the timestamp.
+ *
+ * Text that was 16 pixels high on a 1920-wide screen is 6 at this size, too
+ * small to read; that is what OCR is for, and its reads reach the model as text.
+ */
+export const FRAME_LONG_EDGE = 768;
+
+/**
+ * Named for the rate and the size, so a work directory holding full-size frames
+ * from before this was bounded is never served as though it held these.
+ */
 export function framesDirName(fps: number): string {
-  return `frames-${formatRate(fps)}fps`;
+  return `frames-${formatRate(fps)}fps-${FRAME_LONG_EDGE}px`;
 }
 
 function formatRate(fps: number): string {
@@ -399,8 +422,11 @@ export function frameArgs(input: string, framesDir: string, fps: number): string
     '-y',
     '-i',
     input,
+    // After `fps`, so frames about to be dropped are never scaled. The box is
+    // the source where it is smaller, so nothing is enlarged; `decrease` keeps
+    // the shape, portrait or landscape, after the rotation ffmpeg applies.
     '-vf',
-    `fps=${fps}`,
+    `fps=${fps},scale=w='min(${FRAME_LONG_EDGE},iw)':h='min(${FRAME_LONG_EDGE},ih)':force_original_aspect_ratio=decrease`,
     '-q:v',
     '4',
     join(framesDir, '%08d.jpg'),

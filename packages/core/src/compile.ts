@@ -1,4 +1,5 @@
 import {
+  EMPTY_OBSERVATIONS,
   IR_VERSION,
   PIPELINE_VERSION,
   analysisQuality,
@@ -38,7 +39,7 @@ import { continuityOverrides } from './annotations.js';
 import { ModelRunRecorder } from './model-runs.js';
 import { CostBudget, type EscalationPolicy } from './budget.js';
 import { hashObject } from './fingerprint.js';
-import { inactiveSpans, totalInactiveMs } from './activity.js';
+import { ACTIVITY_MASK_VERSION, inactiveSpans, totalInactiveMs } from './activity.js';
 
 /**
  * Compiling raw media and user background into an Editorial IR.
@@ -74,6 +75,13 @@ export interface CompileOptions {
   standInReason?: StandInReason;
   /** Re-run perception even when nothing that affects it changed. */
   forceObservations?: boolean;
+  /**
+   * Leave still, silent footage to the rules and read it once. On by default;
+   * `oea analyze --no-skip-inactive` turns it off, for a run that has to ask the
+   * models about every second whatever it costs, or to compare with one that
+   * did not.
+   */
+  skipInactive?: boolean;
   frameFps?: number;
   onProgress?: (stage: string, message: string, done: number, total: number) => void;
   now?: () => string;
@@ -97,6 +105,17 @@ export interface CompileReport {
   mediaLeftDevice: boolean;
   /** Model work not done because the footage was still and silent. Absent when none was. */
   savings?: AnalysisSavings;
+  /**
+   * Why there are savings or not. "None found" and "never looked" read the same
+   * in an IR with no savings record, and they are different answers: one says
+   * the footage was busy, the other that nothing measured the picture.
+   *
+   * - `found`: still, silent spans were found and the models were spared them.
+   * - `none_found`: it was measured, and nothing was both still and silent.
+   * - `not_measured`: no video file had its picture analysed, so nothing could be.
+   * - `off`: switched off for this run.
+   */
+  inactive: 'found' | 'none_found' | 'not_measured' | 'off';
   elapsedMs: number;
 }
 
@@ -129,7 +148,29 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   const placements = placeAssets(assets);
 
   // ---- perception ----------------------------------------------------------
-  const expectedFingerprint = observationsFingerprint(assets, options.suite);
+  const skipInactive = options.skipInactive !== false;
+  // Screen recordings the file name or the user already names, before anything
+  // is read: their text is never thinned, so which they are is part of what the
+  // stored observations depend on.
+  const screenRecordings = new Set(
+    classifyMaterials(
+      assets,
+      {
+        ...EMPTY_OBSERVATIONS,
+        project_id: '',
+        fingerprint: '',
+        pipeline_version: '',
+        generated_at: '',
+      },
+      context,
+    )
+      .filter((profile) => profile.kind === 'screen_recording')
+      .map((profile) => profile.asset_id),
+  );
+  const expectedFingerprint = observationsFingerprint(assets, options.suite, {
+    skipInactive,
+    screenRecordings: assets.filter((a) => screenRecordings.has(a.id)).map((a) => a.sha256),
+  });
   const stored = store.readObservations();
   const reusable =
     !options.forceObservations &&
@@ -189,6 +230,8 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       context,
       runs,
       scheduler: new ModelScheduler(),
+      skipInactive,
+      screenRecordings,
       ...(options.frameFps === undefined ? {} : { frameFps: options.frameFps }),
       ...(options.onProgress ? { onProgress: options.onProgress } : {}),
     });
@@ -222,18 +265,22 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     framesNotAnalysed = observed.framesNotAnalysed;
   }
 
+  // ---- what kind of material ----------------------------------------------
+  // Decided from the observations whether they were made now or reused, for the
+  // same reason as the mask: a reused analysis must get exactly the kinds a
+  // fresh one would. The user's word in context.yaml wins over every rule.
+  //
+  // Before the mask, because the mask asks. It was decided after, so a silent
+  // screen recording was held to the stillness of camera footage, and typing
+  // never reached it.
+  const materials = classifyMaterials(assets, observations, context);
+
   // ---- still and silent ----------------------------------------------------
   // Recomputed from the observations on every compile rather than stored, so a
   // reused analysis gets exactly the mask a fresh one would, and a change to the
   // rule never needs a re-analysis. Read only after segmentation has cut the
   // events: it decides where not to spend, never where anything begins or ends.
-  const inactive = inactiveSpans(observations, assets);
-
-  // ---- what kind of material ----------------------------------------------
-  // Decided from the observations whether they were made now or reused, for the
-  // same reason as the mask: a reused analysis must get exactly the kinds a
-  // fresh one would. The user's word in context.yaml wins over every rule.
-  const materials = classifyMaterials(assets, observations, context);
+  const inactive = skipInactive ? inactiveSpans(observations, assets, { materials }) : [];
 
   // ---- segmentation --------------------------------------------------------
   options.onProgress?.('segment', 'finding events', 0, 1);
@@ -401,6 +448,13 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       reason: `${failure.reason} — the rule-based judgement stands`,
     });
   }
+  if (assessed.budgetStoppedAt !== undefined) {
+    failures.push({
+      stage: 'judge',
+      assetId: assessed.budgetStoppedAt,
+      reason: `the cost limit of $${budget.limit} was reached; ${assessed.budgetStopped} event(s) from here on were judged by the rules`,
+    });
+  }
 
   // ---- structure -----------------------------------------------------------
   const { chapters, assignments } = buildChapters(built.events, options.chapters ?? {}, {
@@ -507,17 +561,36 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   // error list stops after a handful of identical failures — and so does the
   // loop, so a run where every description came from the template reported
   // three failures and looked like a run where three did.
+  //
+  // A share of the events the model was meant to describe, not of all of them.
+  // The still, silent ones the rules took were never the model's to fail, and
+  // counted in they hid it: 3 of 3 calls failed, 17 more never tried, and 53
+  // quiet events made that 20 of 73 — `standard`.
   if (
     baseContextModel.identity.standIn === undefined &&
-    built.events.length > 0 &&
-    built.describedByFallback * 2 >= built.events.length
+    built.describeAsked > 0 &&
+    built.describedByFallback * 2 >= built.describeAsked
   ) {
     standIns.push({
       stage: 'description',
       used: 'the observation summary',
       instead_of: baseContextModel.identity.model ?? 'the configured model',
       reason: 'failed_during_run',
-      remedy: `${built.describedByFallback} of ${built.events.length} events fell back; check the model endpoint`,
+      remedy:
+        built.budgetStopped * 2 >= built.describeAsked
+          ? `${built.describedByFallback} of ${built.describeAsked} events fell back; the cost limit of $${budget.limit} was reached — raise --budget`
+          : `${built.describedByFallback} of ${built.describeAsked} events fell back; check the model endpoint`,
+    });
+  }
+  // The same line for judgement stopped by the budget. A judge that failed
+  // is counted by its fallback wrapper above; one that was not asked is not.
+  if (assessed.judgeAsked > 0 && assessed.budgetStopped * 2 >= assessed.judgeAsked) {
+    standIns.push({
+      stage: 'judgement',
+      used: 'the rules',
+      instead_of: options.decision.identity.model ?? 'the configured model',
+      reason: 'failed_during_run',
+      remedy: `${assessed.budgetStopped} of ${assessed.judgeAsked} events were judged by the rules; the cost limit of $${budget.limit} was reached — raise --budget`,
     });
   }
   noteStandIn(
@@ -536,6 +609,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     observationsFingerprint: expectedFingerprint,
     decisionBackend: options.decision.identity.backend,
     decisionModel: options.decision.identity.model,
+    skipInactive,
   });
 
   // What the still, silent footage saved. Absent rather than zero when there
@@ -551,8 +625,29 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
           frames_not_analysed: framesNotAnalysed,
           estimated_tokens_avoided:
             built.savings.estimatedTokensAvoided + assessed.estimatedTokensAvoided,
+          escalations_avoided: built.savings.escalationsAvoided + assessed.escalationsAvoided,
+          escalations_redirected:
+            built.savings.escalationsRedirected + assessed.escalationsRedirected,
+          estimated_cost_avoided_usd:
+            Math.round(
+              (built.savings.estimatedCostAvoidedUsd + assessed.estimatedCostAvoidedUsd) *
+                1_000_000,
+            ) / 1_000_000,
         }
       : undefined;
+  // Measured means a video file had its picture analysed. Sound alone can find
+  // a silent stretch of a podcast, so a project of sound files is measured too.
+  const videos = assets.filter((asset) => asset.kind === 'video');
+  const pictureMeasured =
+    videos.length === 0 ||
+    videos.some((asset) => observations.motion_profiles.some((p) => p.asset_id === asset.id));
+  const inactiveState: CompileReport['inactive'] = !skipInactive
+    ? 'off'
+    : inactiveMs > 0
+      ? 'found'
+      : pictureMeasured
+        ? 'none_found'
+        : 'not_measured';
 
   const ir: EditorialIR = {
     ir_version: IR_VERSION,
@@ -607,6 +702,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       totalCostUsd: runs.totalCostUsd(),
       mediaLeftDevice: runs.anyMediaLeftDevice(),
       ...(savings ? { savings } : {}),
+      inactive: inactiveState,
       elapsedMs: Date.now() - startedAt,
     },
   };
@@ -619,6 +715,12 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
 export function observationsFingerprint(
   assets: readonly MediaAsset[],
   suite: PerceptionSuite,
+  mask: {
+    /** False when `--no-skip-inactive` reads every OCR frame. */
+    skipInactive?: boolean;
+    /** The media hashes of files whose text is never thinned. */
+    screenRecordings?: readonly string[];
+  } = {},
 ): string {
   const identityOf = (
     model: { identity: { backend: string; model?: string; modelVersion?: string } } | undefined,
@@ -637,6 +739,18 @@ export function observationsFingerprint(
     ocr: identityOf(suite.ocr),
     // Only when there is one, so a suite without it fingerprints as it always did.
     ...(suite.video ? { video: identityOf(suite.video) } : {}),
+    // And with it, whatever decided which OCR reads were thinned, because that
+    // is baked into the observations stored under this fingerprint: the rules,
+    // whether they were on, and which files were screen recordings. Without a
+    // picture analysis nothing is ever still, and nothing is thinned.
+    ...(suite.video
+      ? {
+          mask: mask.skipInactive === false ? 'off' : ACTIVITY_MASK_VERSION,
+          ...(mask.screenRecordings && mask.screenRecordings.length > 0
+            ? { screens: [...mask.screenRecordings].sort() }
+            : {}),
+        }
+      : {}),
   });
 }
 
@@ -651,6 +765,8 @@ export function irFingerprint(parts: {
   observationsFingerprint: string;
   decisionBackend: string;
   decisionModel?: string;
+  /** Only when off, so every IR compiled with the mask on keeps its fingerprint. */
+  skipInactive?: boolean;
 }): string {
   return hashObject({
     ir_version: IR_VERSION,
@@ -658,6 +774,10 @@ export function irFingerprint(parts: {
     context: { background: parts.context.background, goal: parts.context.editing_goal },
     annotations: [...parts.annotations].map((a) => ({ ...a, created_at: undefined })),
     decision: [parts.decisionBackend, parts.decisionModel ?? ''],
+    // The rules describe and judge the quiet events only when it is on, so the
+    // IR differs — even with no picture analysis, where a silent stretch of a
+    // sound file is quiet by itself.
+    ...(parts.skipInactive === false ? { mask: 'off' } : {}),
   });
 }
 

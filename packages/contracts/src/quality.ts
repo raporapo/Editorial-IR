@@ -116,16 +116,41 @@ export type AnalysisTier = z.infer<typeof AnalysisTier>;
 export const AnalysisSavings = obj({
   /** Total source time judged both static and silent. */
   inactive_ms: Milliseconds.default(0),
-  /** Events described from their observations instead of by the vision-language model. */
+  /**
+   * Events described from their observations instead of by the base model, where
+   * asking would have cost something. A call the cache would have answered for
+   * nothing is not counted: nothing was saved by not making it.
+   */
   describe_calls_skipped: z.int().min(0).default(0),
-  /** Events judged by the rules instead of the decision model. */
+  /** Events judged by the rules instead of the decision model, on the same terms. */
   judge_calls_skipped: z.int().min(0).default(0),
-  /** Frames that would have been sent to the describe call and were not. */
+  /** Frames left out of closer looks that were actually taken, not answered from the cache. */
   frames_not_sent: z.int().min(0).default(0),
-  /** Frame timestamps not embedded or read for text, beyond one kept per span. */
+  /** OCR reads not made in this compile's observation pass, beyond one kept per span. */
   frames_not_analysed: z.int().min(0).default(0),
-  /** An estimate, labelled as one: skipped calls times the tokens measured per call. */
+  /**
+   * An estimate, labelled as one: each call not made priced by its own prompt, at
+   * the tokens per character this run's calls measured.
+   */
   estimated_tokens_avoided: z.int().min(0).default(0),
+  /**
+   * Closer looks and second opinions the still, silent events would have been
+   * given had they been candidates, net of the ones given to other events
+   * instead and of the ones the cache would have answered. Counted by running
+   * the same selection with them in.
+   */
+  escalations_avoided: z.int().min(0).default(0),
+  /**
+   * Closer looks and second opinions that went to other events because the
+   * still, silent ones were not candidates. Under a count or cost limit a look
+   * is not saved but moved, to something worth looking at.
+   */
+  escalations_redirected: z.int().min(0).default(0),
+  /**
+   * An estimate, labelled as one: calls not made times the per-event cost each
+   * pass charges. Zero for models on this machine, because they are free.
+   */
+  estimated_cost_avoided_usd: z.number().min(0).default(0),
 }).meta({ id: 'AnalysisSavings' });
 export type AnalysisSavings = z.infer<typeof AnalysisSavings>;
 

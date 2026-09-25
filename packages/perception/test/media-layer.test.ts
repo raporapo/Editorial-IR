@@ -545,7 +545,7 @@ describe('preparing a file', () => {
     });
     expect(result.proxy_path).toBe(join(dir, 'proxy-480p-cfr30000-1001.mp4'));
     expect(result.audio_path).toBe(join(dir, 'audio-a1.wav'));
-    expect(result.frames_dir).toBe(join(dir, 'frames-1fps'));
+    expect(result.frames_dir).toBe(join(dir, 'frames-1fps-768px'));
     expect(existsSync(join(dir, 'audio-a0.wav'))).toBe(true);
   });
 
@@ -682,7 +682,7 @@ describe('the default suite', () => {
       'fps=30/1,scale=-2:480',
     );
     expect(proxyFileName(480, undefined)).toBe('proxy-480p.mp4');
-    expect(framesDirName(0.5)).toBe('frames-0.5fps');
+    expect(framesDirName(0.5)).toBe('frames-0.5fps-768px');
     // A screen recorder that declares its millisecond clock is not proxied at a
     // thousand frames a second.
     expect(proxyFrameRate({ fps_num: 1000, fps_den: 1 })).toEqual({ num: 60, den: 1 });

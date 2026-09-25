@@ -2,6 +2,7 @@ import { compileProject } from '@editorial-ir/core';
 import {
   describeStandIn,
   formatTimecode,
+  type AnalysisSavings,
   type MaterialKind,
   type MaterialProfile,
   type MediaAsset,
@@ -19,6 +20,8 @@ export interface AnalyzeArgs {
   offlineMinimal?: boolean;
   budget?: number;
   maxEscalations?: number;
+  /** False asks the models about still, silent footage too: `--no-skip-inactive`. */
+  skipInactive?: boolean;
 }
 
 export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
@@ -72,6 +75,7 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
       },
       ...(args.budget === undefined ? {} : { budgetUsd: args.budget }),
       ...(args.force ? { forceObservations: true } : {}),
+      ...(args.skipInactive === false ? { skipInactive: false } : {}),
       standInReason: backends.standInReason,
       onProgress: (stage, message, done, total) => progress.update(stage, message, done, total),
     });
@@ -117,23 +121,10 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
 
     // What the still, silent footage saved. Said with its measure — how much
     // footage and how many calls — because "skipped" alone reads like "missed".
-    const savings = ir.quality.savings;
-    if (savings) {
-      heading('still and silent');
-      detail('footage', formatTimecode(savings.inactive_ms, false));
-      const calls = savings.describe_calls_skipped + savings.judge_calls_skipped;
-      if (calls > 0) {
-        detail(
-          'not asked of a model',
-          `${savings.describe_calls_skipped} description(s), ${savings.judge_calls_skipped} judgement(s)`,
-        );
-      }
-      const frames = savings.frames_not_sent + savings.frames_not_analysed;
-      if (frames > 0) detail('frames not sent or read', String(frames));
-      if (savings.estimated_tokens_avoided > 0) {
-        detail('tokens avoided', `about ${savings.estimated_tokens_avoided} (estimated)`);
-      }
-      note('  no time value changed: the media is untouched and every timecode is the same');
+    heading('still and silent');
+    for (const [label, value] of stillAndSilentLines(report.inactive, ir.quality.savings)) {
+      if (label === '') note(`  ${value}`);
+      else detail(label, value);
     }
 
     // Said plainly, and said here rather than only in the file, because the
@@ -216,6 +207,59 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
     progress.clear();
     await backends.close();
   }
+}
+
+/**
+ * The still-and-silent section of `oea analyze`, as label and value pairs; an
+ * empty label is a note.
+ *
+ * It said nothing at all unless something was found, so "the footage was busy",
+ * "nothing measured the picture" and "you switched it off" were one silence.
+ * Every figure that is an estimate says so where it is shown.
+ */
+export function stillAndSilentLines(
+  state: 'found' | 'none_found' | 'not_measured' | 'off',
+  savings: AnalysisSavings | undefined,
+): [string, string][] {
+  if (state === 'off') {
+    return [['', 'not looked for (--no-skip-inactive): every event was put to the models']];
+  }
+  if (state === 'not_measured') {
+    return [['', 'not measured: no picture analysis ran, so nothing was skipped']];
+  }
+  if (state === 'none_found' || !savings) {
+    return [['', 'none found: every stretch moved or made a sound']];
+  }
+  const lines: [string, string][] = [['footage', formatTimecode(savings.inactive_ms, false)]];
+  if (savings.describe_calls_skipped + savings.judge_calls_skipped > 0) {
+    lines.push([
+      'not asked of a model',
+      `${savings.describe_calls_skipped} description(s), ${savings.judge_calls_skipped} judgement(s)`,
+    ]);
+  }
+  if (savings.escalations_avoided > 0) {
+    lines.push(['closer looks not bought', String(savings.escalations_avoided)]);
+  }
+  if (savings.escalations_redirected > 0) {
+    lines.push([
+      'closer looks moved',
+      `${savings.escalations_redirected}, to events with something in them`,
+    ]);
+  }
+  const frames = savings.frames_not_sent + savings.frames_not_analysed;
+  if (frames > 0) lines.push(['frames not sent or read', String(frames)]);
+  if (savings.estimated_tokens_avoided > 0) {
+    lines.push(['tokens avoided', `about ${savings.estimated_tokens_avoided} (an estimate)`]);
+  }
+  if (savings.estimated_cost_avoided_usd > 0) {
+    // Finer than the cost line above: avoiding four tenths of a cent is worth
+    // saying as that, not as "<$0.01".
+    const usd = savings.estimated_cost_avoided_usd;
+    const amount = usd < 0.001 ? 'under $0.001' : `$${usd.toFixed(usd < 0.1 ? 3 : 2)}`;
+    lines.push(['cost avoided', `about ${amount} (an estimate)`]);
+  }
+  lines.push(['', 'no time value changed: the media is untouched and every timecode is the same']);
+  return lines;
 }
 
 /** How many guessed kinds are named one by one before the rest are counted. */
