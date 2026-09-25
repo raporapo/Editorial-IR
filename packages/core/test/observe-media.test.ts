@@ -434,3 +434,38 @@ describe('a one-shot screen recording', () => {
     expect(beforeChange?.end_ms).toBe(10_000);
   });
 });
+
+describe('sound measured past the end of its file', () => {
+  it('is held to the file, as shots and picture events are', async () => {
+    // The loudness analyser counts whole hops of the decoded stream, which runs
+    // a little longer than the container says: every probe file's last silence
+    // ended 100 ms after the file did, and one that starts at the end is not in
+    // the file at all.
+    const record = seen();
+    const base = suite(undefined, record);
+    const result = await observeAssets([asset({ duration_ms: 10_000 })], {
+      projectRoot: root,
+      workDir: join(root, 'work'),
+      runs: new ModelRunRecorder(() => '2026-09-01T00:00:00.000Z'),
+      suite: {
+        ...base,
+        audio: {
+          identity: identity('fake-audio'),
+          analyzeAudio: async () => ({
+            hop_ms: 100,
+            rms_db: [],
+            events: [
+              { start_ms: 0, end_ms: 8000, event_type: 'speech' as const, confidence: 0.9 },
+              { start_ms: 8000, end_ms: 10_100, event_type: 'silence' as const, confidence: 0.9 },
+              { start_ms: 10_000, end_ms: 10_100, event_type: 'noise' as const, confidence: 0.9 },
+            ],
+          }),
+        },
+      },
+    });
+    expect(result.observations.audio_events.map((e) => [e.start_ms, e.end_ms])).toEqual([
+      [0, 8000],
+      [8000, 10_000],
+    ]);
+  });
+});
