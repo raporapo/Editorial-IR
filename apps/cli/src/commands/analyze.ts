@@ -3,6 +3,7 @@ import {
   describeStandIn,
   formatTimecode,
   type AnalysisSavings,
+  type AudioCompanion,
   type MaterialKind,
   type MaterialProfile,
   type MediaAsset,
@@ -146,6 +147,15 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
     if (ir.materials.length > 0) {
       heading('material');
       for (const line of materialLines(ir.materials, ir.assets)) note(`  ${line}`);
+    }
+
+    // Which recorder was taken for which camera's sound. Said because it
+    // changes what the transcript is and what sound the export links, and a
+    // wrong pairing is the user's to undo in context.yaml.
+    const soundLines = recorderLines(ir.audio_companions, ir.assets, report.recorderNotes);
+    if (soundLines.length > 0) {
+      heading('separate sound');
+      for (const line of soundLines) note(`  ${line}`);
     }
 
     heading('privacy');
@@ -314,6 +324,36 @@ export function materialLines(
   }
   if (named.some((m) => m.provenance === 'inferred')) {
     lines.push('wrong? set it in context.yaml: background.materials: { "<file name>": raw }');
+  }
+  return lines;
+}
+
+/**
+ * The separate-sound section of `oea analyze`: each recorder and the video it
+ * was lined up with, where the recorder's first moment falls in that video,
+ * and what in context.yaml could not be applied.
+ */
+export function recorderLines(
+  companions: readonly AudioCompanion[],
+  assets: readonly MediaAsset[],
+  notes: readonly string[] = [],
+): string[] {
+  const name = (id: string): string => assets.find((a) => a.id === id)?.file_name ?? id;
+  const lines = companions.map((companion) => {
+    const at = companion.offset_ms / 1000;
+    const where =
+      at >= 0 ? `starts ${at.toFixed(2)}s into it` : `started ${(-at).toFixed(2)}s before it`;
+    const how =
+      companion.provenance === 'user_provided'
+        ? 'as you said'
+        : `measured, confidence ${companion.confidence.toFixed(2)}`;
+    return `${name(companion.audio_asset_id)} is the sound of ${name(companion.asset_id)}: ${where} (${how})`;
+  });
+  lines.push(...notes);
+  if (companions.some((c) => c.provenance !== 'user_provided')) {
+    lines.push(
+      'wrong? set it in context.yaml: background.recorders: [{ recorder: "<file>", video: "<file>", paired: false }]',
+    );
   }
   return lines;
 }

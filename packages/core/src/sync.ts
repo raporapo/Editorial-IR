@@ -3,6 +3,7 @@ import {
   type AudioCompanion,
   type AudioSync,
   type ObservationTimeline,
+  type RecorderPairing,
   type Utterance,
 } from '@editorial-ir/contracts';
 
@@ -365,11 +366,93 @@ interface Placeable {
 }
 
 /**
+ * The measured syncs with the user's word applied: `background.recorders` in
+ * context.yaml.
+ *
+ * - A pairing with an offset is a sync of its own (`method: 'user'`), replacing
+ *   whatever was measured between the two. It is the only way a camera that
+ *   recorded no sound gets a recorder: there is nothing to measure.
+ * - A pairing without one keeps the measured offset and says "this one": every
+ *   other recorder measured against that video is set aside.
+ * - `paired: false` removes the pair, whatever the measurement found.
+ *
+ * Applied on every compile rather than written into the observations, so
+ * changing context.yaml takes effect without a re-analysis, like
+ * `background.materials`. A name that matches no file, or a pairing that asked
+ * for a measurement that found nothing, is said rather than ignored.
+ */
+export function declaredSyncs(
+  measured: readonly AudioSync[],
+  pairings: readonly RecorderPairing[],
+  assets: readonly (Placeable & { file_name: string })[],
+): { syncs: AudioSync[]; notes: string[] } {
+  if (pairings.length === 0) return { syncs: [...measured], notes: [] };
+  const notes: string[] = [];
+  const find = (name: string): (Placeable & { file_name: string }) | undefined =>
+    assets.find((asset) => asset.id === name) ?? assets.find((asset) => asset.file_name === name);
+  const samePair = (sync: AudioSync, recorder: string, video: string): boolean =>
+    (sync.asset_id === recorder && sync.reference_asset_id === video) ||
+    (sync.asset_id === video && sync.reference_asset_id === recorder);
+
+  let syncs = [...measured];
+  const declared: AudioSync[] = [];
+  for (const pairing of pairings) {
+    const recorder = find(pairing.recorder);
+    const video = find(pairing.video);
+    if (!recorder || !video) {
+      notes.push(
+        `background.recorders: no file called "${!recorder ? pairing.recorder : pairing.video}"`,
+      );
+      continue;
+    }
+    if (recorder.kind !== 'audio') {
+      notes.push(`background.recorders: ${recorder.file_name} is not a sound-only file`);
+      continue;
+    }
+    if (video.kind !== 'video') {
+      notes.push(`background.recorders: ${video.file_name} is not a video`);
+      continue;
+    }
+    if (!pairing.paired) {
+      syncs = syncs.filter((sync) => !samePair(sync, recorder.id, video.id));
+      continue;
+    }
+    // "This recorder" means no other one for this video.
+    syncs = syncs.filter(
+      (sync) =>
+        !(sync.reference_asset_id === video.id && sync.asset_id !== recorder.id) ||
+        !isRecorder(sync.asset_id, assets),
+    );
+    if (pairing.offset_ms !== undefined) {
+      syncs = syncs.filter((sync) => !samePair(sync, recorder.id, video.id));
+      declared.push({
+        asset_id: recorder.id,
+        reference_asset_id: video.id,
+        offset_ms: pairing.offset_ms,
+        score: 0,
+        confidence: 1,
+        method: 'user',
+      });
+    } else if (!syncs.some((sync) => samePair(sync, recorder.id, video.id))) {
+      notes.push(
+        `background.recorders: ${recorder.file_name} and ${video.file_name} could not be ` +
+          'lined up by their sound; give offset_ms to pair them anyway',
+      );
+    }
+  }
+  return { syncs: [...syncs, ...declared], notes };
+}
+
+function isRecorder(id: string, assets: readonly Placeable[]): boolean {
+  return assets.find((asset) => asset.id === id)?.kind === 'audio';
+}
+
+/**
  * Which recorder, if any, is the sound of each video.
  *
  * A match from an audio-only file to a video that covers at least half of it.
- * Where several recorders cover one video the best-matched wins, ties broken
- * by id. One recorder may be the sound of many videos — a field recorder left
+ * Where several recorders cover one video the user's pairing wins, then the
+ * best-matched, ties broken by id. One recorder may be the sound of many videos — a field recorder left
  * running while the camera starts and stops is the common case.
  */
 export function audioCompanions(
@@ -377,7 +460,7 @@ export function audioCompanions(
   assets: readonly Placeable[],
 ): AudioCompanion[] {
   const byId = new Map(assets.map((asset) => [asset.id, asset]));
-  const best = new Map<string, { companion: AudioCompanion; score: number }>();
+  const best = new Map<string, { companion: AudioCompanion; score: number; declared: boolean }>();
   for (const sync of syncs) {
     const recorder = byId.get(sync.asset_id);
     const video = byId.get(sync.reference_asset_id);
@@ -386,21 +469,28 @@ export function audioCompanions(
     const covered =
       Math.min(video.duration_ms, sync.offset_ms + recorder.duration_ms) -
       Math.max(0, sync.offset_ms);
-    if (covered < MIN_COMPANION_COVER * video.duration_ms) continue;
+    // The user's pairing stands however little it covers: the planner still
+    // uses the recorder only for clips it holds from end to end.
+    const declared = sync.method === 'user';
+    if (declared ? covered <= 0 : covered < MIN_COMPANION_COVER * video.duration_ms) continue;
     const current = best.get(video.id);
     const better =
       !current ||
-      sync.score > current.score ||
-      (sync.score === current.score &&
-        compareText(recorder.id, current.companion.audio_asset_id) < 0);
+      (declared && !current.declared) ||
+      (declared === current.declared &&
+        (sync.score > current.score ||
+          (sync.score === current.score &&
+            compareText(recorder.id, current.companion.audio_asset_id) < 0)));
     if (better) {
       best.set(video.id, {
+        declared,
         score: sync.score,
         companion: {
           asset_id: video.id,
           audio_asset_id: recorder.id,
           offset_ms: sync.offset_ms,
           confidence: sync.confidence,
+          provenance: declared ? 'user_provided' : 'inferred',
         },
       });
     }

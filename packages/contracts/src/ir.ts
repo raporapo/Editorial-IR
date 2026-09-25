@@ -6,7 +6,7 @@ import { Project, ProjectContext, UserAnnotation } from './project.js';
 import { Chapter, SemanticEvent } from './event.js';
 import { EditorialAssessment } from './editorial.js';
 import { EventRelation } from './relation.js';
-import { Conflict } from './provenance.js';
+import { Conflict, Provenance } from './provenance.js';
 import { ModelRun } from './model-run.js';
 import { AnalysisQuality } from './quality.js';
 import { EmbeddingKind } from './embedding.js';
@@ -21,6 +21,8 @@ export const AudioCompanion = obj({
   /** Where the recorder's time zero falls in the video's time. */
   offset_ms: z.int(),
   confidence: Confidence,
+  /** `user_provided` when context.yaml paired the two (`background.recorders`). */
+  provenance: Provenance.default('inferred'),
 }).meta({ id: 'AudioCompanion' });
 export type AudioCompanion = z.infer<typeof AudioCompanion>;
 

@@ -53,6 +53,25 @@ export const Place = obj({
 }).meta({ id: 'Place' });
 export type Place = z.infer<typeof Place>;
 
+/**
+ * A recorder and the video it is the sound of, in the user's words.
+ *
+ * Both are named by file name or asset id, like `background.materials`.
+ */
+export const RecorderPairing = obj({
+  recorder: z.string().min(1),
+  video: z.string().min(1),
+  /**
+   * Where the recorder's first moment falls in the video's own time:
+   * `-3200` when the recorder was started 3.2 seconds before the camera.
+   * Absent means "these go together; measure where".
+   */
+  offset_ms: z.int().optional(),
+  /** `false` says the two never go together, whatever the measurement found. */
+  paired: z.boolean().default(true),
+}).meta({ id: 'RecorderPairing' });
+export type RecorderPairing = z.infer<typeof RecorderPairing>;
+
 export const ProjectBackground = obj({
   /** The occasion, e.g. "交際1周年旅行". The single most valuable field a user can fill in. */
   occasion: z.string().optional(),
@@ -69,6 +88,14 @@ export const ProjectBackground = obj({
    * inference, which is recorded beside it rather than discarded.
    */
   materials: z.record(z.string(), MaterialKind).optional(),
+  /**
+   * Which separate recorder is the sound of which video, where the measurement
+   * cannot tell or got it wrong.
+   *
+   * The analysis lines a recorder up with a camera by the sound both heard, so
+   * a camera that recorded no sound at all can only be paired here.
+   */
+  recorders: z.array(RecorderPairing).optional(),
   notes: z.array(z.string()).default([]),
 }).meta({ id: 'ProjectBackground' });
 export type ProjectBackground = z.infer<typeof ProjectBackground>;

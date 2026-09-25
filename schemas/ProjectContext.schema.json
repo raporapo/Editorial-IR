@@ -10,10 +10,10 @@
       "$ref": "#/$defs/__schema0"
     },
     "editing_goal": {
-      "$ref": "#/$defs/__schema17"
+      "$ref": "#/$defs/__schema22"
     },
     "constraints": {
-      "$ref": "#/$defs/__schema27"
+      "$ref": "#/$defs/__schema32"
     },
     "updated_at": {
       "$ref": "#/$defs/Iso8601"
@@ -55,8 +55,11 @@
         "materials": {
           "$ref": "#/$defs/__schema15"
         },
-        "notes": {
+        "recorders": {
           "$ref": "#/$defs/__schema16"
+        },
+        "notes": {
+          "$ref": "#/$defs/__schema21"
         }
       },
       "additionalProperties": false
@@ -191,67 +194,49 @@
       ]
     },
     "__schema16": {
-      "default": [],
       "type": "array",
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/RecorderPairing"
       }
     },
-    "__schema17": {
-      "default": {},
-      "$ref": "#/$defs/EditingGoal"
-    },
-    "EditingGoal": {
+    "RecorderPairing": {
       "type": "object",
       "properties": {
-        "target_duration_ms": {
+        "recorder": {
+          "$ref": "#/$defs/__schema17"
+        },
+        "video": {
           "$ref": "#/$defs/__schema18"
         },
-        "tolerance_ms": {
+        "offset_ms": {
           "$ref": "#/$defs/__schema19"
         },
-        "tone": {
+        "paired": {
           "$ref": "#/$defs/__schema20"
-        },
-        "opening": {
-          "$ref": "#/$defs/__schema21"
-        },
-        "middle": {
-          "$ref": "#/$defs/__schema22"
-        },
-        "ending": {
-          "$ref": "#/$defs/__schema23"
-        },
-        "audience": {
-          "$ref": "#/$defs/__schema24"
-        },
-        "language": {
-          "$ref": "#/$defs/__schema25"
-        },
-        "instruction": {
-          "$ref": "#/$defs/__schema26"
         }
       },
+      "required": [
+        "recorder",
+        "video"
+      ],
       "additionalProperties": false
     },
-    "__schema18": {
-      "$ref": "#/$defs/Milliseconds"
+    "__schema17": {
+      "type": "string",
+      "minLength": 1
     },
-    "Milliseconds": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 9007199254740991,
-      "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+    "__schema18": {
+      "type": "string",
+      "minLength": 1
     },
     "__schema19": {
-      "$ref": "#/$defs/Milliseconds"
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
     },
     "__schema20": {
-      "default": [],
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
+      "default": true,
+      "type": "boolean"
     },
     "__schema21": {
       "default": [],
@@ -261,61 +246,74 @@
       }
     },
     "__schema22": {
-      "default": [],
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "__schema23": {
-      "default": [],
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "__schema24": {
-      "type": "string"
-    },
-    "__schema25": {
-      "type": "string"
-    },
-    "__schema26": {
-      "type": "string"
-    },
-    "__schema27": {
       "default": {},
-      "$ref": "#/$defs/ProjectConstraints"
+      "$ref": "#/$defs/EditingGoal"
     },
-    "ProjectConstraints": {
+    "EditingGoal": {
       "type": "object",
       "properties": {
-        "forbidden": {
+        "target_duration_ms": {
+          "$ref": "#/$defs/__schema23"
+        },
+        "tolerance_ms": {
+          "$ref": "#/$defs/__schema24"
+        },
+        "tone": {
+          "$ref": "#/$defs/__schema25"
+        },
+        "opening": {
+          "$ref": "#/$defs/__schema26"
+        },
+        "middle": {
+          "$ref": "#/$defs/__schema27"
+        },
+        "ending": {
           "$ref": "#/$defs/__schema28"
         },
-        "min_clip_duration_ms": {
+        "audience": {
           "$ref": "#/$defs/__schema29"
         },
-        "max_clip_duration_ms": {
+        "language": {
           "$ref": "#/$defs/__schema30"
         },
-        "required_assets": {
+        "instruction": {
           "$ref": "#/$defs/__schema31"
-        },
-        "excluded_assets": {
-          "$ref": "#/$defs/__schema32"
-        },
-        "allow_speed_change": {
-          "$ref": "#/$defs/__schema33"
-        },
-        "allowed_music": {
-          "$ref": "#/$defs/__schema34"
-        },
-        "forbidden_music": {
-          "$ref": "#/$defs/__schema35"
         }
       },
       "additionalProperties": false
+    },
+    "__schema23": {
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "Milliseconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+    },
+    "__schema24": {
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "__schema25": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema26": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema27": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
     "__schema28": {
       "default": [],
@@ -325,12 +323,62 @@
       }
     },
     "__schema29": {
-      "$ref": "#/$defs/Milliseconds"
+      "type": "string"
     },
     "__schema30": {
-      "$ref": "#/$defs/Milliseconds"
+      "type": "string"
     },
     "__schema31": {
+      "type": "string"
+    },
+    "__schema32": {
+      "default": {},
+      "$ref": "#/$defs/ProjectConstraints"
+    },
+    "ProjectConstraints": {
+      "type": "object",
+      "properties": {
+        "forbidden": {
+          "$ref": "#/$defs/__schema33"
+        },
+        "min_clip_duration_ms": {
+          "$ref": "#/$defs/__schema34"
+        },
+        "max_clip_duration_ms": {
+          "$ref": "#/$defs/__schema35"
+        },
+        "required_assets": {
+          "$ref": "#/$defs/__schema36"
+        },
+        "excluded_assets": {
+          "$ref": "#/$defs/__schema37"
+        },
+        "allow_speed_change": {
+          "$ref": "#/$defs/__schema38"
+        },
+        "allowed_music": {
+          "$ref": "#/$defs/__schema39"
+        },
+        "forbidden_music": {
+          "$ref": "#/$defs/__schema40"
+        }
+      },
+      "additionalProperties": false
+    },
+    "__schema33": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "__schema34": {
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "__schema35": {
+      "$ref": "#/$defs/Milliseconds"
+    },
+    "__schema36": {
       "default": [],
       "type": "array",
       "items": {
@@ -341,25 +389,25 @@
       "type": "string",
       "description": "A registered source file."
     },
-    "__schema32": {
+    "__schema37": {
       "default": [],
       "type": "array",
       "items": {
         "$ref": "#/$defs/assetId"
       }
     },
-    "__schema33": {
+    "__schema38": {
       "default": false,
       "type": "boolean"
     },
-    "__schema34": {
+    "__schema39": {
       "default": [],
       "type": "array",
       "items": {
         "type": "string"
       }
     },
-    "__schema35": {
+    "__schema40": {
       "default": [],
       "type": "array",
       "items": {

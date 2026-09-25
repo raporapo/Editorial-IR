@@ -182,3 +182,67 @@ plus 0.09-0.20 s to seek), is cached, and is capped at 120 beyond one per shot
 per file. Repeats cost nothing downstream: the on-screen text stage collapses a
 line read twice, and where slide text changes between two reads the event
 boundary is put where the picture changed, not halfway between the reads.
+
+## Sound from a separate recorder
+
+A camera's microphone is a metre or more from the speaker; a lavalier or a
+field recorder is at their collar. When a project holds both, the analysis lines
+them up by what both heard and uses the recorder as the camera's sound. Nothing
+about time changes: the picture, every event boundary and every source range are
+where they were. The recorder is only read at the right place.
+
+**How they are lined up.** Each recording's loudness is taken every 10 ms, turned
+into an onset envelope (how much louder each hop is than the one before), and the
+two envelopes are cross-correlated over every lag at which they could overlap.
+A door, a laugh, the first word of a sentence arrive at both microphones within
+milliseconds, whatever each device thought the time was — so the clocks are never
+consulted. A peak counts only if it stands at least 1.5 times above the next best
+peak half a second or more away: a correlation always has a maximum, and on
+unrelated recordings it is a coincidence. Measured: true pairs 2.4-6.9 times,
+unrelated pairs 1.04-1.13, offsets within 6 ms. The synthetic camera in
+`tests/recorder-sync.test.ts`, started 3.2 s after its recorder, is found at
+exactly -3200 ms (5.8 times the runner-up) and the unrelated recording beside it
+is not paired.
+
+**What is compared.** Every sound-only file with every video that has sound, and
+two videos only when their capture times overlap (with a minute of slack). A
+video with no audio track cannot be measured; pair it by hand (below). At most
+400 pairs per project; what a larger project leaves out is reported, not dropped
+silently. Each result is cached per pair of files, so a re-analysis costs nothing.
+
+**What a pairing changes.** A recorder that covers at least half of a video
+becomes that video's companion (`EditorialIR.audio_companions`):
+
+- The video's events hear the recorder. Its utterances, moved into the video's
+  time with their words, replace the camera's own over the stretch the recorder
+  covers; the stored observations are not changed.
+- A recorder that is mostly some video's sound gets no events of its own: what it
+  heard is already in the videos' events. One that ran long after the camera
+  stopped keeps its own events.
+- The plan takes a clip's sound from the recorder (`VideoOperation.audio_source`)
+  when the recorder holds the whole clip, and from the camera otherwise. A clip
+  that changed microphone halfway through would sound like a fault.
+
+`oea analyze` lists each pairing under "separate sound", with where the recorder
+starts relative to the video.
+
+**Correcting it.** `background.recorders` in context.yaml outranks the measurement,
+and is applied on every compile, without a re-analysis:
+
+```yaml
+background:
+  recorders:
+    # A camera that recorded no sound: nothing to measure, so say where.
+    # The recorder was started 3.2 seconds before the camera.
+    - { recorder: ZOOM0001.WAV, video: C0001.MP4, offset_ms: -3200 }
+    # "This one": keep the measured offset, set other recorders aside.
+    - { recorder: LAV_A.WAV, video: C0002.MP4 }
+    # Never together, whatever the measurement found.
+    - { recorder: ROOM.WAV, video: C0003.MP4, paired: false }
+```
+
+**Not done yet.** One offset per pair: two devices' clocks drift apart by tens of
+milliseconds an hour, which a recording that long would hear as a slowly growing
+echo against the camera's own sound, though not on its own. Two cameras of the
+same moment are measured but not yet used as angles of one another; their events
+stay separate.

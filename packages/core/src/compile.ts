@@ -40,7 +40,13 @@ import { ModelRunRecorder } from './model-runs.js';
 import { CostBudget, type EscalationPolicy } from './budget.js';
 import { hashObject } from './fingerprint.js';
 import { ACTIVITY_MASK_VERSION, inactiveSpans, totalInactiveMs } from './activity.js';
-import { SYNC_VERSION, audioCompanions, recordersCovered, withCompanionSpeech } from './sync.js';
+import {
+  SYNC_VERSION,
+  audioCompanions,
+  declaredSyncs,
+  recordersCovered,
+  withCompanionSpeech,
+} from './sync.js';
 
 /**
  * Compiling raw media and user background into an Editorial IR.
@@ -101,6 +107,8 @@ export interface CompileReport {
   standIns: StandIn[];
   /** Assets a stage could not read, and why. */
   failures: { stage: string; assetId: string; reason: string }[];
+  /** What in `background.recorders` could not be applied, and why. */
+  recorderNotes: string[];
   totalCostUsd: number;
   /** True when anything in this compile sent media off the machine. */
   mediaLeftDevice: boolean;
@@ -281,7 +289,8 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   // video. Its transcript is the better witness for the video's events, and a
   // recorder that is mostly the sound of videos gets no events of its own —
   // what it heard is already in theirs.
-  const companions = audioCompanions(observations.syncs, assets);
+  const paired = declaredSyncs(observations.syncs, context.background.recorders ?? [], assets);
+  const companions = audioCompanions(paired.syncs, assets);
   const recorderOnly = recordersCovered(companions, assets);
   const heard = withCompanionSpeech(observations, companions, assets);
   const eventAssets =
@@ -712,6 +721,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       unavailable,
       standIns,
       failures,
+      recorderNotes: paired.notes,
       totalCostUsd: runs.totalCostUsd(),
       mediaLeftDevice: runs.anyMediaLeftDevice(),
       ...(savings ? { savings } : {}),

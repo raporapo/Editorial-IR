@@ -1442,9 +1442,9 @@ function cutPolicy(
   // stream that does not exist — which the probe's silent video did, in every
   // adapter. A sound file is its sound: as b-roll it would be a clip with
   // neither picture nor sound. Unknown assets keep the old answer.
-  // A recorder the analysis lined up with this video is its sound, whether or
-  // not the camera recorded any: a camera with its microphone off and a lavalier
-  // on the speaker is a common pairing.
+  // A recorder lined up with this video is its sound, whether or not the camera
+  // recorded any: a camera with its microphone off and a lavalier on the speaker
+  // is a common pairing, which context.yaml states (there is nothing to measure).
   const companionEntry =
     asset && !still ? ir.audio_companions.find((c) => c.asset_id === asset.id) : undefined;
   const companionAsset = companionEntry

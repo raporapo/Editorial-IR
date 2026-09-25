@@ -2,7 +2,7 @@
 
 - [Architecture](architecture.md) — the layers, and why each line is where it is
 - [Editorial IR](editorial-ir.md) — what the representation holds, and what it must not
-- [What it reads](inputs.md) — files, folders, capture times, timecode, text on screen
+- [What it reads](inputs.md) — files, folders, capture times, timecode, text on screen, a separate recorder
 - [EditPlan](edit-plan.md) — what goes where, for how long
 - [Writing a skill](skills.md) — the rule language, field by field
 - [Writing an adapter](adapters.md) — supporting another editing application
