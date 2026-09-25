@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -131,8 +131,33 @@ describe('oea apply, with settings', () => {
     expect(first).toMatch(/01:00:00;00 \d\d:\d\d:\d\d;\d\d$/);
   }, 60_000);
 
+  it('writes the chapter list the plan marks', async () => {
+    // The travel-vlog cut of the worked example spans eleven chapters, and the
+    // planner marks where each begins.
+    const plan = latestPlan();
+    expect(plan.markers.length).toBeGreaterThanOrEqual(3);
+    const out = join(root, 'chapters-marked');
+    expect(
+      await main(['apply', '--project', root, '--editor', 'youtube-chapters', '--out', out]),
+    ).toBe(0);
+    const text = readdirSync(out)
+      .map((name) => readFileSync(join(out, name), 'utf8'))
+      .join('\n');
+    expect(text).toMatch(/^00:00 /m);
+  }, 60_000);
+
   it('fails, and says why, when a target has nothing to write', async () => {
-    // The worked example's plan has no chapter markers.
+    // A plan with no chapter markers — a cut inside one chapter — gives a
+    // chapter list nothing to say.
+    const plan = latestPlan();
+    const unmarked = {
+      ...plan,
+      id: 'plan_unmarked',
+      // The store takes the newest plan by when it was made.
+      created_at: new Date(Date.parse(plan.created_at) + 60_000).toISOString(),
+      markers: [],
+    };
+    writeFileSync(join(root, '.oea', 'plans', 'plan_unmarked.json'), JSON.stringify(unmarked));
     const out = join(root, 'chapters-out');
     output = [];
     expect(
