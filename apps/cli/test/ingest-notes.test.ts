@@ -55,6 +55,15 @@ describe('what ingest says about a file', () => {
     ]);
   });
 
+  it('names a start timecode, which an EDL or FCPXML counts from, and not a zero one', () => {
+    expect(
+      mediaNotes(asset({ audio_streams: [{ index: 0 }], start_timecode: '01:00:00;00' })),
+    ).toEqual(['starts at timecode 01:00:00;00; an EDL or FCPXML export counts from there']);
+    expect(
+      mediaNotes(asset({ audio_streams: [{ index: 0 }], start_timecode: '00:00:00:00' })),
+    ).toEqual([]);
+  });
+
   it('says nothing about an ordinary file', () => {
     expect(
       mediaNotes(asset({ audio_streams: [{ index: 0 }], variable_frame_rate: false })),

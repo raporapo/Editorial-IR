@@ -7,6 +7,7 @@ import {
   type MediaAsset,
   type SemanticEvent,
 } from '@editorial-ir/contracts';
+import { captureStartsApartMs } from './ingest.js';
 import { TITLE_CARD_MAX_MS } from './materials.js';
 import { isTimecodeLike } from './onscreen-text.js';
 
@@ -163,7 +164,9 @@ function isShortPiece(assetId: string | undefined, settings: Settings): boolean 
 
 /**
  * Real time between the end of one file and the start of the next, when both
- * files say when they were shot. A photograph ends when it starts.
+ * files say when they were shot on a clock they share — a camera's zone-less
+ * time is compared with another's, never with a UTC instant. A photograph ends
+ * when it starts.
  */
 function captureGapMs(
   fromId: string | undefined,
@@ -172,11 +175,9 @@ function captureGapMs(
 ): number | undefined {
   const from = fromId === undefined ? undefined : settings.assets.get(fromId);
   const to = toId === undefined ? undefined : settings.assets.get(toId);
-  if (!from?.creation_time || !to?.creation_time) return undefined;
-  const fromStart = Date.parse(from.creation_time);
-  const toStart = Date.parse(to.creation_time);
-  if (!Number.isFinite(fromStart) || !Number.isFinite(toStart)) return undefined;
-  return toStart - (fromStart + from.duration_ms);
+  if (!from || !to) return undefined;
+  const apart = captureStartsApartMs(from, to);
+  return apart === undefined ? undefined : apart - from.duration_ms;
 }
 
 /** How far apart two neighbouring events are, in real time where it is known. */

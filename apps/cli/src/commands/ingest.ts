@@ -154,6 +154,11 @@ export function mediaNotes(asset: MediaAsset): string[] {
         'and the analysis says which',
     );
   }
+  if (asset.start_timecode !== undefined && !/^00:00:00[:;]00$/.test(asset.start_timecode)) {
+    notes.push(
+      `starts at timecode ${asset.start_timecode}; an EDL or FCPXML export counts from there`,
+    );
+  }
   if (asset.variable_frame_rate && asset.fps !== undefined) {
     const average = asset.avg_fps === undefined ? '' : ` (averaging ${asset.avg_fps.toFixed(2)})`;
     notes.push(

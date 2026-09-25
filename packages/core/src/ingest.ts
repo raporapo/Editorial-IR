@@ -6,10 +6,11 @@ import {
   STILL_SLOT_MS,
   EditorialError,
   PIPELINE_VERSION,
+  parseCaptureTime,
   seqId,
-  toIso8601,
   type AssetPlacement,
   type AudioStream,
+  type CaptureTime,
   type MediaAsset,
   type MediaKind,
   type ProbeResult,
@@ -17,6 +18,7 @@ import {
 import type { MediaProbe } from '@editorial-ir/perception';
 import { canonicalJson, hashFile } from './fingerprint.js';
 import type { PerceptionCache } from './cache.js';
+import { photoDateOf, type PhotoDate } from './exif.js';
 
 /**
  * Registering media.
@@ -156,11 +158,16 @@ export async function ingestPaths(
         // every placement after it, and each of those annotations would land on
         // different footage without a word. So both stay as registered — and a
         // capture time the old probe never found is not added either, because
-        // one more dated asset can switch the whole timeline from file-name
-        // order to capture order.
+        // one more dated asset moves itself, and every asset after it, on the
+        // capture timeline.
+        //
+        // The same goes for how precise the capture time is: a time that was
+        // read as an instant and is now known to have no zone would change which
+        // clock the timeline is ordered by.
         const {
           duration_ms: _duration,
           creation_time: _captured,
+          capture_time: _precision,
           ...facts
         } = probedFields(alreadyKnown.file_name, await probeWithCache(file, sha256, options));
         const updated: MediaAsset = {
@@ -174,6 +181,9 @@ export async function ingestPaths(
           ...(alreadyKnown.creation_time === undefined
             ? {}
             : { creation_time: alreadyKnown.creation_time }),
+          ...(alreadyKnown.capture_time === undefined
+            ? {}
+            : { capture_time: alreadyKnown.capture_time }),
         };
         if (canonicalJson(updated) !== canonicalJson(alreadyKnown)) {
           existing[existing.indexOf(alreadyKnown)] = updated;
@@ -208,7 +218,11 @@ export async function ingestPaths(
     }
 
     const asset: MediaAsset = {
-      ...probedFields(basename(file), probe),
+      ...probedFields(
+        basename(file),
+        probe,
+        mediaKindOf(file) === 'image' ? photoDateOf(file) : undefined,
+      ),
       id: seqId('asset', nextIndex++, 3),
       path: relativeToProject(file, options.projectRoot),
       file_name: basename(file),
@@ -255,9 +269,11 @@ export function mediaKindFromProbe(
 function probedFields(
   fileName: string,
   probe: ProbeResult,
+  photo?: PhotoDate,
 ): Omit<MediaAsset, 'id' | 'path' | 'file_name' | 'sha256' | 'byte_size'> {
   const kind = mediaKindFromProbe(fileName, probe);
-  const captured = toIso8601(probe.creation_time);
+  const capture = captureTimeOf(probe, photo);
+  const timecode = kind === 'image' ? undefined : probe.start_timecode;
   // A still has no frame rate. ffmpeg's image reader reports 25/1 for every
   // picture, and the sequence took its rate from the largest asset — so a
   // 4032x3024 phone photo made a 30 fps video's project 4032x3024 at 25 fps.
@@ -288,12 +304,56 @@ function probedFields(
     ...(variable && probe.avg_fps_num && probe.avg_fps_den
       ? { avg_fps: probe.avg_fps_num / probe.avg_fps_den }
       : {}),
-    // Whatever the container said, as an instant or not at all. A date the
+    // Whatever the file said, as an instant or not at all. A date the
     // contract cannot hold is worse than none: assets are laid on the capture
     // timeline in this order, and a misread one invents continuity.
-    ...(captured === undefined ? {} : { creation_time: captured }),
+    ...(capture?.instant === undefined ? {} : { creation_time: capture.instant }),
+    ...(capture === undefined ? {} : { capture_time: capture.time }),
+    ...(timecode === undefined ? {} : { start_timecode: timecode }),
     metadata: probe.metadata,
   };
+}
+
+/**
+ * The capture time, from the most trustworthy place that has one.
+ *
+ * A photo's own EXIF first: ffprobe gives a JPEG no tags, and where it gives a
+ * PNG or TIFF some they are not when the shutter fired. Then what the probe
+ * chose from the container, which is `com.apple.quicktime.creationdate` when
+ * there is one — it carries the offset — and the container's own date
+ * otherwise. A value that is only a date is kept as a date; a value that parses
+ * as nothing is dropped, and that is the right answer too.
+ */
+function captureTimeOf(
+  probe: ProbeResult,
+  photo: PhotoDate | undefined,
+): { time: CaptureTime; instant?: string } | undefined {
+  const candidates: { raw: string; source: CaptureTime['source'] }[] = [];
+  if (photo) candidates.push({ raw: photo.value, source: photo.source });
+  if (probe.creation_time !== undefined) {
+    const quicktime = probe.metadata['com.apple.quicktime.creationdate'];
+    candidates.push({
+      raw: probe.creation_time,
+      source:
+        typeof quicktime === 'string' && quicktime.trim() === probe.creation_time.trim()
+          ? 'quicktime'
+          : 'container',
+    });
+  }
+  for (const { raw, source } of candidates) {
+    const parsed = parseCaptureTime(raw);
+    if (!parsed) continue;
+    const time: CaptureTime = {
+      source,
+      precision: parsed.precision,
+      raw: raw.trim(),
+      ...(parsed.local === undefined ? {} : { local: parsed.local }),
+      ...(parsed.offsetMinutes === undefined ? {} : { utc_offset_minutes: parsed.offsetMinutes }),
+      ...(parsed.date === undefined ? {} : { date: parsed.date }),
+    };
+    return parsed.instant === undefined ? { time } : { time, instant: parsed.instant };
+  }
+  return undefined;
 }
 
 function audioStreamOf(stream: NonNullable<ProbeResult['audio_streams']>[number]): AudioStream {
@@ -338,6 +398,54 @@ function relativeToProject(file: string, projectRoot: string): string {
   // relative one, so the whole directory can be moved between machines.
   if (relativePath.startsWith('..') || isAbsolute(relativePath)) return file;
   return relativePath;
+}
+
+/**
+ * The clock a capture time is read on.
+ *
+ * `utc` is an instant. `local` is the wall clock where the file was made, which
+ * is all a camera that does not know its zone can say — EXIF without
+ * `OffsetTimeOriginal`, an AVI, a Broadcast WAV — and which a phone clip that
+ * wrote its offset can say as well. Two readings are comparable only on the
+ * same clock: a zone-less 18:00 read as 18:00 UTC was nine hours out in Tokyo,
+ * and it was then sorted against phone clips that did carry their zone.
+ */
+export type CaptureClock = 'utc' | 'local';
+
+/** An asset's capture start on one clock, in milliseconds, or nothing. */
+export function captureMsOn(
+  asset: Pick<MediaAsset, 'creation_time' | 'capture_time'>,
+  clock: CaptureClock,
+): number | undefined {
+  const text =
+    clock === 'utc'
+      ? asset.creation_time
+      : asset.capture_time?.local === undefined
+        ? undefined
+        : `${asset.capture_time.local}Z`;
+  if (text === undefined) return undefined;
+  // By the instant, not by how the string sorts. The two agree only while every
+  // timestamp is in the one canonical form, which is a property of what
+  // `ingest` writes rather than of what a camera produces.
+  const ms = Date.parse(text);
+  return Number.isFinite(ms) ? ms : undefined;
+}
+
+/**
+ * How long after `from` started `to` started, in real time, when both say on
+ * a clock they share: the instant when both have one, else the wall clock when
+ * both have that. Never one against the other.
+ */
+export function captureStartsApartMs(
+  from: Pick<MediaAsset, 'creation_time' | 'capture_time'>,
+  to: Pick<MediaAsset, 'creation_time' | 'capture_time'>,
+): number | undefined {
+  for (const clock of ['utc', 'local'] as const) {
+    const a = captureMsOn(from, clock);
+    const b = captureMsOn(to, clock);
+    if (a !== undefined && b !== undefined) return b - a;
+  }
+  return undefined;
 }
 
 /**
