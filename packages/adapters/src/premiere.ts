@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import {
   AdapterCapabilities,
   type ApplyResult,
+  type CapabilityDowngrade,
   type EditPlan,
   type MediaAsset,
 } from '@editorial-ir/contracts';
@@ -18,6 +19,7 @@ import {
   mediaFramesOf,
   mediaLengthOf,
   pictureOf,
+  soundTransitionsOf,
   streamChannels,
   streamOf,
   transitionsOf,
@@ -25,6 +27,7 @@ import {
   type FrameRate,
   type GridSpan,
   type PlacedTransition,
+  type TrackClip,
 } from './timeline.js';
 import { dbToGain, escapeXml } from './xml.js';
 
@@ -66,6 +69,7 @@ export const PREMIERE_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.pa
     'Final Cut Pro 7 XML (xmeml v4), which Premiere imports as a sequence.',
     'Everything is measured in frames at the sequence rate; NTSC rates are written as timebase plus an ntsc flag.',
     'Stills are still-frame clipitems; sound-only files are audio clipitems with no picture.',
+    'A dissolve between two sound-only clips is a Cross Fade (+3dB) on their audio tracks, where the handles allow it.',
     'A clip whose sound is a separate recorder’s is its picture linked to audio clipitems that read the recorder’s file.',
     'Chapters are sequence markers. Text and captions are not written: write captions with --editor srt.',
   ],
@@ -79,7 +83,7 @@ export class PremiereAdapter implements EditorAdapter {
     const { plan, downgrades } = negotiate(request.plan, this.capabilities, request.ir.assets);
     const warnings: string[] = [];
 
-    const xml = buildFcpXml(plan, request, warnings);
+    const xml = buildFcpXml(plan, request, warnings, downgrades);
     const name = request.name ?? 'timeline';
     mkdirSync(request.outputDir, { recursive: true });
     const path = join(request.outputDir, `${name}.xml`);
@@ -114,11 +118,15 @@ export function xmemlRate(
   return countedRate(num, den, 'FCP7 XML', warnings);
 }
 
-/** Exported so the XML can be checked without touching the filesystem. */
+/**
+ * Exported so the XML can be checked without touching the filesystem.
+ * `downgrades` receives the transitions between sound-only clips that stay cuts.
+ */
 export function buildFcpXml(
   plan: EditPlan,
   request: ApplyRequest,
   warnings: string[] = [],
+  downgrades: CapabilityDowngrade[] = [],
 ): string {
   const { timebase, ntsc, rate } = xmemlRate(
     plan.sequence.frame_rate_num,
@@ -384,6 +392,26 @@ export function buildFcpXml(
   lines.push('      <audio>');
   lines.push('        <numOutputChannels>2</numOutputChannels>');
 
+  // A cross-fade between two sound-only clips, and a sound-only clip's fade at
+  // an edge, on the audio tracks: there is no picture to carry it. Worked out
+  // once for each video track's clips, whatever audio tracks they are laid on,
+  // so a join that stays a cut is reported once.
+  const soundLeading = new Map<string, PlacedTransition>();
+  const soundTrailing = new Map<string, PlacedTransition>();
+  for (const spans of grid.tracks.values()) {
+    const clips = spans.flatMap((span): TrackClip[] => {
+      const id = span.operation.operation_id;
+      if (pictureIdOf.has(id)) return [{ span }];
+      const sound = sounds.get(id);
+      return sound ? [{ span, sound }] : [];
+    });
+    for (const transition of soundTransitionsOf(clips, frames, downgrades)) {
+      if (transition.kind === 'tail')
+        soundTrailing.set(transition.outgoing!.operation.operation_id, transition);
+      else soundLeading.set(transition.incoming!.operation.operation_id, transition);
+    }
+  }
+
   for (const spec of sourceSpecs) {
     for (const [track, spans] of grid.tracks) {
       const channels = soundTrackCount.get(`${spec.track}:${track}`) ?? 0;
@@ -393,6 +421,16 @@ export function buildFcpXml(
           const operation = span.operation;
           const audio = sounds.get(operation.operation_id);
           if (!audio || channel >= audio.sound.channels) continue;
+          // A cross-fade on the channels both clips have: a stereo file's
+          // second channel has no partner in a mono one, and comes in on the cut.
+          const before = soundLeading.get(operation.operation_id);
+          const outgoing = before?.outgoing && sounds.get(before.outgoing.operation.operation_id);
+          if (
+            before &&
+            (before.kind === 'head' || (outgoing && channel < outgoing.sound.channels))
+          ) {
+            written.push(...audioTransitionItem(before, rateXml));
+          }
           // The file the sound is read from, defined here at its first use when
           // it is a recorder no picture has named.
           const path = resolveAssetPath(request, audio.asset.id)!;
@@ -412,6 +450,8 @@ export function buildFcpXml(
               rateXml,
             }),
           );
+          const after = soundTrailing.get(operation.operation_id);
+          if (after) written.push(...audioTransitionItem(after, rateXml));
         }
         if (written.length === 0) continue;
         lines.push('        <track>');
@@ -586,24 +626,7 @@ function transitionItem(placed: PlacedTransition, rateXml: (indent: number) => s
       : placed.transition.type === 'dip_to_white'
         ? TRANSITION_EFFECTS.dip_to_white!
         : TRANSITION_EFFECTS.cross_dissolve!;
-
-  let start: number;
-  let end: number;
-  let alignment: string;
-  if (placed.kind === 'between') {
-    const cut = placed.outgoing!.end;
-    start = cut - placed.frames;
-    end = cut + placed.frames;
-    alignment = 'center';
-  } else if (placed.kind === 'head') {
-    start = placed.incoming!.start;
-    end = start + placed.frames;
-    alignment = 'start-black';
-  } else {
-    end = placed.outgoing!.end;
-    start = end - placed.frames;
-    alignment = 'end-black';
-  }
+  const { start, end, alignment } = transitionPlace(placed);
 
   return [
     '          <transitionitem>',
@@ -622,6 +645,51 @@ function transitionItem(placed: PlacedTransition, rateXml: (indent: number) => s
     '              <startratio>0</startratio>',
     '              <endratio>1</endratio>',
     '              <reverse>FALSE</reverse>',
+    '            </effect>',
+    '          </transitionitem>',
+  ];
+}
+
+/** Where a transition sits on its track, and how it is aligned to the cut. */
+function transitionPlace(placed: PlacedTransition): {
+  start: number;
+  end: number;
+  alignment: string;
+} {
+  if (placed.kind === 'between') {
+    const cut = placed.outgoing!.end;
+    return { start: cut - placed.frames, end: cut + placed.frames, alignment: 'center' };
+  }
+  if (placed.kind === 'head') {
+    const start = placed.incoming!.start;
+    return { start, end: start + placed.frames, alignment: 'start-black' };
+  }
+  const end = placed.outgoing!.end;
+  return { start: end - placed.frames, end, alignment: 'end-black' };
+}
+
+/**
+ * A cross-fade between two sound-only clips, or a sound-only clip's fade from
+ * or to silence, on one audio track: FCP7's own Cross Fade (+3dB), which
+ * Premiere imports as its Constant Power cross-fade. Placed exactly as a
+ * picture's transition is, and written on every channel track the clips share.
+ */
+function audioTransitionItem(
+  placed: PlacedTransition,
+  rateXml: (indent: number) => string,
+): string[] {
+  const { start, end, alignment } = transitionPlace(placed);
+  return [
+    '          <transitionitem>',
+    `            <start>${start}</start>`,
+    `            <end>${end}</end>`,
+    `            <alignment>${alignment}</alignment>`,
+    rateXml(12),
+    '            <effect>',
+    '              <name>Cross Fade (+3dB)</name>',
+    '              <effectid>KGAudioTransCrossFade3dB</effectid>',
+    '              <effecttype>transition</effecttype>',
+    '              <mediatype>audio</mediatype>',
     '            </effect>',
     '          </transitionitem>',
   ];

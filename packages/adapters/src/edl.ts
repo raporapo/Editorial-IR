@@ -6,6 +6,7 @@ import {
   smpteToFrames,
   supportsDropFrame,
   type ApplyResult,
+  type CapabilityDowngrade,
   type EditPlan,
   type MediaAsset,
 } from '@editorial-ir/contracts';
@@ -20,8 +21,10 @@ import {
   mediaFramesOf,
   pictureOf,
   recordersOf,
+  soundTransitionsOf,
   sourceTimecodeOf,
   transitionsOf,
+  type ClipAudio,
   type ClipSound,
   type GridSpan,
   type PlacedTransition,
@@ -65,6 +68,7 @@ export const EDL_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.parse({
   renders_preview: false,
   notes: [
     'One picture track with its sound as channels of the same events (V, B, AA/V, A, AA), frame-accurate at the sequence rate.',
+    'A dissolve between two sound-only clips is a D event on their sound channels, where the handles allow it.',
     'A clip whose sound is a separate recorder’s is two events at the same record time: the picture (V) from the camera’s reel, the sound (A, AA) from the recorder’s.',
     'Drop-frame timecode for 29.97 and 59.94; source timecodes start at each file’s embedded start timecode.',
     'Reel names are made from file names within eight characters, with the full name in a FROM CLIP NAME comment; chapters are LOC comments.',
@@ -80,7 +84,7 @@ export class EdlAdapter implements EditorAdapter {
     const startedAt = Date.now();
     const { plan, downgrades } = negotiate(request.plan, this.capabilities, request.ir.assets);
     const warnings: string[] = [];
-    const { text, timecodes } = buildEdlDocument(plan, request, warnings);
+    const { text, timecodes } = buildEdlDocument(plan, request, warnings, downgrades);
 
     const name = request.name ?? 'timeline';
     mkdirSync(request.outputDir, { recursive: true });
@@ -104,8 +108,13 @@ export class EdlAdapter implements EditorAdapter {
 }
 
 /** The list as text. */
-export function buildEdl(plan: EditPlan, request: ApplyRequest, warnings: string[] = []): string {
-  return buildEdlDocument(plan, request, warnings).text;
+export function buildEdl(
+  plan: EditPlan,
+  request: ApplyRequest,
+  warnings: string[] = [],
+  downgrades: CapabilityDowngrade[] = [],
+): string {
+  return buildEdlDocument(plan, request, warnings, downgrades).text;
 }
 
 /**
@@ -159,11 +168,15 @@ interface EdlEvent {
   recorded?: true;
 }
 
-/** The list and the clocks its source times were counted from. */
+/**
+ * The list and the clocks its source times were counted from. `downgrades`
+ * receives the transitions between sound-only clips that stay cuts.
+ */
 export function buildEdlDocument(
   plan: EditPlan,
   request: ApplyRequest,
   warnings: string[] = [],
+  downgrades: CapabilityDowngrade[] = [],
 ): { text: string; timecodes: SourceTimecode[] } {
   const { num: planNum, den: planDen } = {
     num: plan.sequence.frame_rate_num,
@@ -234,6 +247,8 @@ export function buildEdlDocument(
     channel: string;
     /** A separate recorder whose sound goes under this clip's picture. */
     recorder?: Source & { sound: ClipSound };
+    /** For a sound-only clip, the sound it plays: it has no picture. */
+    soundOnly?: ClipAudio;
   }
   const sourceOf = <S extends ClipSound | undefined>(
     asset: MediaAsset,
@@ -272,6 +287,7 @@ export function buildEdlDocument(
         span,
         ...sourceOf(audio!.asset, audio!.sound, audio!.in, audio!.out),
         channel: channelField(false, audio!.sound),
+        soundOnly: audio!,
       });
       continue;
     }
@@ -290,13 +306,25 @@ export function buildEdlDocument(
     });
   }
 
-  const pictured = described.filter((d) => pictureOf(d.asset) !== 'none');
-  const placed = transitionsOf(
-    pictured.map((d) => d.span),
-    grid.frames,
-    mediaFramesOf(assets, grid.frames),
-    warnings,
-  );
+  // The file a sound-only clip reads is its sound's (`asset` above), which may
+  // be a recorder with a picture of its own; whether the clip has a picture is
+  // what it was described as.
+  const pictured = described.filter((d) => !d.soundOnly);
+  const placed = [
+    ...transitionsOf(
+      pictured.map((d) => d.span),
+      grid.frames,
+      mediaFramesOf(assets, grid.frames),
+      warnings,
+    ),
+    // A dissolve between two sound-only clips is a dissolve on their sound
+    // channels (`AA D`), which the list writes like any other.
+    ...soundTransitionsOf(
+      described.map((d) => (d.soundOnly ? { span: d.span, sound: d.soundOnly } : { span: d.span })),
+      grid.frames,
+      downgrades,
+    ),
+  ];
   const into = new Map<string, PlacedTransition>();
   const outOf = new Map<string, PlacedTransition>();
   for (const transition of placed) {

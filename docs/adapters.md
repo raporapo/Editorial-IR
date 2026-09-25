@@ -66,6 +66,39 @@ adapter writes (`pictureOf`, `soundOf` in
   recorder) is laid on a track of its own at its level, in OTIO, Premiere,
   FCPXML, AviUtl and the preview. It used to be warned about and dropped.
 
+### Dissolves between sound-only clips
+
+A dissolve from one sound file into another has no picture to go on, and every
+writer but AviUtl's left it out without a word: on the audio-only probe case,
+two 400 ms cross dissolves and not one transition in the OTIO, the FCP7 XML, the
+FCPXML or the EDL. [`soundTransitionsOf`](../packages/adapters/src/timeline.ts)
+applies the picture's rule to the sound: a cross-fade centred on the cut, made
+of sound neither clip uses (past the outgoing clip's out point in the file it
+reads, before the incoming clip's in point), as long as the shorter handle
+allows; a fade from or to silence at an edge, which needs none; a jump cut stays
+a cut. Each writer says it where the sound is:
+
+- **OTIO**: a `Transition` on the audio track, between the two audio clips.
+- **Premiere**: a `Cross Fade (+3dB)` `transitionitem` (`mediatype` audio) on
+  every audio track both clips are on; a stereo file's second channel beside a
+  mono one comes in on the cut.
+- **FCPXML**: a storyline `transition`, like a picture's; its Audio Crossfade is
+  all it does between two clips with no picture.
+- **EDL**: a `D` event on the clips' sound channels (`A`, `AA`).
+- **AviUtl**: the job carries the plan's transitions as before; the `.exo` has
+  none.
+
+A join that stays a cut is listed under "changed to fit" (a downgrade, with the
+clip and the reason), because nothing else in the output shows it was asked for.
+That is what both of the probe case's joins are: each plays one recording to
+its last frame or the next from its first, and there is no sound on that side
+to overlap. A sound-only clip that touches a picture is not cross-faded with it
+— a transition there would be read as one between the picture's sound and the
+clip, made of handles nobody measured — and a transition it asks for there is
+reported the same way. Dissolves between pictures are unchanged: their sound is
+a straight cut under the picture's dissolve in OTIO and Premiere, and part of
+it in FCPXML and the EDL, as before.
+
 ### Sound from a separate recorder
 
 When the analysis lines a lavalier or a field recorder up with a camera, the
@@ -367,7 +400,8 @@ three adapters rounding three ways disagreed by a frame here and there, and a
 source in rounded apart from its clip's start read up to 1.3 frames past a
 planned out point — on an edited programme, the first frame of the next shot.
 `transitionsOf` then says which joins can really have a dissolve (handles
-permitting) and where a fade sits. Use both.
+permitting) and where a fade sits, and `soundTransitionsOf` says the same of
+sound-only clips, reporting each join it leaves a cut. Use all three.
 
 ### File or live
 

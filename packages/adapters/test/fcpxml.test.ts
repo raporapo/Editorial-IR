@@ -6,7 +6,7 @@ import {
   negotiate,
   type ApplyRequest,
 } from '../src/index.js';
-import type { EditPlan } from '@editorial-ir/contracts';
+import type { CapabilityDowngrade, EditPlan } from '@editorial-ir/contracts';
 import { makeAsset } from '../../../tests/support/ir.js';
 import { findAll, parseXml, type XmlNode } from '../../../tests/support/xml.js';
 import {
@@ -16,6 +16,8 @@ import {
   mixedIr,
   mixedPlan,
   requestFor,
+  soundOnlyAssets,
+  soundOnlyPlan,
 } from '../../../tests/support/plan.js';
 
 /**
@@ -282,6 +284,31 @@ describe('the FCPXML document', () => {
     const transition = spine.children[1]!;
     expect(frames(transition.attributes.offset!, 30, 1)).toBe(105);
     expect(frames(transition.attributes.duration!, 30, 1)).toBe(30);
+  });
+
+  it('cross-fades two sound-only clips in the storyline, where there is sound to overlap', () => {
+    // The dissolve from one sound file into the next used to be left out, and
+    // nothing said so.
+    const plan = soundOnlyPlan();
+    const downgrades: CapabilityDowngrade[] = [];
+    const root = parseXml(
+      buildFcpxml(plan, requestFor(plan, mixedIr(soundOnlyAssets())), [], downgrades),
+    );
+    const spine = findAll(root, 'spine')[0]!;
+    expect(spine.children.map((child) => child.tag)).toEqual([
+      'asset-clip',
+      'transition',
+      'asset-clip',
+      'asset-clip',
+      'transition',
+    ]);
+    const join = spine.children[1]!;
+    expect(frames(join.attributes.offset!, 30, 1)).toBe(114);
+    expect(frames(join.attributes.duration!, 30, 1)).toBe(12);
+    expect(findAll(join, 'filter-audio')[0]!.attributes.name).toBe('Audio Crossfade');
+    expect(downgrades).toEqual([
+      expect.objectContaining({ operation_id: 'op_0003', capability: 'transition_in' }),
+    ]);
   });
 
   it('fades the last clip to black instead of losing it', () => {

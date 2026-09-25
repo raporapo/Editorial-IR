@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import {
   AdapterCapabilities,
   type ApplyResult,
+  type CapabilityDowngrade,
   type EditPlan,
   type MediaAsset,
   type VideoOperation,
@@ -18,10 +19,12 @@ import {
   mediaFramesOf,
   mediaLengthOf,
   pictureOf,
+  soundTransitionsOf,
   streamOf,
   transitionsOf,
   type GridSpan,
   type PlacedTransition,
+  type TrackClip,
 } from './timeline.js';
 
 /**
@@ -56,6 +59,7 @@ export const OTIO_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.parse(
   notes: [
     'Times are rational: frame counts at the sequence rate, so an NTSC rate survives exactly.',
     'Transitions are OTIO Transition objects between clips; a fade at either end of a track is one with nothing on its other side.',
+    'A dissolve between two sound-only clips is a Transition on the audio track, where the handles allow it.',
     'Chapters are markers on the timeline’s stack. OTIO has no caption track: write captions with --editor srt.',
     'A clip whose sound is a separate recorder’s has an audio clip referencing the recorder, at the recorder’s own frames.',
   ],
@@ -69,7 +73,7 @@ export class OtioAdapter implements EditorAdapter {
     const { plan, downgrades } = negotiate(request.plan, this.capabilities, request.ir.assets);
     const warnings: string[] = [];
 
-    const document = buildOtioTimeline(plan, request, warnings);
+    const document = buildOtioTimeline(plan, request, warnings, downgrades);
     const name = request.name ?? 'timeline';
     mkdirSync(request.outputDir, { recursive: true });
     const path = join(request.outputDir, `${name}.otio`);
@@ -92,11 +96,15 @@ export class OtioAdapter implements EditorAdapter {
   }
 }
 
-/** Exported so the document can be checked without touching the filesystem. */
+/**
+ * Exported so the document can be checked without touching the filesystem.
+ * `downgrades` receives the transitions between sound-only clips that stay cuts.
+ */
 export function buildOtioTimeline(
   plan: EditPlan,
   request: ApplyRequest,
   warnings: string[] = [],
+  downgrades: CapabilityDowngrade[] = [],
 ): Record<string, unknown> {
   const rate = plan.sequence.frame_rate_num / plan.sequence.frame_rate_den;
   // Where each clip sits on the frame grid, decided once for every track. A
@@ -251,6 +259,28 @@ export function buildOtioTimeline(
   //
   // Each video track's sound goes on its own audio track. One track for all of
   // them put a V2 cutaway's sound on top of the V1 clip it covers.
+  //
+  // A cross-fade between two sound-only clips, and a sound-only clip's fade at
+  // an edge, is a Transition on the audio track, where the sound is: there is
+  // no picture to carry it. Worked out once for each video track's clips,
+  // whatever audio tracks they are laid on, so a join that stays a cut is
+  // reported once.
+  const soundLeading = new Map<string, PlacedTransition>();
+  const soundTrailing = new Map<string, PlacedTransition>();
+  for (const spans of grid.tracks.values()) {
+    const clips = spans.flatMap((span): TrackClip[] => {
+      const asset = assetById(assets, span.operation.source_asset_id);
+      if (!asset || pictureOf(asset) !== 'none') return [{ span }];
+      const sound = clipAudio(span, lookup, grid.rate);
+      return sound ? [{ span, sound }] : [];
+    });
+    for (const transition of soundTransitionsOf(clips, frames, downgrades)) {
+      if (transition.kind === 'tail')
+        soundTrailing.set(transition.outgoing!.operation.operation_id, transition);
+      else soundLeading.set(transition.incoming!.operation.operation_id, transition);
+    }
+  }
+
   const audioTracks: Record<string, unknown>[] = [];
   const nextName = (): string => `A${audioTracks.length + 1}`;
   for (const spec of plan.tracks.audio) {
@@ -267,6 +297,8 @@ export function buildOtioTimeline(
         const audio = clipAudio(span, lookup, grid.rate, warnings);
         if (!audio) continue;
         if (span.start > cursor) children.push(gap(span.start - cursor));
+        const before = soundLeading.get(operation.operation_id);
+        if (before) children.push(transitionObject(before, at));
         const path = resolveAssetPath(request, audio.asset.id);
         children.push({
           OTIO_SCHEMA: 'Clip.1',
@@ -292,6 +324,8 @@ export function buildOtioTimeline(
           enabled: true,
         });
         cursor = span.end;
+        const after = soundTrailing.get(operation.operation_id);
+        if (after) children.push(transitionObject(after, at));
       }
       if (children.length === 0) continue;
       audioTracks.push({

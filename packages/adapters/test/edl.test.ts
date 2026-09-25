@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { smpteToFrames } from '@editorial-ir/contracts';
+import { smpteToFrames, type CapabilityDowngrade } from '@editorial-ir/contracts';
 import { EdlAdapter, buildEdl, layOnGrid, negotiate, reelNames } from '../src/index.js';
 import { makeAsset } from '../../../tests/support/ir.js';
 import {
@@ -9,6 +9,8 @@ import {
   mixedIr,
   mixedPlan,
   requestFor,
+  soundOnlyAssets,
+  soundOnlyPlan,
 } from '../../../tests/support/plan.js';
 
 interface EdlLine {
@@ -197,6 +199,33 @@ describe('the CMX 3600 edit list', () => {
     expect(to!.dissolve).toBe(30);
     expect(to!.sourceIn).toBe('00:00:29:15');
     expect(to!.recordIn).toBe('00:00:03:15');
+  });
+
+  it('cross-fades two sound-only clips on their sound channels, where there is sound to overlap', () => {
+    // The dissolve from one sound file into the next used to be left out of
+    // the list, and nothing said so.
+    const plan = soundOnlyPlan();
+    const downgrades: CapabilityDowngrade[] = [];
+    const lines = eventLines(
+      buildEdl(plan, requestFor(plan, mixedIr(soundOnlyAssets())), [], downgrades),
+    );
+    expect(lines.map((line) => [line.event, line.reel, line.channel, line.dissolve])).toEqual([
+      [1, 'MEMO', 'A', undefined],
+      [2, 'MEMO', 'A', undefined],
+      [2, 'PODCAST', 'A', 12],
+      [3, 'FIELD', 'AA', undefined],
+      [4, 'FIELD', 'AA', undefined],
+      [4, 'BL', 'AA', 30],
+    ]);
+    // Centred on the cut at 4 s: the podcast comes in six frames before its
+    // 5 s in point, six frames before the cut.
+    expect(lines[2]).toMatchObject({ sourceIn: '00:00:04:24', recordIn: '00:00:03:24' });
+    expect(lines[1]).toMatchObject({ sourceIn: '00:00:13:24', recordIn: '00:00:03:24' });
+    // The field recording starts at its first frame: no sound before it to
+    // overlap, so that join is a cut, and is reported as one.
+    expect(downgrades).toEqual([
+      expect.objectContaining({ operation_id: 'op_0003', capability: 'transition_in' }),
+    ]);
   });
 
   it('fades from and to black through the BL reel', () => {

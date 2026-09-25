@@ -5,6 +5,7 @@ import {
   smpteToFrames,
   supportsDropFrame,
   type ApplyResult,
+  type CapabilityDowngrade,
   type EditPlan,
   type MediaAsset,
   type TextOperation,
@@ -20,6 +21,7 @@ import {
   layOnGrid,
   mediaFramesOf,
   pictureOf,
+  soundTransitionsOf,
   sourceTimecodeOf,
   streamChannels,
   streamOf,
@@ -30,6 +32,7 @@ import {
   type GridSpan,
   type PlacedTransition,
   type SourceTimecode,
+  type TrackClip,
 } from './timeline.js';
 import { escapeXml } from './xml.js';
 
@@ -73,6 +76,7 @@ export const FCPXML_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.pars
   notes: [
     'FCPXML 1.10 for Final Cut Pro and DaVinci Resolve: rational times on the sequence’s frame grid, media declared once.',
     'Stills are video elements on image assets; sound-only files are audio clips in the storyline; upper tracks and music beds are connected clips.',
+    'A dissolve between two sound-only clips is a storyline transition, whose Audio Crossfade is all it does, where the handles allow it.',
     'A clip whose sound is a separate recorder’s keeps its picture only, with the recorder as a connected audio clip below it.',
     'Chapters are chapter markers; captions are SRT-role captions, which Final Cut shows and Resolve ignores — use --editor srt for Resolve.',
     'Only standard frame rates: another rate is written as the nearest standard one, and the result says so.',
@@ -87,7 +91,7 @@ export class FcpxmlAdapter implements EditorAdapter {
     const startedAt = Date.now();
     const { plan, downgrades } = negotiate(request.plan, this.capabilities, request.ir.assets);
     const warnings: string[] = [];
-    const { xml, timecodes } = buildFcpxmlDocument(plan, request, warnings);
+    const { xml, timecodes } = buildFcpxmlDocument(plan, request, warnings, downgrades);
 
     const name = request.name ?? 'timeline';
     mkdirSync(request.outputDir, { recursive: true });
@@ -285,15 +289,20 @@ export function buildFcpxml(
   plan: EditPlan,
   request: ApplyRequest,
   warnings: string[] = [],
+  downgrades: CapabilityDowngrade[] = [],
 ): string {
-  return buildFcpxmlDocument(plan, request, warnings).xml;
+  return buildFcpxmlDocument(plan, request, warnings, downgrades).xml;
 }
 
-/** The document and the clocks its source times were counted from. */
+/**
+ * The document and the clocks its source times were counted from. `downgrades`
+ * receives the transitions between sound-only clips that stay cuts.
+ */
 export function buildFcpxmlDocument(
   plan: EditPlan,
   request: ApplyRequest,
   warnings: string[] = [],
+  downgrades: CapabilityDowngrade[] = [],
 ): { xml: string; timecodes: SourceTimecode[] } {
   const rate = fcpxmlRate(plan.sequence.frame_rate_num, plan.sequence.frame_rate_den, warnings);
   const grid = layOnGrid(plan, rate);
@@ -636,7 +645,21 @@ export function buildFcpxmlDocument(
       asset !== undefined && pictureOf(asset) !== 'none' && resolveAssetPath(request, asset.id)
     );
   });
-  const placed = transitionsOf(pictured, grid.frames, mediaFramesOf(assets, grid.frames), warnings);
+  // A sound-only clip is in the storyline too, and a cross-fade between two of
+  // them is a transition there, as a picture's is: Final Cut's Cross Dissolve
+  // carries an Audio Crossfade, and between two clips with no picture that is
+  // all it does.
+  const storylineClips = main.flatMap((span): TrackClip[] => {
+    const asset = assetById(assets, span.operation.source_asset_id);
+    if (!asset || !resolveAssetPath(request, asset.id)) return [];
+    if (pictureOf(asset) !== 'none') return [{ span }];
+    const sound = clipAudio(span, lookup, grid.rate);
+    return sound && resolveAssetPath(request, sound.asset.id) ? [{ span, sound }] : [];
+  });
+  const placed = [
+    ...transitionsOf(pictured, grid.frames, mediaFramesOf(assets, grid.frames), warnings),
+    ...soundTransitionsOf(storylineClips, grid.frames, downgrades),
+  ];
   const leading = new Map<string, PlacedTransition>();
   const trailing = new Map<string, PlacedTransition>();
   for (const transition of placed) {

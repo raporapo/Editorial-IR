@@ -336,6 +336,72 @@ export function endOfFilePlan(): EditPlan {
   ]);
 }
 
+/**
+ * Three sound files and nothing to look at, as a podcast cut or an audio-only
+ * trip diary is:
+ *
+ * - `asset_301` a mono voice memo, 30 s at 44.1 kHz
+ * - `asset_302` a mono podcast, 40 s
+ * - `asset_303` a stereo field recording, 30 s
+ */
+export function soundOnlyAssets(): MediaAsset[] {
+  const sound = (id: string, file: string, seconds: number, channels: number): MediaAsset =>
+    makeAsset({
+      id,
+      path: `/media/${file}`,
+      file_name: file,
+      kind: 'audio',
+      duration_ms: seconds * 1000,
+      width: undefined,
+      height: undefined,
+      fps: undefined,
+      fps_num: undefined,
+      fps_den: undefined,
+      audio_codec: 'aac',
+      audio_channels: channels,
+      audio_sample_rate: 48_000,
+      audio_streams: [{ index: 0, codec: 'aac', channels, sample_rate: 48_000 }],
+    });
+  return [
+    sound('asset_301', 'memo.m4a', 30, 1),
+    sound('asset_302', 'podcast.m4a', 40, 1),
+    sound('asset_303', 'field.wav', 30, 2),
+  ];
+}
+
+/**
+ * Three sound-only clips back to back at 30 fps, 4 s each: the memo from its
+ * 10 s, dissolving into the podcast from its 5 s — a second of sound either
+ * side of the cut, so the 400 ms cross-fade can be made — then dissolving into
+ * the field recording from its very first frame, where there is no sound
+ * before the in point to overlap, which fades out at the end.
+ */
+export function soundOnlyPlan(): EditPlan {
+  return makePlan([
+    {
+      source_asset_id: 'asset_301',
+      source_in_ms: 10_000,
+      source_out_ms: 14_000,
+      timeline_start_ms: 0,
+    },
+    {
+      source_asset_id: 'asset_302',
+      source_in_ms: 5000,
+      source_out_ms: 9000,
+      timeline_start_ms: 4000,
+      transition_in: { type: 'cross_dissolve', duration_ms: 400 },
+    },
+    {
+      source_asset_id: 'asset_303',
+      source_in_ms: 0,
+      source_out_ms: 4000,
+      timeline_start_ms: 8000,
+      transition_in: { type: 'cross_dissolve', duration_ms: 400 },
+      transition_out: { type: 'fade_out', duration_ms: 1000 },
+    },
+  ]);
+}
+
 export function requestFor(plan: EditPlan, ir: EditorialIR = mixedIr()): ApplyRequest {
   return {
     plan,

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   AviUtl2Adapter,
+  EdlAdapter,
+  FcpxmlAdapter,
   OtioAdapter,
   PremiereAdapter,
   buildAviUtlJob,
@@ -14,6 +16,7 @@ import {
 import {
   AdapterCapabilities,
   operationTimelineDuration,
+  type CapabilityDowngrade,
   type EditPlan,
 } from '@editorial-ir/contracts';
 import { childText, findAll, parseXml, type XmlNode } from './support/xml.js';
@@ -24,6 +27,8 @@ import {
   mixedIr,
   mixedPlan,
   requestFor,
+  soundOnlyAssets,
+  soundOnlyPlan,
 } from './support/plan.js';
 
 /**
@@ -366,6 +371,154 @@ describe('a file played to its very end', () => {
       camera.media_reference as { available_range: { duration: { value: number } } }
     ).available_range;
     expect(available.duration.value).toBe(1800); // 60 s at 30 fps
+  });
+});
+
+describe('a dissolve between two sound-only clips', () => {
+  // Measured on the sweep's audio-only case: two 400 ms cross dissolves from
+  // one recording into the next, and not one transition in the OTIO, the FCP7
+  // XML, the FCPXML or the EDL, and nothing in the result to say so.
+  const plan = soundOnlyPlan();
+  const request = () => requestFor(plan, mixedIr(soundOnlyAssets()));
+  type Offset = { value: number };
+
+  it('is a cross-fade on OTIO’s audio track, centred on the cut, where there is sound to overlap', () => {
+    const downgrades: CapabilityDowngrade[] = [];
+    const timeline = buildOtioTimeline(plan, request(), [], downgrades) as unknown as {
+      tracks: { children: OtioTrack[] };
+    };
+    const audio = timeline.tracks.children.find((track) => track.kind === 'Audio')!;
+    const transition = (node: OtioNode) => node.OTIO_SCHEMA === 'Transition.1';
+    expect(
+      audio.children.map((node) => (transition(node) ? 'transition' : operationOf(node))),
+    ).toEqual(['op_0001', 'transition', 'op_0002', 'op_0003', 'transition']);
+    const [join, fade] = audio.children.filter(transition);
+    // 400 ms is 12 frames: six from past the memo's out point, six from before
+    // the podcast's in point.
+    expect([(join!.in_offset as Offset).value, (join!.out_offset as Offset).value]).toEqual([6, 6]);
+    // The fade out of the last clip has nothing after it.
+    expect([(fade!.in_offset as Offset).value, (fade!.out_offset as Offset).value]).toEqual([
+      30, 0,
+    ]);
+    // The field recording is played from its first frame: there is no sound
+    // before it to overlap, and the cut that stays is reported, not dropped.
+    expect(downgrades).toEqual([
+      {
+        operation_id: 'op_0003',
+        capability: 'transition_in',
+        action: expect.stringMatching(
+          /^cross_dissolve between two sound-only clips became a cut: .* 0 before op_0003's in point$/,
+        ),
+      },
+    ]);
+  });
+
+  it('is a Cross Fade (+3dB) on every Premiere audio track both clips are on', () => {
+    const downgrades: CapabilityDowngrade[] = [];
+    const root = parseXml(buildFcpXml(plan, request(), [], downgrades));
+    const media = findAll(root, 'media').find((node) =>
+      node.children.some((child) => child.tag === 'audio' && findAll(child, 'track').length > 0),
+    )!;
+    const video = media.children.find((child) => child.tag === 'video')!;
+    const [first, second] = findAll(
+      media.children.find((child) => child.tag === 'audio')!,
+      'track',
+    );
+    expect(findAll(video, 'transitionitem')).toHaveLength(0);
+    // The mono memo and podcast, then the stereo recording's first channel.
+    expect(first!.children.map((child) => child.tag)).toEqual([
+      'clipitem',
+      'transitionitem',
+      'clipitem',
+      'clipitem',
+      'transitionitem',
+    ]);
+    const join = first!.children[1]!;
+    expect(['start', 'end', 'alignment'].map((tag) => childText(join, tag))).toEqual([
+      '114',
+      '126',
+      'center',
+    ]);
+    const effect = findAll(join, 'effect')[0]!;
+    expect(childText(effect, 'name')).toBe('Cross Fade (+3dB)');
+    expect(childText(effect, 'mediatype')).toBe('audio');
+    // The recording's second channel has no partner in the mono podcast and
+    // comes in on the cut; it fades out with the first.
+    expect(second!.children.map((child) => child.tag)).toEqual(['clipitem', 'transitionitem']);
+    expect(childText(second!.children[1]!, 'alignment')).toBe('end-black');
+    expect(downgrades.map((d) => d.operation_id)).toEqual(['op_0003']);
+  });
+
+  it('is reported by every writer that leaves it a cut, under "changed to fit"', async () => {
+    for (const adapter of [
+      new OtioAdapter(),
+      new PremiereAdapter(),
+      new FcpxmlAdapter(),
+      new EdlAdapter(),
+    ]) {
+      const result = await adapter.apply(request());
+      const sound = result.downgrades.filter((d) => /sound-only/.test(d.action));
+      expect(sound, adapter.capabilities.id).toHaveLength(1);
+      expect(sound[0]).toMatchObject({ operation_id: 'op_0003', capability: 'transition_in' });
+    }
+  });
+
+  it('is not written between a sound-only clip and a picture, and says so', () => {
+    // A cross-fade there would be read as one between the camera's sound and
+    // the memo, made of handles nobody measured.
+    const mixed = makePlan([
+      {
+        source_asset_id: 'asset_001',
+        source_in_ms: 10_000,
+        source_out_ms: 14_000,
+        timeline_start_ms: 0,
+      },
+      {
+        source_asset_id: 'asset_003',
+        source_in_ms: 2000,
+        source_out_ms: 6000,
+        timeline_start_ms: 4000,
+        transition_in: { type: 'cross_dissolve', duration_ms: 400 },
+      },
+    ]);
+    const downgrades: CapabilityDowngrade[] = [];
+    const timeline = buildOtioTimeline(mixed, requestFor(mixed), [], downgrades) as unknown as {
+      tracks: { children: OtioTrack[] };
+    };
+    const audio = timeline.tracks.children.find((track) => track.kind === 'Audio')!;
+    expect(audio.children.some((node) => node.OTIO_SCHEMA === 'Transition.1')).toBe(false);
+    expect(downgrades).toEqual([
+      expect.objectContaining({
+        operation_id: 'op_0002',
+        action: expect.stringMatching(/op_0002 is sound only and op_0001 beside it has a picture/),
+      }),
+    ]);
+  });
+
+  it('leaves a dissolve between two pictures exactly as it was: on the picture, with nothing said', () => {
+    const downgrades: CapabilityDowngrade[] = [];
+    const pictures = makePlan([
+      { source_asset_id: 'asset_001', source_in_ms: 0, source_out_ms: 4000, timeline_start_ms: 0 },
+      {
+        source_asset_id: 'asset_001',
+        source_in_ms: 20_000,
+        source_out_ms: 24_000,
+        timeline_start_ms: 4000,
+        transition_in: { type: 'cross_dissolve', duration_ms: 400 },
+      },
+    ]);
+    const timeline = buildOtioTimeline(
+      pictures,
+      requestFor(pictures),
+      [],
+      downgrades,
+    ) as unknown as {
+      tracks: { children: OtioTrack[] };
+    };
+    const [video, audio] = timeline.tracks.children;
+    expect(video!.children.filter((node) => node.OTIO_SCHEMA === 'Transition.1')).toHaveLength(1);
+    expect(audio!.children.filter((node) => node.OTIO_SCHEMA === 'Transition.1')).toHaveLength(0);
+    expect(downgrades).toEqual([]);
   });
 });
 
