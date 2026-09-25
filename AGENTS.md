@@ -57,7 +57,7 @@ packages/index       multi-vector retrieval
 packages/skills      the rule language and the skill library
 packages/core        the compiler
 packages/agent       planner, validator, toolkit, reviewer
-packages/adapters    OTIO, Premiere, AviUtl2
+packages/adapters    OTIO, Premiere, FCPXML, EDL, AviUtl2, captions, a preview
 apps/cli             oea
 services/perception  the Python runtime (optional)
 schemas/             generated, committed, checked in CI
