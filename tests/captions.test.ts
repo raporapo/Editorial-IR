@@ -477,6 +477,33 @@ describe('captions a person can read', () => {
       words.map((w) => w[2]).join(' '),
     );
   });
+
+  it('splits a caption whose words fit two lines by count but not by line', () => {
+    // The probe's voice memo, as the transcriber heard it: 84 characters, two
+    // lines of 42 on paper, but no break leaves both halves under 42, and it
+    // went up as one caption of three lines.
+    const text =
+      'Note to self by film for the camera and charge the drone batteries before Saturday.';
+    const words = text
+      .split(' ')
+      .map((word, i): [number, number, string] => [i * 300, i * 300 + 250, word]);
+    const captions = captionsFor(
+      [
+        {
+          source_asset_id: 'asset_001',
+          source_in_ms: 0,
+          source_out_ms: 6000,
+          timeline_start_ms: 0,
+        },
+      ],
+      [utterance(0, 4640, text, words)],
+    );
+    expect(captions.length).toBeGreaterThan(1);
+    for (const caption of captions) {
+      expect(caption.text.split('\n').length).toBeLessThanOrEqual(CAPTION_RULES.maxLines);
+    }
+    expect(captions.map((c) => c.text.replace(/\n/g, ' ')).join(' ')).toBe(text);
+  });
 });
 
 describe('captions without word timings', () => {

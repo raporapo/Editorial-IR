@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { SkillManifest, type EditPlan, type VideoOperation } from '@editorial-ir/contracts';
+import {
+  AdapterCapabilities,
+  SkillManifest,
+  type EditPlan,
+  type VideoOperation,
+} from '@editorial-ir/contracts';
 import { validatePlan } from '../src/index.js';
 import { makeAsset, makeIR } from '../../../tests/support/ir.js';
 
@@ -197,5 +202,55 @@ describe('the longest cut a skill’s limit allows', () => {
     // either, but would say 18 s were possible.
     expect(short.details?.longest_possible_ms).toBe(6000);
     expect(short.message).toContain('1 moment(s)');
+  });
+});
+
+describe('captions against what a target can carry', () => {
+  const captioned = (): EditPlan => {
+    const base = plan([{}, { source_in_ms: 2000, source_out_ms: 4000 }]);
+    return {
+      ...base,
+      tracks: {
+        ...base.tracks,
+        text: [
+          {
+            operation_id: 'op_cap_0001',
+            timeline_start_ms: 0,
+            timeline_end_ms: 1500,
+            text: 'Welcome back to the show.',
+            kind: 'caption',
+            provenance: 'agent_derived',
+          },
+        ],
+      },
+    };
+  };
+  // A subtitle file and an interchange format, as their adapters declare them.
+  const subtitles = AdapterCapabilities.parse({
+    id: 'srt',
+    name: 'SubRip subtitles',
+    mode: 'file',
+    text: false,
+    captions: true,
+  });
+  const interchange = AdapterCapabilities.parse({
+    id: 'otio',
+    name: 'OpenTimelineIO',
+    mode: 'file',
+    text: false,
+    captions: false,
+  });
+  const messages = (capabilities: AdapterCapabilities): string =>
+    validatePlan(captioned(), { capabilities })
+      .issues.map((issue) => issue.message)
+      .join('\n');
+
+  it('does not tell a subtitle file it will drop the captions it exists to write', () => {
+    expect(messages(subtitles)).not.toMatch(/dropped/);
+  });
+
+  it('tells an editor with no caption track that its captions will be left out', () => {
+    expect(messages(interchange)).toMatch(/cannot carry captions; 1 caption/);
+    expect(messages(interchange)).not.toMatch(/cannot add text/);
   });
 });

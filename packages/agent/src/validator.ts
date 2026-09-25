@@ -445,11 +445,25 @@ export function capabilityIssues(
     }
   }
 
-  if (plan.tracks.text.length > 0 && !capabilities.text) {
+  // Captions and authored text are asked about separately, as negotiation
+  // does: a subtitle file carries captions and no titles, and an interchange
+  // format may carry a title and have no caption track. Asked together, a plan
+  // with captions validated against SubRip was told its captions "will be
+  // dropped" by the one target that exists to write them.
+  const captions = plan.tracks.text.filter((item) => item.kind === 'caption').length;
+  const authored = plan.tracks.text.length - captions;
+  if (authored > 0 && !capabilities.text) {
     issues.push({
       code: 'unsupported_capability',
       severity: 'warning',
-      message: `${capabilities.name} cannot add text; ${plan.tracks.text.length} text item(s) will be dropped`,
+      message: `${capabilities.name} cannot add text; ${authored} text item(s) will be dropped`,
+    });
+  }
+  if (captions > 0 && !capabilities.captions) {
+    issues.push({
+      code: 'unsupported_capability',
+      severity: 'warning',
+      message: `${capabilities.name} cannot carry captions; ${captions} caption(s) will be dropped (write them with --editor srt or vtt)`,
     });
   }
 

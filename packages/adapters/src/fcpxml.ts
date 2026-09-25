@@ -20,6 +20,7 @@ import {
   pictureOf,
   soundOf,
   sourceTimecodeOf,
+  streamChannels,
   streamOf,
   transitionsOf,
   type FrameRate,
@@ -774,9 +775,7 @@ function captionElement(
 function audioLayout(asset: MediaAsset): { channels: number }[] {
   const streams = [...(asset.audio_streams ?? [])].sort((a, b) => a.index - b.index);
   if (streams.length > 0) {
-    return streams.map((stream) => ({
-      channels: stream.channels && stream.channels > 0 ? stream.channels : 2,
-    }));
+    return streams.map((stream) => ({ channels: streamChannels(asset, stream) }));
   }
   const first = streamOf(asset, undefined, asset.id);
   return first ? [{ channels: first.channels }] : [];

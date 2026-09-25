@@ -216,7 +216,9 @@ under a 90-frame clip; a drone clip had 2 offline audio clips; the `.exo` was
 silent in every case; a V2 clip's sound linked a V1 clip that did not exist.
 All are gone. On the worked example the only spans that moved are three clips
 that were a frame short of the next one (a frame of black at each of those
-cuts); the total, 5385 frames, is unchanged.
+cuts). Placing each clip's source in from the frame the clip really starts on
+then moved 14 of the 38 source ins by one frame, and the cut's end from frame
+5385 to 5386: the plan's 179.703 s is 5385.7 frames at 29.97.
 
 The preview, on a 4-CPU machine:
 
@@ -301,9 +303,13 @@ became a cut is a change to someone's edit, and they are entitled to see it.
 
 `layOnGrid(plan, rate)` places every clip on whole frames the same way for
 every writer: a clip's two lengths agree, no clip overlaps the next on its
-track, and clips the plan butts together touch. Rounding each edge separately
+track, clips the plan butts together touch, and every frame a clip shows is the
+source frame nearest to what the plan plays at that moment — so both of its
+source edges are within a frame of the plan's. Rounding each edge separately
 left a frame of black between clips on three of the worked example's 37 cuts,
-and three adapters rounding three ways disagreed by a frame here and there.
+three adapters rounding three ways disagreed by a frame here and there, and a
+source in rounded apart from its clip's start read up to 1.3 frames past a
+planned out point — on an edited programme, the first frame of the next shot.
 `transitionsOf` then says which joins can really have a dissolve (handles
 permitting) and where a fade sits. Use both.
 

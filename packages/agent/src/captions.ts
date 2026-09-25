@@ -420,7 +420,11 @@ function cuesForOperation(operation: VideoOperation, tokens: Token[]): Cue[] {
         token.utterance !== last.utterance ||
         token.start - last.end >= CAPTION_RULES.pauseMs ||
         SENTENCE_END.test(last.text) ||
-        displayLength(text) > lineLimit(text) * CAPTION_RULES.maxLines ||
+        // Whether it still wraps to two lines, not whether it has two lines'
+        // worth of characters: words do not pack a line exactly. The probe's
+        // voice memo, 84 characters that are two lines of 42 on paper, broke
+        // into lines of 39, 33 and 9 and went up as a three-line caption.
+        wrapCaption(text).length > CAPTION_RULES.maxLines ||
         token.end - current[0]!.start > CAPTION_RULES.maxDisplayMs;
       if (split) {
         groups.push(current);

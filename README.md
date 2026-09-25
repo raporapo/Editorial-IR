@@ -214,7 +214,7 @@ understood.
 | `packages/skills`     | Rules as data, and eight of them.                                       |
 | `packages/core`       | The compiler: ingest, observe, segment, understand, judge.              |
 | `packages/agent`      | The planner, the validator and the toolkit an agent works through.      |
-| `packages/adapters`   | OpenTimelineIO, Premiere Pro, AviUtl2.                                  |
+| `packages/adapters`   | OTIO, Premiere, FCPXML, EDL, AviUtl2; captions, chapters, a preview.    |
 | `apps/cli`            | `oea`.                                                                  |
 | `services/perception` | The Python runtime. Optional.                                           |
 

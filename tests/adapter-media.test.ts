@@ -122,6 +122,39 @@ describe('Premiere, on every kind of media', () => {
     expect(childText(findAll(lavalier[0]!, 'sourcetrack')[0]!, 'trackindex')).toBe('3');
   });
 
+  it('counts a stream with no channel count the same in the file and in the clip', () => {
+    // A first stream that came through ingest with no channel count, beside the
+    // probe's first-stream field saying mono. The file definition counted it as
+    // two channels and the clip reading the next stream counted it as one, so
+    // the lavalier's clip pointed at channel 2 — the first stream's second
+    // channel, in a file that declared the lavalier as channel 3.
+    const assets = mixedIr().assets.map((asset) =>
+      asset.id === 'asset_005'
+        ? {
+            ...asset,
+            audio_channels: 1,
+            audio_streams: [
+              { index: 0, codec: 'aac' },
+              { index: 1, codec: 'aac', channels: 1, sample_rate: 48_000 },
+            ],
+          }
+        : asset,
+    );
+    const plan = mixedPlan();
+    const root = parseXml(buildFcpXml(plan, requestFor(plan, mixedIr(assets))));
+    const file = findAll(root, 'file').find(
+      (node) => node.children.length > 0 && childText(node, 'name') === 'C0007.MP4',
+    )!;
+    const declared = findAll(file, 'audio').map((audio) =>
+      Number(childText(audio, 'channelcount')),
+    );
+    const lavalier = findAll(root, 'clipitem').find(
+      (clip) => childText(clip, 'name') === 'C0007.MP4' && findAll(clip, 'sourcetrack').length > 0,
+    )!;
+    const trackIndex = Number(childText(findAll(lavalier, 'sourcetrack')[0]!, 'trackindex'));
+    expect(trackIndex).toBe(declared[0]! + 1);
+  });
+
   it('fades the last clip out instead of losing the fade', () => {
     const { video } = premiere(mixedPlan());
     const fades = findAll(video, 'transitionitem').filter(
