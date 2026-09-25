@@ -12,11 +12,11 @@ import { negotiate, resolveAssetPath } from './types.js';
 import {
   assetById,
   bedSpan,
+  clipAudio,
   layOnGrid,
   pictureOf,
-  soundOf,
   streamOf,
-  type ClipSound,
+  type ClipAudio,
   type FrameGrid,
 } from './timeline.js';
 
@@ -63,6 +63,7 @@ export const AVIUTL2_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.par
     'The JSON job is the supported output; a bridge reads it to build the timeline.',
     'The .exo file follows the ExEdit object convention and is best effort: pictures, stills and sound, but no text, transitions or markers, which are in the job.',
     'Positions are frames at the sequence rate, and layers are 1-based as AviUtl counts them.',
+    'A clip whose sound is a separate recorder’s names the recorder in the job (audio_source), and its .exo audio object plays the recorder.',
   ],
 });
 
@@ -71,8 +72,20 @@ export const AVIUTL2_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.par
  * `audio_channels`), the external beds (`audio_beds`) and the chapters
  * (`markers`), and made `use_source_audio` mean "this clip's sound is used" —
  * false for a clip whose file has none, which 0.1.0 would have claimed.
+ *
+ * 0.3.0 added `audio_source`: a clip whose sound is read from a separate
+ * recorder — its `file`, `source_offset_frame`, `audio_stream_index` and
+ * `audio_channels` — in place of the clip-level stream fields, which describe a
+ * stream of the clip's own `file`.
+ *
+ * A job is written as the lowest version that describes it: 0.3.0 only when a
+ * clip's sound is a recorder's, and 0.2.0 otherwise. A bridge built against
+ * 0.2.0 that checks the version still reads every job it could before, and
+ * refuses the one it would misread — a clip that says its sound is used, next
+ * to a `file` that is the camera — instead of playing the camera's microphone.
  */
-export const AVIUTL2_JOB_VERSION = '0.2.0';
+export const AVIUTL2_JOB_VERSION = '0.3.0';
+const AVIUTL2_JOB_VERSION_WITHOUT_RECORDERS = '0.2.0';
 
 export class AviUtl2Adapter implements EditorAdapter {
   readonly capabilities = AVIUTL2_CAPABILITIES;
@@ -145,6 +158,8 @@ export function buildAviUtlJob(
   const grid = layOnGrid(plan);
   const frames = grid.frames;
   const assets = request.ir.assets;
+  const lookup = (id: string): MediaAsset | undefined => assetById(assets, id);
+  let recorded = false;
 
   const clips = operationsInOrder(plan).map((operation) => {
     const span = grid.span(operation.operation_id);
@@ -156,7 +171,9 @@ export function buildAviUtlJob(
     }
     const asset = assetById(assets, operation.source_asset_id);
     const media = mediaOf(asset);
-    const sound = asset ? soundOf(asset, operation, warnings) : undefined;
+    const audio = clipAudio(span, lookup, grid.rate, warnings);
+    const sound = audio && !audio.separate ? audio.sound : undefined;
+    if (audio?.separate) recorded = true;
     const event = request.ir.events.find((e) => e.id === operation.event_id);
 
     return {
@@ -170,8 +187,21 @@ export function buildAviUtlJob(
       source_offset_frame: media === 'image' ? 0 : span.in,
       layer: operation.track + 1,
       speed_percent: Math.round(operation.speed * 100),
-      use_source_audio: sound !== undefined,
+      use_source_audio: audio !== undefined,
       ...(sound ? { audio_stream_index: sound.stream, audio_channels: sound.channels } : {}),
+      // The recorder that is this clip's sound, from its own frame. Frames here
+      // are the recorder's at the sequence rate, as `source_offset_frame` is
+      // the picture's.
+      ...(audio?.separate
+        ? {
+            audio_source: {
+              file: resolveAssetPath(request, audio.asset.id) ?? '',
+              source_offset_frame: audio.in,
+              audio_stream_index: audio.sound.stream,
+              audio_channels: audio.sound.channels,
+            },
+          }
+        : {}),
       ...(operation.transition_in && operation.transition_in.type !== 'hard_cut'
         ? {
             transition_in: {
@@ -220,7 +250,7 @@ export function buildAviUtlJob(
   });
 
   return {
-    job_version: AVIUTL2_JOB_VERSION,
+    job_version: recorded ? AVIUTL2_JOB_VERSION : AVIUTL2_JOB_VERSION_WITHOUT_RECORDERS,
     generated_by: 'editorial-ir',
     sequence: {
       name: plan.sequence.name,
@@ -317,15 +347,19 @@ export function buildExo(plan: EditPlan, request: ApplyRequest, warnings: string
     ['_name=標準再生', `音量=${(100 * 10 ** (gainDb / 20)).toFixed(1)}`, '左右=0.0'],
   ];
 
+  const lookup = (id: string): MediaAsset | undefined => assetById(assets, id);
   for (const operation of operations) {
     const span = grid.span(operation.operation_id);
     const asset = assetById(assets, operation.source_asset_id);
     const path = resolveAssetPath(request, operation.source_asset_id) ?? '';
     const picture = asset ? pictureOf(asset) : 'video';
-    const sound: ClipSound | undefined = asset ? soundOf(asset, operation, warnings) : undefined;
+    // The clip's sound, from the recorder that heard it where the plan names
+    // one: the audio object plays that file from its own position, grouped
+    // with the picture as the camera's own sound would be.
+    const audio: ClipAudio | undefined = clipAudio(span, lookup, grid.rate, warnings);
     const start = span.start + 1;
     const end = Math.max(start, span.end);
-    const grouped = picture !== 'none' && sound !== undefined;
+    const grouped = picture !== 'none' && audio !== undefined;
     if (grouped) group++;
     const groupLine = grouped ? [`group=${group}`] : [];
 
@@ -366,10 +400,10 @@ export function buildExo(plan: EditPlan, request: ApplyRequest, warnings: string
       );
     }
 
-    if (sound) {
-      if (sound.stream > 0) {
+    if (audio) {
+      if (audio.sound.stream > 0) {
         warnings.push(
-          `${operation.operation_id}'s sound is audio stream ${sound.stream} of ${asset!.file_name}; ` +
+          `${operation.operation_id}'s sound is audio stream ${audio.sound.stream} of ${audio.asset.file_name}; ` +
             'ExEdit’s audio object plays the first, so choose the stream in the input plugin or use the JSON job',
         );
       }
@@ -383,7 +417,12 @@ export function buildExo(plan: EditPlan, request: ApplyRequest, warnings: string
           'overlay=1',
           'audio=1',
         ],
-        soundBlocks(path, span.in, operation.speed, gain),
+        soundBlocks(
+          resolveAssetPath(request, audio.asset.id) ?? '',
+          audio.in,
+          operation.speed,
+          gain,
+        ),
       );
     }
   }

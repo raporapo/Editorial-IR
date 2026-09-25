@@ -15,9 +15,10 @@ import { booleanOption, negotiate, numberOption, resolveAssetPath } from './type
 import {
   assetById,
   bedSpan,
+  clipAudio,
   layOnGrid,
   pictureOf,
-  soundOf,
+  recordersOf,
   streamOf,
   type FrameRate,
   type GridSpan,
@@ -193,8 +194,18 @@ export function previewSegments(
     asset: MediaAsset;
     path: string;
     picture: 'video' | 'still' | 'none';
-    stream: number | undefined;
+    /**
+     * Where the clip's sound is read: its own file, or the recorder that heard
+     * it, from that file's frame at the clip's first frame.
+     */
+    sound: { path: string; in: number; stream: number; separate: boolean } | undefined;
   }
+  // Only media ffmpeg can read: a recorder it cannot open gives way to the
+  // camera's own sound, rather than failing the piece.
+  const readable = (id: string): MediaAsset | undefined => {
+    const asset = assetById(assets, id);
+    return asset && resolve(asset.id) ? asset : undefined;
+  };
   const laid: Laid[] = [];
   for (const [track, spans] of grid.tracks) {
     for (const span of spans) {
@@ -206,8 +217,20 @@ export function previewSegments(
         );
         continue;
       }
-      const sound = soundOf(asset, span.operation, warnings);
-      laid.push({ span, track, asset, path, picture: pictureOf(asset), stream: sound?.stream });
+      const audio = clipAudio(span, readable, rate, warnings);
+      laid.push({
+        span,
+        track,
+        asset,
+        path,
+        picture: pictureOf(asset),
+        sound: audio && {
+          path: resolve(audio.asset.id)!,
+          in: audio.in,
+          stream: audio.sound.stream,
+          separate: audio.separate,
+        },
+      });
     }
   }
 
@@ -229,7 +252,7 @@ export function previewSegments(
     if (to <= from) continue;
     const covering = laid.filter((item) => item.span.start <= from && from < item.span.end);
     const pictureItem = topmost(covering.filter((item) => item.picture !== 'none'));
-    const soundItem = topmost(covering.filter((item) => item.stream !== undefined));
+    const soundItem = topmost(covering.filter((item) => item.sound !== undefined));
     const key = `${pictureItem?.span.operation.operation_id ?? '-'}|${soundItem?.span.operation.operation_id ?? '-'}`;
 
     const previous = segments.at(-1);
@@ -255,16 +278,20 @@ export function previewSegments(
             seconds: offsetIn(pictureItem),
             operation: pictureItem.span.operation.operation_id,
           };
-    const sound: PreviewSegment['sound'] = !soundItem
-      ? { kind: 'silence' }
-      : {
-          kind: 'file',
-          path: soundItem.path,
-          seconds: offsetIn(soundItem),
-          stream: soundItem.stream!,
-          sameInput: soundItem === pictureItem && pictureItem.picture === 'video',
-          operation: soundItem.span.operation.operation_id,
-        };
+    // A recorder's sound is another input, however the picture is read.
+    const heard = soundItem?.sound;
+    const sound: PreviewSegment['sound'] =
+      !soundItem || !heard
+        ? { kind: 'silence' }
+        : {
+            kind: 'file',
+            path: heard.path,
+            seconds: seconds(heard.in + (from - soundItem.span.start)),
+            stream: heard.stream,
+            sameInput:
+              soundItem === pictureItem && pictureItem.picture === 'video' && !heard.separate,
+            operation: soundItem.span.operation.operation_id,
+          };
     segments.push({
       start: from,
       frames: to - from,
@@ -490,6 +517,13 @@ export class PreviewAdapter implements EditorAdapter {
     const used = new Set<string>();
     for (const operation of plan.tracks.video) {
       const path = resolveAssetPath(request, operation.source_asset_id);
+      if (path) used.add(path);
+    }
+    // And the recorders clips take their sound from, which no clip's picture
+    // names: one ffmpeg cannot read is warned about here, and the clips it was
+    // the sound of play their own.
+    for (const id of recordersOf(plan)) {
+      const path = resolveAssetPath(request, id);
       if (path) used.add(path);
     }
     const unreadable = await this.unreadable([...used].sort(compareText));

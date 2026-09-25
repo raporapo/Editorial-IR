@@ -13,12 +13,13 @@ import type { ApplyRequest, EditorAdapter } from './types.js';
 import { negotiate, resolveAssetPath, stringOption } from './types.js';
 import {
   assetById,
+  clipAudio,
   countedRate,
   describeTimecodeOrigins,
   layOnGrid,
   mediaFramesOf,
   pictureOf,
-  soundOf,
+  recordersOf,
   sourceTimecodeOf,
   transitionsOf,
   type ClipSound,
@@ -64,6 +65,7 @@ export const EDL_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.parse({
   renders_preview: false,
   notes: [
     'One picture track with its sound as channels of the same events (V, B, AA/V, A, AA), frame-accurate at the sequence rate.',
+    'A clip whose sound is a separate recorder’s is two events at the same record time: the picture (V) from the camera’s reel, the sound (A, AA) from the recorder’s.',
     'Drop-frame timecode for 29.97 and 59.94; source timecodes start at each file’s embedded start timecode.',
     'Reel names are made from file names within eight characters, with the full name in a FROM CLIP NAME comment; chapters are LOC comments.',
     'No stills, no second video track and no music bed: negotiation reports each one it leaves out.',
@@ -153,6 +155,8 @@ interface EdlEvent {
   comments: string[];
   recordIn: number;
   recordOut: number;
+  /** A separate recorder's sound under a picture event, which chapters are not put under. */
+  recorded?: true;
 }
 
 /** The list and the clocks its source times were counted from. */
@@ -181,10 +185,15 @@ export function buildEdlDocument(
   const record = (frames: number): number => (recordStart ?? 0) + frames;
 
   const spans = [...grid.tracks.values()].flat().sort((a, b) => a.start - b.start);
-  const used = spans
-    .map((span) => assetById(assets, span.operation.source_asset_id))
-    .filter((asset): asset is MediaAsset => asset !== undefined);
+  // The recorders a clip's sound is read from are reels too, although no
+  // clip's picture names them. They come after every picture's, so a camera
+  // keeps the reel name it has in a list without them.
+  const used = [
+    ...spans.map((span) => assetById(assets, span.operation.source_asset_id)),
+    ...recordersOf(plan).map((id) => assetById(assets, id)),
+  ].filter((asset): asset is MediaAsset => asset !== undefined);
   const reels = reelNames(used);
+  const lookup = (id: string): MediaAsset | undefined => assetById(assets, id);
 
   // Each file's own clock, converted to the list's rate. A file at another rate
   // cannot be addressed exactly by a list that counts at one rate: its
@@ -210,14 +219,35 @@ export function buildEdlDocument(
     }
   }
 
-  interface Described {
-    span: GridSpan;
+  /** One file's part in an event: which reel, which frames of it, which sound. */
+  interface Source {
     asset: MediaAsset;
     reel: string;
-    channel: string;
     sound: ClipSound | undefined;
     clock: number;
+    /** Source frames, before the file's clock is added. */
+    in: number;
+    out: number;
   }
+  interface Described extends Source {
+    span: GridSpan;
+    channel: string;
+    /** A separate recorder whose sound goes under this clip's picture. */
+    recorder?: Source & { sound: ClipSound };
+  }
+  const sourceOf = <S extends ClipSound | undefined>(
+    asset: MediaAsset,
+    sound: S,
+    from: number,
+    to: number,
+  ): Source & { sound: S } => ({
+    asset,
+    reel: reels.get(asset.id)!,
+    sound,
+    clock: clockStart.get(asset.id) ?? 0,
+    in: from,
+    out: to,
+  });
   const described: Described[] = [];
   for (const span of spans) {
     const asset = assetById(assets, span.operation.source_asset_id);
@@ -228,21 +258,35 @@ export function buildEdlDocument(
       continue;
     }
     const picture = pictureOf(asset);
-    const sound = soundOf(asset, span.operation, warnings);
+    const audio = clipAudio(span, lookup, grid.rate, warnings);
     if (picture === 'still') continue; // negotiation has already said so
-    if (picture === 'none' && !sound) {
+    if (picture === 'none' && !audio) {
       warnings.push(
         `${span.operation.operation_id} is sound only and does not use its sound; nothing of it was written`,
       );
       continue;
     }
+    if (picture === 'none') {
+      // A sound-only clip is its sound, from whichever file holds it.
+      described.push({
+        span,
+        ...sourceOf(audio!.asset, audio!.sound, audio!.in, audio!.out),
+        channel: channelField(false, audio!.sound),
+      });
+      continue;
+    }
+    // A list has one reel per event, so a picture whose sound is a recorder's
+    // is two events at the same record time: the picture alone from the
+    // camera's reel, and the sound from the recorder's.
+    const recorder = audio?.separate ? audio : undefined;
+    const sound = recorder ? undefined : audio?.sound;
     described.push({
       span,
-      asset,
-      reel: reels.get(asset.id)!,
-      channel: channelField(picture !== 'none', sound),
-      sound,
-      clock: clockStart.get(asset.id) ?? 0,
+      ...sourceOf(asset, sound, span.in, span.out),
+      channel: channelField(true, sound),
+      ...(recorder
+        ? { recorder: sourceOf(recorder.asset, recorder.sound, recorder.in, recorder.out) }
+        : {}),
     });
   }
 
@@ -269,9 +313,9 @@ export function buildEdlDocument(
     const incoming = into.get(id);
     const outgoing = outOf.get(id);
     let recordIn = d.span.start;
-    let sourceIn = d.span.in;
+    let sourceIn = d.in;
     let recordOut = d.span.end;
-    let sourceOut = d.span.out;
+    let sourceOut = d.out;
     if (incoming?.kind === 'between') {
       // A centred dissolve starts half its length before the cut, on footage
       // from before this clip's in point.
@@ -301,7 +345,7 @@ export function buildEdlDocument(
 
     if (incoming?.kind === 'between') {
       const from = describedById.get(incoming.outgoing!.operation.operation_id)!;
-      const at = from.clock + incoming.outgoing!.out - incoming.frames;
+      const at = from.clock + from.out - incoming.frames;
       events.push({
         lines: [
           {
@@ -342,9 +386,39 @@ export function buildEdlDocument(
       });
     }
 
+    if (d.recorder) {
+      // The recorder's sound, at the same record time as the picture and from
+      // the recorder's own frame: the whole clip, cut where the clip is cut.
+      // The picture's dissolves and fades are the picture's; the sound under
+      // them is a straight cut, which is what a list can say about two reels.
+      const r = d.recorder;
+      const soundComments = [`* FROM CLIP NAME: ${r.asset.file_name}`];
+      const soundPath = resolveAssetPath(request, r.asset.id);
+      if (soundPath) soundComments.push(`* SOURCE FILE: ${soundPath}`);
+      if (r.sound.streams > 1) {
+        soundComments.push(`* AUDIO STREAM: ${r.sound.stream + 1} OF ${r.sound.streams}`);
+      }
+      events.push({
+        lines: [
+          {
+            reel: r.reel,
+            channel: channelField(false, r.sound),
+            sourceIn: r.clock + r.in,
+            sourceOut: r.clock + r.out,
+            recordIn: record(d.span.start),
+            recordOut: record(d.span.end),
+          },
+        ],
+        comments: soundComments,
+        recordIn: record(d.span.start),
+        recordOut: record(d.span.end),
+        recorded: true,
+      });
+    }
+
     if (outgoing?.kind === 'tail') {
       // A fade out is a dissolve to black, from where this clip's cut ends.
-      const at = d.clock + d.span.out - outgoing.frames;
+      const at = d.clock + d.out - outgoing.frames;
       events.push({
         lines: [
           {
@@ -371,13 +445,15 @@ export function buildEdlDocument(
   }
 
   // Chapters as LOC comments under the event they fall in, which is where
-  // Avid-style readers look for them.
+  // Avid-style readers look for them: the picture's, not a recorder's sound
+  // under it.
+  const located = events.filter((e) => !e.recorded);
   for (const marker of plan.markers) {
     const at = record(grid.frames(marker.timeline_ms));
     const event =
-      events.find((e) => e.recordIn <= at && at < e.recordOut) ??
-      [...events].reverse().find((e) => e.recordIn <= at) ??
-      events[0];
+      located.find((e) => e.recordIn <= at && at < e.recordOut) ??
+      [...located].reverse().find((e) => e.recordIn <= at) ??
+      located[0];
     if (!event) continue;
     const name = marker.name.replace(/\s+/g, ' ').trim();
     event.comments.push(

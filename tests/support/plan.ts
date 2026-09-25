@@ -209,6 +209,82 @@ export function mixedIr(assets: MediaAsset[] = mixedAssets()): EditorialIR {
   return makeIR({ events: [], assets });
 }
 
+/**
+ * Two cameras and a recorder that heard the same takes:
+ *
+ * - `asset_101` a camera with its microphone off: no audio stream at all
+ * - `asset_102` a camera with its own stereo sound, a metre from the speaker
+ * - `asset_103` the lavalier's recorder, mono, whose clock reads 3.2 s less than
+ *   either camera's at the same moment
+ */
+export function recorderAssets(): MediaAsset[] {
+  return [
+    makeAsset({
+      id: 'asset_101',
+      path: '/media/A001C003.MP4',
+      file_name: 'A001C003.MP4',
+      duration_ms: 60_000,
+      audio_streams: [],
+    }),
+    makeAsset({
+      id: 'asset_102',
+      path: '/media/B001C004.MP4',
+      file_name: 'B001C004.MP4',
+      duration_ms: 60_000,
+      audio_codec: 'aac',
+      audio_channels: 2,
+      audio_streams: [{ index: 0, codec: 'aac', channels: 2, sample_rate: 48_000 }],
+    }),
+    makeAsset({
+      id: 'asset_103',
+      path: '/media/ZOOM0007.WAV',
+      file_name: 'ZOOM0007.WAV',
+      kind: 'audio',
+      duration_ms: 120_000,
+      width: undefined,
+      height: undefined,
+      fps: undefined,
+      fps_num: undefined,
+      fps_den: undefined,
+      audio_codec: 'pcm_s24le',
+      audio_channels: 1,
+      audio_sample_rate: 48_000,
+      audio_streams: [{ index: 0, codec: 'pcm_s24le', channels: 1, sample_rate: 48_000 }],
+    }),
+  ];
+}
+
+/**
+ * Two clips whose sound is the recorder's, back to back at 30 fps: 4 s of the
+ * silent camera from its 12 s (the recorder's 8.8 s), then 3 s of the other
+ * camera from its 20 s (the recorder's 16.8 s).
+ */
+export function recorderPlan(extra: Parameters<typeof makePlan>[1] = {}): EditPlan {
+  return makePlan(
+    [
+      {
+        source_asset_id: 'asset_101',
+        source_in_ms: 12_000,
+        source_out_ms: 16_000,
+        timeline_start_ms: 0,
+        audio_source: { asset_id: 'asset_103', source_in_ms: 8800 },
+      },
+      {
+        source_asset_id: 'asset_102',
+        source_in_ms: 20_000,
+        source_out_ms: 23_000,
+        timeline_start_ms: 4000,
+        audio_source: { asset_id: 'asset_103', source_in_ms: 16_800 },
+      },
+    ],
+    extra,
+  );
+}
+
+export function recorderIr(assets: MediaAsset[] = recorderAssets()): EditorialIR {
+  return makeIR({ events: [], assets });
+}
+
 export function requestFor(plan: EditPlan, ir: EditorialIR = mixedIr()): ApplyRequest {
   return {
     plan,
