@@ -241,8 +241,14 @@ background:
     - { recorder: ROOM.WAV, video: C0003.MP4, paired: false }
 ```
 
+**Two cameras of one moment.** Two videos are lined up directly when their
+capture times overlap, or through a recorder both were lined up with. Where an
+event on one and an event on the other share at least half of the shorter one's
+time, they are linked `duplicate_of` ("the same moment on another camera"), so
+the planner's duplicate penalty keeps one angle: two phones filming one toast
+would otherwise put the toast in the cut twice. Cutting between the angles
+within the moment — a multicam edit — is not attempted.
+
 **Not done yet.** One offset per pair: two devices' clocks drift apart by tens of
 milliseconds an hour, which a recording that long would hear as a slowly growing
-echo against the camera's own sound, though not on its own. Two cameras of the
-same moment are measured but not yet used as angles of one another; their events
-stay separate.
+echo against the camera's own sound, though not on its own.

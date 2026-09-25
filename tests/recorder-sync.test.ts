@@ -49,6 +49,45 @@ function ffmpeg(args: string[]): void {
 
 /** The camera starts this long after the recorder. */
 const CAMERA_LATE_MS = 3_200;
+/** A second camera, on the same scene, starts this long after the recorder. */
+const SECOND_LATE_MS = 10_000;
+
+/** A camera that heard `scene` from `lateMs` on, quieter and noisier than the recorder. */
+function camera(scene: string, lateMs: number, lengthMs: number, picture: string, out: string) {
+  const seconds = String(lengthMs / 1000);
+  ffmpeg([
+    '-f',
+    'lavfi',
+    '-i',
+    `${picture}=s=320x240:r=25:d=${seconds}`,
+    '-ss',
+    String(lateMs / 1000),
+    '-t',
+    seconds,
+    '-i',
+    scene,
+    '-f',
+    'lavfi',
+    '-i',
+    `anoisesrc=a=0.03:d=${seconds}:r=48000:seed=${lateMs}`,
+    '-filter_complex',
+    '[1]volume=0.3[a];[a][2]amix=inputs=2:normalize=0[m]',
+    '-map',
+    '0:v',
+    '-map',
+    '[m]',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-pix_fmt',
+    'yuv420p',
+    '-c:a',
+    'aac',
+    '-shortest',
+    out,
+  ]);
+}
 
 let root = '';
 let project = '';
@@ -90,39 +129,10 @@ describe.skipIf(!ffmpegInstalled())('a camera and a separate recorder', () => {
       'pcm_s16le',
       join(footage, 'ZOOM0001.WAV'),
     ]);
-    // The camera: started later, its microphone a metre away.
-    ffmpeg([
-      '-f',
-      'lavfi',
-      '-i',
-      'testsrc2=s=320x240:r=25:d=30',
-      '-ss',
-      String(CAMERA_LATE_MS / 1000),
-      '-t',
-      '30',
-      '-i',
-      sceneWav,
-      '-f',
-      'lavfi',
-      '-i',
-      'anoisesrc=a=0.03:d=30:r=48000:seed=5',
-      '-filter_complex',
-      '[1]volume=0.3[a];[a][2]amix=inputs=2:normalize=0[m]',
-      '-map',
-      '0:v',
-      '-map',
-      '[m]',
-      '-c:v',
-      'libx264',
-      '-preset',
-      'ultrafast',
-      '-pix_fmt',
-      'yuv420p',
-      '-c:a',
-      'aac',
-      '-shortest',
-      join(footage, 'C0001.MP4'),
-    ]);
+    // The cameras: started later, their microphones a metre away. The second
+    // films the middle of the same scene from somewhere else.
+    camera(sceneWav, CAMERA_LATE_MS, 30_000, 'testsrc2', join(footage, 'C0001.MP4'));
+    camera(sceneWav, SECOND_LATE_MS, 20_000, 'smptebars', join(footage, 'C0002.MP4'));
     // Another recording of another scene.
     const other = join(root, 'other.wav');
     ffmpeg(['-f', 'lavfi', '-i', scene(1.17), '-ac', '1', other]);
@@ -159,13 +169,18 @@ describe.skipIf(!ffmpegInstalled())('a camera and a separate recorder', () => {
     const other = idOf(ir, 'ROOM_TONE.WAV');
 
     // Measured to the hop: the recorder's first moment is 3.2 s before the camera's.
-    const sync = observations.syncs.find((s) => s.asset_id === recorder)!;
-    expect(sync.reference_asset_id).toBe(camera);
+    const sync = observations.syncs.find(
+      (s) => s.asset_id === recorder && s.reference_asset_id === camera,
+    )!;
     expect(Math.abs(sync.offset_ms + CAMERA_LATE_MS)).toBeLessThanOrEqual(20);
     expect(observations.syncs.some((s) => s.asset_id === other)).toBe(false);
 
-    expect(ir.audio_companions).toHaveLength(1);
-    expect(ir.audio_companions[0]).toMatchObject({ asset_id: camera, audio_asset_id: recorder });
+    const second = idOf(ir, 'C0002.MP4');
+    expect(
+      ir.audio_companions.map((c) => `${c.audio_asset_id} under ${c.asset_id}`).sort(),
+    ).toEqual([`${recorder} under ${camera}`, `${recorder} under ${second}`].sort());
+    const onSecond = ir.audio_companions.find((c) => c.asset_id === second)!;
+    expect(Math.abs(onSecond.offset_ms + SECOND_LATE_MS)).toBeLessThanOrEqual(20);
     // Mostly the camera's sound, so no events of its own; the other recording keeps its own.
     expect(ir.events.some((e) => e.source_ranges.some((r) => r.asset_id === recorder))).toBe(false);
     expect(ir.events.some((e) => e.source_ranges.some((r) => r.asset_id === other))).toBe(true);
@@ -174,6 +189,24 @@ describe.skipIf(!ffmpegInstalled())('a camera and a separate recorder', () => {
       /ZOOM0001\.WAV is the sound of C0001\.MP4: started 3\.\d\ds before it/,
     );
   }, 120_000);
+
+  it('links what the two cameras filmed of the same moment, so a cut says it once', () => {
+    const ir = read<EditorialIR>('ir.json');
+    const camera = idOf(ir, 'C0001.MP4');
+    const second = idOf(ir, 'C0002.MP4');
+    const assetOf = (eventId: string): string =>
+      ir.events.find((e) => e.id === eventId)!.source_ranges[0]!.asset_id;
+    const moments = ir.relations.filter(
+      (r) => r.relation_type === 'duplicate_of' && r.note?.includes('another camera'),
+    );
+    expect(moments.length).toBeGreaterThan(0);
+    for (const relation of moments) {
+      expect([assetOf(relation.source_event_id), assetOf(relation.target_event_id)].sort()).toEqual(
+        [camera, second].sort(),
+      );
+      expect(relation.strength).toBeGreaterThanOrEqual(0.5);
+    }
+  });
 
   it('plays the recorder under the camera’s picture, at the moment the picture shows', async () => {
     expect(
@@ -191,7 +224,7 @@ describe.skipIf(!ffmpegInstalled())('a camera and a separate recorder', () => {
     const ir = read<EditorialIR>('ir.json');
     const camera = idOf(ir, 'C0001.MP4');
     const recorder = idOf(ir, 'ZOOM0001.WAV');
-    const offset = ir.audio_companions[0]!.offset_ms;
+    const offset = ir.audio_companions.find((c) => c.asset_id === camera)!.offset_ms;
     const fromCamera = latestPlan().tracks.video.filter((op) => op.source_asset_id === camera);
     expect(fromCamera.length).toBeGreaterThan(0);
     for (const op of fromCamera) {
@@ -210,18 +243,35 @@ describe.skipIf(!ffmpegInstalled())('a camera and a separate recorder', () => {
       path,
       context.replace(
         'background:\n',
-        'background:\n  recorders:\n    - { recorder: ZOOM0001.WAV, video: C0001.MP4, paired: false }\n',
+        'background:\n  recorders:\n' +
+          '    - { recorder: ZOOM0001.WAV, video: C0001.MP4, paired: false }\n',
       ),
     );
     expect(
       await main(['analyze', '--project', project, '--perception', 'local', '--offline-minimal']),
     ).toBe(0);
-    const ir = read<EditorialIR>('ir.json');
+    let ir = read<EditorialIR>('ir.json');
+    // Still the second camera's sound, which nobody unpaired.
+    expect(ir.audio_companions.map((c) => c.asset_id)).toEqual([idOf(ir, 'C0002.MP4')]);
+    expect(output.join('')).toMatch(/perception was reused/);
+
+    writeFileSync(
+      path,
+      context.replace(
+        'background:\n',
+        'background:\n  recorders:\n' +
+          '    - { recorder: ZOOM0001.WAV, video: C0001.MP4, paired: false }\n' +
+          '    - { recorder: ZOOM0001.WAV, video: C0002.MP4, paired: false }\n',
+      ),
+    );
+    expect(
+      await main(['analyze', '--project', project, '--perception', 'local', '--offline-minimal']),
+    ).toBe(0);
+    ir = read<EditorialIR>('ir.json');
     expect(ir.audio_companions).toEqual([]);
     // The recorder is its own material again.
     const recorder = idOf(ir, 'ZOOM0001.WAV');
     expect(ir.events.some((e) => e.source_ranges.some((r) => r.asset_id === recorder))).toBe(true);
-    expect(output.join('')).toMatch(/perception was reused/);
     writeFileSync(path, context);
   }, 120_000);
 });

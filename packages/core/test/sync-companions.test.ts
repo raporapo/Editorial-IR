@@ -11,10 +11,13 @@ import {
   declaredSyncs,
   measureSync,
   recordersCovered,
+  sameMoments,
   syncPairs,
+  videoOffsets,
   withCompanionSpeech,
   type SyncCandidate,
 } from '../src/sync.js';
+import { makeEvent } from '../../../tests/support/ir.js';
 
 /**
  * A separate recorder as the sound of a camera: which pairs are compared, which
@@ -308,5 +311,58 @@ describe('declaredSyncs (background.recorders in context.yaml)', () => {
         'give offset_ms to pair them anyway',
       'background.recorders: C0001.MP4 is not a sound-only file',
     ]);
+  });
+});
+
+describe('two cameras of one moment', () => {
+  const second = { id: 'asset_cam2', file_name: 'C0002.MP4', kind: 'video', duration_ms: 20_000 };
+  const three = [...assets, second];
+
+  it('lines two cameras up through the recorder both were lined up with', () => {
+    // The recorder's zero is 3.2 s before the first camera and 10 s before the
+    // second, so the second started 6.8 s into the first.
+    const companions = audioCompanions(
+      [sync(), sync({ reference_asset_id: second.id, offset_ms: -10_000 })],
+      three,
+    );
+    expect(videoOffsets([], companions, three)).toEqual([
+      { asset_id: second.id, reference_asset_id: camera.id, offset_ms: 6_800 },
+    ]);
+  });
+
+  it('takes a direct measurement between the two, and ignores recorders in it', () => {
+    const direct = sync({ asset_id: camera.id, reference_asset_id: second.id, offset_ms: -6_800 });
+    // Stored one way round whichever way it was measured.
+    expect(videoOffsets([direct, sync()], [], three)).toEqual([
+      { asset_id: second.id, reference_asset_id: camera.id, offset_ms: 6_800 },
+    ]);
+  });
+
+  it('links events that show the same moment, and not the ones beside it', () => {
+    const offsets = [{ asset_id: second.id, reference_asset_id: camera.id, offset_ms: 6_800 }];
+    const events = [
+      // First camera: 10-18 s and 30-38 s of its own time.
+      makeEvent({ id: 'evt_a1', asset_id: camera.id, start_ms: 10_000, duration_ms: 8_000 }, 0),
+      makeEvent({ id: 'evt_a2', asset_id: camera.id, start_ms: 30_000, duration_ms: 8_000 }, 1),
+      // Second camera: 4-12 s of its own, which is 10.8-18.8 s of the first's.
+      makeEvent({ id: 'evt_b1', asset_id: second.id, start_ms: 4_000, duration_ms: 8_000 }, 2),
+      // 14-20 s of its own: 20.8-26.8 s of the first's, when the first shows nothing kept.
+      makeEvent({ id: 'evt_b2', asset_id: second.id, start_ms: 14_000, duration_ms: 6_000 }, 3),
+    ];
+    expect(sameMoments(events, offsets)).toEqual([
+      {
+        source_event_id: 'evt_a1',
+        target_event_id: 'evt_b1',
+        relation_type: 'duplicate_of',
+        strength: 0.9,
+        provenance: 'inferred',
+        note: 'the same moment on another camera, lined up by sound',
+      },
+    ]);
+  });
+
+  it('links nothing when no two videos were lined up', () => {
+    const events = [makeEvent({ asset_id: camera.id }, 0), makeEvent({ asset_id: second.id }, 1)];
+    expect(sameMoments(events, [])).toEqual([]);
   });
 });

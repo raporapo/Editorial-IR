@@ -2,8 +2,10 @@ import {
   compareText,
   type AudioCompanion,
   type AudioSync,
+  type EventRelation,
   type ObservationTimeline,
   type RecorderPairing,
+  type SemanticEvent,
   type Utterance,
 } from '@editorial-ir/contracts';
 
@@ -599,4 +601,133 @@ export function withCompanionSpeech(
       compareText(a.asset_id, b.asset_id) || a.start_ms - b.start_ms || compareText(a.id, b.id),
   );
   return { ...observations, utterances };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Two cameras of one moment                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Share of the shorter of two events that must fall in the same moment, on two
+ * cameras, for them to be one moment seen twice.
+ */
+export const MIN_SAME_MOMENT = 0.5;
+
+/**
+ * Where each video's time zero falls in another video's time, for every pair
+ * of videos lined up by sound: directly, or through a recorder both were lined
+ * up with (a recorder left running under two cameras is the common case).
+ */
+export function videoOffsets(
+  syncs: readonly AudioSync[],
+  companions: readonly AudioCompanion[],
+  assets: readonly Placeable[],
+): { asset_id: string; reference_asset_id: string; offset_ms: number }[] {
+  const kind = new Map(assets.map((asset) => [asset.id, asset.kind]));
+  const found = new Map<
+    string,
+    { asset_id: string; reference_asset_id: string; offset_ms: number }
+  >();
+  const put = (assetId: string, referenceId: string, offset: number): void => {
+    if (assetId === referenceId) return;
+    // One direction per pair, the reference first by id, so the same pair
+    // found both ways is one entry.
+    const [a, r, o] =
+      compareText(referenceId, assetId) < 0
+        ? [assetId, referenceId, offset]
+        : [referenceId, assetId, -offset];
+    const key = `${a}|${r}`;
+    if (!found.has(key)) found.set(key, { asset_id: a, reference_asset_id: r, offset_ms: o });
+  };
+  for (const sync of syncs) {
+    if (kind.get(sync.asset_id) === 'video' && kind.get(sync.reference_asset_id) === 'video') {
+      put(sync.asset_id, sync.reference_asset_id, sync.offset_ms);
+    }
+  }
+  // Through a shared recorder: its zero is at `a.offset_ms` in one video and
+  // `b.offset_ms` in the other, so the second video's zero is at the
+  // difference in the first's time.
+  const byRecorder = new Map<string, AudioCompanion[]>();
+  for (const companion of companions) {
+    byRecorder.set(companion.audio_asset_id, [
+      ...(byRecorder.get(companion.audio_asset_id) ?? []),
+      companion,
+    ]);
+  }
+  for (const list of byRecorder.values()) {
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i]!;
+        const b = list[j]!;
+        put(b.asset_id, a.asset_id, a.offset_ms - b.offset_ms);
+      }
+    }
+  }
+  return [...found.values()].sort(
+    (x, y) =>
+      compareText(x.reference_asset_id, y.reference_asset_id) ||
+      compareText(x.asset_id, y.asset_id),
+  );
+}
+
+/**
+ * Events on two cameras that show the same moment, as `duplicate_of` links.
+ *
+ * Two phones filming one toast are two events with the same words in them, and
+ * a cut that keeps both says the toast twice. Content similarity finds this only
+ * sometimes — the two angles look different, and without a transcript they have
+ * nothing else in common — while the sound says it outright. The link lets the
+ * planner's duplicate penalty keep one angle. Cutting between the angles within
+ * the moment is a multicam edit, which this does not attempt.
+ *
+ * Strength is the share of the shorter event the two have in common.
+ */
+export function sameMoments(
+  events: readonly SemanticEvent[],
+  offsets: readonly { asset_id: string; reference_asset_id: string; offset_ms: number }[],
+): Omit<EventRelation, 'id'>[] {
+  if (offsets.length === 0) return [];
+  const byAsset = new Map<string, { event: SemanticEvent; start: number; end: number }[]>();
+  for (const event of events) {
+    for (const range of event.source_ranges) {
+      byAsset.set(range.asset_id, [
+        ...(byAsset.get(range.asset_id) ?? []),
+        { event, start: range.source_in_ms, end: range.source_out_ms },
+      ]);
+    }
+  }
+  const links = new Map<string, Omit<EventRelation, 'id'>>();
+  for (const pair of offsets) {
+    const onReference = byAsset.get(pair.reference_asset_id) ?? [];
+    const onAsset = byAsset.get(pair.asset_id) ?? [];
+    for (const a of onReference) {
+      for (const b of onAsset) {
+        if (a.event.id === b.event.id) continue;
+        const start = Math.max(a.start, b.start + pair.offset_ms);
+        const end = Math.min(a.end, b.end + pair.offset_ms);
+        const shorter = Math.min(a.end - a.start, b.end - b.start);
+        if (end <= start || shorter <= 0) continue;
+        const share = (end - start) / shorter;
+        if (share < MIN_SAME_MOMENT) continue;
+        const [source, target] =
+          compareText(a.event.id, b.event.id) < 0 ? [a.event, b.event] : [b.event, a.event];
+        const key = `${source.id}|${target.id}`;
+        const strength = Math.round(Math.min(1, share) * 10_000) / 10_000;
+        if ((links.get(key)?.strength ?? 0) >= strength) continue;
+        links.set(key, {
+          source_event_id: source.id,
+          target_event_id: target.id,
+          relation_type: 'duplicate_of',
+          strength,
+          provenance: 'inferred',
+          note: 'the same moment on another camera, lined up by sound',
+        });
+      }
+    }
+  }
+  return [...links.values()].sort(
+    (x, y) =>
+      compareText(x.source_event_id, y.source_event_id) ||
+      compareText(x.target_event_id, y.target_event_id),
+  );
 }

@@ -3,6 +3,7 @@ import {
   IR_VERSION,
   PIPELINE_VERSION,
   analysisQuality,
+  seqId,
   type AnalysisSavings,
   type EditorialIR,
   type EmbeddingSet,
@@ -45,6 +46,8 @@ import {
   audioCompanions,
   declaredSyncs,
   recordersCovered,
+  sameMoments,
+  videoOffsets,
   withCompanionSpeech,
 } from './sync.js';
 
@@ -489,7 +492,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     return chapterId ? { ...event, chapter_id: chapterId } : event;
   });
 
-  const relations = buildEventGraph(eventsWithChapters, {
+  const graphRelations = buildEventGraph(eventsWithChapters, {
     continuityOverrides: continuityOverrides(annotations),
     // Built after judgement, which is what makes this available — and what lets
     // the graph carry the dependency the planner already acts on.
@@ -507,6 +510,29 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       return dot;
     },
   });
+
+  // Two cameras of one moment, from the sound they share. Added after the
+  // graph's own links, and only where it has not already joined the pair.
+  const linked = new Set(
+    graphRelations
+      .filter((relation) => relation.relation_type === 'duplicate_of')
+      .map((relation) => `${relation.source_event_id}|${relation.target_event_id}`),
+  );
+  const moments = sameMoments(
+    eventsWithChapters,
+    videoOffsets(paired.syncs, companions, assets),
+  ).filter(
+    (relation) =>
+      !linked.has(`${relation.source_event_id}|${relation.target_event_id}`) &&
+      !linked.has(`${relation.target_event_id}|${relation.source_event_id}`),
+  );
+  const relations = [
+    ...graphRelations,
+    ...moments.map((relation, index) => ({
+      id: seqId('rel', graphRelations.length + index + 1, 5),
+      ...relation,
+    })),
+  ];
 
   const events = attachEmbeddingRefs(eventsWithChapters, embedded.records);
 
