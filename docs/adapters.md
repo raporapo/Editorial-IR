@@ -216,7 +216,9 @@ under a 90-frame clip; a drone clip had 2 offline audio clips; the `.exo` was
 silent in every case; a V2 clip's sound linked a V1 clip that did not exist.
 All are gone. On the worked example the only spans that moved are three clips
 that were a frame short of the next one (a frame of black at each of those
-cuts); the total, 5385 frames, is unchanged.
+cuts). Placing each clip's source in from the frame the clip really starts on
+then moved 14 of the 38 source ins by one frame, and the cut's end from frame
+5385 to 5386: the plan's 179.703 s is 5385.7 frames at 29.97.
 
 The preview, on a 4-CPU machine:
 
