@@ -11,15 +11,15 @@ import { negotiate, resolveAssetPath, toFileUrl } from './types.js';
 import {
   assetById,
   bedSpan,
+  clipAudio,
   countedRate,
   layOnGrid,
   mediaFramesOf,
   pictureOf,
-  soundOf,
   streamChannels,
   streamOf,
   transitionsOf,
-  type ClipSound,
+  type ClipAudio,
   type FrameRate,
   type GridSpan,
   type PlacedTransition,
@@ -64,6 +64,7 @@ export const PREMIERE_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.pa
     'Final Cut Pro 7 XML (xmeml v4), which Premiere imports as a sequence.',
     'Everything is measured in frames at the sequence rate; NTSC rates are written as timebase plus an ntsc flag.',
     'Stills are still-frame clipitems; sound-only files are audio clipitems with no picture.',
+    'A clip whose sound is a separate recorder’s is its picture linked to audio clipitems that read the recorder’s file.',
     'Chapters are sequence markers. Text and captions are not written: write captions with --editor srt.',
   ],
 });
@@ -246,7 +247,8 @@ export function buildFcpXml(
   // cutaway added on V2: both its audio clipitems linked `clipitem-1-39`.
   const pictureIdOf = new Map<string, string>();
   const soundIdsOf = new Map<string, string[]>();
-  const sounds = new Map<string, ClipSound>();
+  const sounds = new Map<string, ClipAudio>();
+  const lookup = (id: string): MediaAsset | undefined => assetById(assets, id);
   const sourceSpecs = plan.tracks.audio.filter((spec) => spec.type === 'source_audio');
   const soundTrackCount = new Map<string, number>();
   for (const [track, spans] of grid.tracks) {
@@ -256,8 +258,12 @@ export function buildFcpXml(
       if (pictureOf(asset) !== 'none') {
         pictureIdOf.set(span.operation.operation_id, `clipitem-${track + 1}-${index + 1}`);
       }
-      const sound = soundOf(asset, span.operation, warnings);
-      if (!sound) {
+      // A clip's sound may be another file's: a recorder that heard the same
+      // moment. Its clipitems read the recorder, from the recorder's own frame,
+      // and link to the picture like the camera's own sound would, so the two
+      // move and unlink as one clip.
+      const audio = clipAudio(span, lookup, grid.rate, warnings);
+      if (!audio) {
         if (pictureOf(asset) === 'none') {
           warnings.push(
             `${span.operation.operation_id} is sound only and does not use its sound; nothing of it was written`,
@@ -265,12 +271,12 @@ export function buildFcpXml(
         }
         continue;
       }
-      sounds.set(span.operation.operation_id, sound);
+      sounds.set(span.operation.operation_id, audio);
       const ids: string[] = [];
       for (const spec of sourceSpecs) {
         const key = `${spec.track}:${track}`;
-        soundTrackCount.set(key, Math.max(soundTrackCount.get(key) ?? 0, sound.channels));
-        for (let channel = 0; channel < sound.channels; channel++) {
+        soundTrackCount.set(key, Math.max(soundTrackCount.get(key) ?? 0, audio.sound.channels));
+        for (let channel = 0; channel < audio.sound.channels; channel++) {
           ids.push(audioClipId(spec.track, track, channel, index));
         }
       }
@@ -378,22 +384,22 @@ export function buildFcpXml(
         const written: string[] = [];
         for (const [index, span] of spans.entries()) {
           const operation = span.operation;
-          const sound = sounds.get(operation.operation_id);
-          if (!sound || channel >= sound.channels) continue;
-          const asset = assetById(assets, operation.source_asset_id)!;
-          const path = resolveAssetPath(request, asset.id)!;
-          const range = sourceRange(asset, span);
+          const audio = sounds.get(operation.operation_id);
+          if (!audio || channel >= audio.sound.channels) continue;
+          // The file the sound is read from, defined here at its first use when
+          // it is a recorder no picture has named.
+          const path = resolveAssetPath(request, audio.asset.id)!;
           written.push(
             ...audioClipitem({
               id: audioClipId(spec.track, track, channel, index),
-              asset,
-              file: fileElement(asset, path, 12),
+              asset: audio.asset,
+              file: fileElement(audio.asset, path, 12),
               start: span.start,
               end: span.end,
-              in: range.in,
-              out: range.out,
-              duration: mediaLength(asset),
-              trackIndex: sound.channelOffset + channel + 1,
+              in: audio.in,
+              out: audio.out,
+              duration: mediaLength(audio.asset),
+              trackIndex: audio.sound.channelOffset + channel + 1,
               gainDb: spec.gain_db,
               links: linksOf(operation.operation_id),
               rateXml,

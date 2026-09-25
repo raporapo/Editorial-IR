@@ -12,10 +12,10 @@ import { negotiate, resolveAssetPath, toFileUrl } from './types.js';
 import {
   assetById,
   bedSpan,
+  clipAudio,
   layOnGrid,
   mediaFramesOf,
   pictureOf,
-  soundOf,
   streamOf,
   transitionsOf,
   type GridSpan,
@@ -55,6 +55,7 @@ export const OTIO_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.parse(
     'Times are rational: frame counts at the sequence rate, so an NTSC rate survives exactly.',
     'Transitions are OTIO Transition objects between clips; a fade at either end of a track is one with nothing on its other side.',
     'Chapters are markers on the timeline’s stack. OTIO has no caption track: write captions with --editor srt.',
+    'A clip whose sound is a separate recorder’s has an audio clip referencing the recorder, at the recorder’s own frames.',
   ],
 });
 
@@ -149,6 +150,7 @@ export function buildOtioTimeline(
   });
   const sourceStart = (asset: MediaAsset | undefined, span: GridSpan): number =>
     asset && stillUse.has(asset.id) ? stillUse.get(asset.id)! : span.in;
+  const lookup = (id: string): MediaAsset | undefined => assetById(assets, id);
 
   const mediaFrames = mediaFramesOf(assets, frames);
 
@@ -251,16 +253,19 @@ export function buildOtioTimeline(
       let cursor = 0;
       for (const span of spans) {
         const operation = span.operation;
-        const asset = assetById(assets, operation.source_asset_id);
-        const sound = asset ? soundOf(asset, operation, warnings) : undefined;
-        if (!asset || !sound) continue;
+        // The clip's sound, from the recorder that heard it where the plan
+        // names one: the media reference is the recorder's file and the range
+        // is in the recorder's own frames, so an importer needs nothing but
+        // OTIO to line the two up.
+        const audio = clipAudio(span, lookup, grid.rate, warnings);
+        if (!audio) continue;
         if (span.start > cursor) children.push(gap(span.start - cursor));
-        const path = resolveAssetPath(request, operation.source_asset_id);
+        const path = resolveAssetPath(request, audio.asset.id);
         children.push({
           OTIO_SCHEMA: 'Clip.1',
           name: clipName(operation, request),
-          source_range: frameRange(sourceStart(asset, span), span.length),
-          media_reference: reference(asset, path),
+          source_range: frameRange(audio.in, span.length),
+          media_reference: reference(audio.asset, path),
           metadata: {
             'editorial-ir': {
               operation_id: operation.operation_id,
@@ -268,8 +273,13 @@ export function buildOtioTimeline(
               gain_db: spec.gain_db,
               // OTIO has no way to name a stream inside a file; this is where
               // an importer that wants the lavalier and not the room finds it.
-              audio_stream_index: sound.stream,
-              channels: sound.channels,
+              audio_stream_index: audio.sound.stream,
+              channels: audio.sound.channels,
+              // Sound placed to the frame; the plan's own time is here for a
+              // tool that can place it to the sample.
+              ...(audio.separate
+                ? { audio_source: { asset_id: audio.asset.id, source_in_ms: audio.sourceInMs } }
+                : {}),
             },
           },
           enabled: true,

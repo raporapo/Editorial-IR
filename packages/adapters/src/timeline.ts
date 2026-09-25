@@ -165,13 +165,7 @@ export function layOnGrid(
       // frame from wholly outside their planned range before; none of either
       // after, with every frame shown the one nearest to what the plan puts at
       // that moment.
-      const lead = start - (operation.timeline_start_ms / 1000) * (rate.num / rate.den);
-      const sourceIn = Math.max(
-        0,
-        Math.round(
-          (operation.source_in_ms / 1000) * (rate.num / rate.den) + lead * operation.speed,
-        ),
-      );
+      const sourceIn = sourceFrameAt(operation.source_in_ms, operation, start, rate);
       const span: GridSpan = {
         operation,
         start,
@@ -198,6 +192,28 @@ export function layOnGrid(
     },
     length,
   };
+}
+
+/**
+ * The frame of a file a clip plays at its first frame on the grid, when the
+ * plan reads that file from `sourceInMs` at the clip's planned start.
+ *
+ * The clip's start was rounded to the grid, so whatever it reads moves with it:
+ * by the rounding, times the speed. The picture's source in is placed this way,
+ * and so is a separate recorder's (`clipAudio`), because two files placed by
+ * two roundings are out of sync by up to a frame before anyone has touched them.
+ */
+function sourceFrameAt(
+  sourceInMs: number,
+  operation: VideoOperation,
+  start: number,
+  rate: FrameRate,
+): number {
+  const lead = start - (operation.timeline_start_ms / 1000) * (rate.num / rate.den);
+  return Math.max(
+    0,
+    Math.round((sourceInMs / 1000) * (rate.num / rate.den) + lead * operation.speed),
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -257,6 +273,117 @@ export function soundOf(
   if (!operation.use_source_audio) return undefined;
   if (!hasAudioStream(asset)) return undefined;
   return streamOf(asset, operation.audio_stream_index, operation.operation_id, warnings);
+}
+
+/** The sound one clip plays: which file, which of its streams, and where in it. */
+export interface ClipAudio {
+  /**
+   * The file the sound is read from: the clip's own, or the separate recorder
+   * that heard the same moment (`audio_source`).
+   */
+  asset: MediaAsset;
+  sound: ClipSound;
+  /** First frame of the sound in `asset`, counted at the grid's rate. */
+  in: number;
+  /** One past the last frame; `out - in` is the clip's length, as it is for the picture. */
+  out: number;
+  /**
+   * Where the sound starts in `asset`, in that file's own milliseconds, as the
+   * plan says: for a target that can place sound finer than a frame.
+   */
+  sourceInMs: number;
+  /** True when the sound is a separate recorder's rather than the clip's own file's. */
+  separate: boolean;
+}
+
+/**
+ * The sound a clip plays, wherever it comes from, or nothing.
+ *
+ * A clip's sound was always its own file's, and every writer read it from
+ * there. A plan can now say otherwise: `audio_source` names a lavalier or a field
+ * recorder the analysis lined up with the camera, and it is the sound the
+ * transcript that chose the clip was made from. A writer that kept reading the
+ * camera exported the room a metre from the speaker — or, with the camera's
+ * microphone off, nothing at all — under a cut that was made by listening to
+ * the collar.
+ *
+ * One answer for every writer, as the grid is: the file, the stream, and the
+ * frame of the recorder the clip starts on, placed from the recorder's own time
+ * exactly as the picture's source in is placed from the camera's, so the two
+ * move together with the clip's rounding. The sound runs for the clip's length.
+ * The recorder's stream is its own `audio_stream_index`; the operation's names a
+ * stream of the camera.
+ *
+ * A recorder that is not among the media, or that has no sound, falls back to
+ * the clip's own sound, and says so: silence where the plan asked for speech is
+ * a worse export than the camera's microphone. Without `audio_source` this is
+ * `soundOf` over the picture's own range, unchanged.
+ */
+export function clipAudio(
+  span: GridSpan,
+  lookup: (assetId: string) => MediaAsset | undefined,
+  rate: FrameRate,
+  warnings?: string[],
+): ClipAudio | undefined {
+  const operation = span.operation;
+  if (!operation.use_source_audio) return undefined;
+
+  const own = (): ClipAudio | undefined => {
+    const asset = lookup(operation.source_asset_id);
+    const sound = asset ? soundOf(asset, operation, warnings) : undefined;
+    if (!asset || !sound) return undefined;
+    return {
+      asset,
+      sound,
+      in: span.in,
+      out: span.out,
+      sourceInMs: operation.source_in_ms,
+      separate: false,
+    };
+  };
+
+  const source = operation.audio_source;
+  if (!source) return own();
+
+  const recorder = lookup(source.asset_id);
+  const sound = recorder
+    ? streamOf(recorder, source.audio_stream_index, operation.operation_id, warnings)
+    : undefined;
+  if (recorder && sound) {
+    const at = sourceFrameAt(source.source_in_ms, operation, span.start, rate);
+    return {
+      asset: recorder,
+      sound,
+      in: at,
+      out: at + span.length,
+      sourceInMs: source.source_in_ms,
+      separate: true,
+    };
+  }
+  const fallback = own();
+  warnings?.push(
+    `${operation.operation_id} takes its sound from ${recorder?.file_name ?? source.asset_id}, ` +
+      `which ${recorder ? 'has no audio stream' : 'is not available'}; ` +
+      (fallback ? 'the clip’s own sound is used instead' : 'the clip is silent'),
+  );
+  return fallback;
+}
+
+/**
+ * The separate recorders a plan's clips take their sound from, in the order the
+ * clips come, each once.
+ *
+ * A recorder is media no operation's `source_asset_id` names, so every list a
+ * writer made of "the files this cut uses" left it out: an EDL gave it no reel,
+ * and a preview never checked that ffmpeg could read it.
+ */
+export function recordersOf(plan: EditPlan): string[] {
+  const ids: string[] = [];
+  for (const operation of operationsInOrder(plan)) {
+    const id = operation.use_source_audio ? operation.audio_source?.asset_id : undefined;
+    if (id !== undefined && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
 }
 
 /** Every sound an asset could give, for a bed or a file definition. */

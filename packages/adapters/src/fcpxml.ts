@@ -14,15 +14,17 @@ import { negotiate, resolveAssetPath, stringOption, toFileUrl } from './types.js
 import {
   assetById,
   bedSpan,
+  clipAudio,
   describeTimecodeOrigins,
   layOnGrid,
   mediaFramesOf,
   pictureOf,
-  soundOf,
   sourceTimecodeOf,
   streamChannels,
   streamOf,
   transitionsOf,
+  type ClipAudio,
+  type ClipSound,
   type FrameRate,
   type GridSpan,
   type PlacedTransition,
@@ -70,6 +72,7 @@ export const FCPXML_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.pars
   notes: [
     'FCPXML 1.10 for Final Cut Pro and DaVinci Resolve: rational times on the sequence’s frame grid, media declared once.',
     'Stills are video elements on image assets; sound-only files are audio clips in the storyline; upper tracks and music beds are connected clips.',
+    'A clip whose sound is a separate recorder’s keeps its picture only, with the recorder as a connected audio clip below it.',
     'Chapters are chapter markers; captions are SRT-role captions, which Final Cut shows and Resolve ignores — use --editor srt for Resolve.',
     'Only standard frame rates: another rate is written as the nearest standard one, and the result says so.',
     'Options: record_start (the sequence’s starting timecode, e.g. 01:00:00:00; default 00:00:00:00).',
@@ -431,9 +434,79 @@ export function buildFcpxmlDocument(
   };
 
   const gainOf = plan.tracks.audio.find((spec) => spec.type === 'source_audio')?.gain_db ?? 0;
+  const lookup = (id: string): MediaAsset | undefined => assetById(assets, id);
 
-  /** One clip as an item: a still is `video`, anything else an `asset-clip`. */
-  const clipItem = (span: GridSpan, lane: number): SpineItem | undefined => {
+  /**
+   * One source per audio stream of a file, and only the chosen one active: the
+   * lavalier, not the room tone on the stream in front of it.
+   */
+  const channelSources = (asset: MediaAsset, sound: ClipSound): Element[] => {
+    if (sound.streams <= 1) return [];
+    const channels: Element[] = [];
+    let channel = 1;
+    for (const [index, layout] of audioLayout(asset).entries()) {
+      const numbers = Array.from({ length: layout.channels }, (_, c) => channel + c);
+      channel += layout.channels;
+      channels.push(
+        element('audio-channel-source', {
+          srcCh: numbers.join(', '),
+          role: 'dialogue',
+          active: index === sound.stream ? 1 : 0,
+        }),
+      );
+    }
+    return channels;
+  };
+
+  /**
+   * A separate recorder's sound for one clip: an audio clip connected below its
+   * picture, from the recorder's own frame, for the clip's length.
+   *
+   * Connected rather than put in the storyline, because a storyline clip is one
+   * file and the storyline already holds the picture. A connected audio clip is
+   * the shape this file already gives a music bed, so it asks nothing new of an
+   * importer; Final Cut's synchronized clip (`sync-clip`) would be a second kind
+   * of container for Final Cut and Resolve to agree on. `offset` is in the
+   * parent's own time: the clip's first frame, when the parent is the clip.
+   */
+  const recorderClip = (
+    audio: ClipAudio,
+    length: number,
+    offset: string,
+    lane: number,
+  ): Element | undefined => {
+    const ref = assetFor(audio.asset);
+    if (!ref) return undefined;
+    return element(
+      'asset-clip',
+      {
+        ref,
+        lane,
+        offset,
+        name: stemOf(audio.asset.file_name),
+        start: formatTime(add(assetStart.get(audio.asset.id) ?? { n: 0, d: 1 }, at(audio.in))),
+        duration: time(length),
+        audioRole: 'dialogue',
+      },
+      [
+        ...(gainOf !== 0 ? [element('adjust-volume', { amount: `${gainOf}dB` })] : []),
+        ...channelSources(audio.asset, audio.sound),
+      ],
+    );
+  };
+
+  /**
+   * One clip as an item: a still is `video`, anything else an `asset-clip`.
+   *
+   * Its sound is its own file's, or a recorder's (`recorder`), which the caller
+   * connects where the clip is: under the clip itself in the storyline, and
+   * beside an upper track's clip on the storyline item it is connected to, since
+   * Final Cut connects clips to the primary storyline and not to each other.
+   */
+  const clipItem = (
+    span: GridSpan,
+    lane: number,
+  ): (SpineItem & { recorder?: ClipAudio }) | undefined => {
     const operation = span.operation;
     const asset = assetById(assets, operation.source_asset_id);
     const ref = asset ? assetFor(asset) : undefined;
@@ -444,16 +517,24 @@ export function buildFcpxmlDocument(
       return undefined;
     }
     const picture = pictureOf(asset);
-    const sound = soundOf(asset, operation, warnings);
-    if (picture === 'none' && !sound) {
+    const audio = clipAudio(span, lookup, grid.rate, warnings);
+    if (picture === 'none' && !audio) {
       warnings.push(
         `${operation.operation_id} is sound only and does not use its sound; nothing of it was written`,
       );
       return undefined;
     }
-    const name = stemOf(asset.file_name);
+    // A sound-only clip is its sound, read from whichever file holds it. A clip
+    // with a picture plays its own file's sound, or a recorder's connected
+    // below it — and then none of the camera's.
+    const recorder = picture !== 'none' && audio?.separate ? audio : undefined;
+    const sound = recorder ? undefined : audio?.sound;
+    const read = picture === 'none' ? audio!.asset : asset;
+    const readRef = read === asset ? ref : assetFor(read);
+    if (!readRef) return undefined;
+    const name = stemOf(read.file_name);
     const placement = {
-      ref,
+      ref: readRef,
       lane: lane === 0 ? undefined : lane,
       offset: time(span.start),
       name,
@@ -471,39 +552,26 @@ export function buildFcpxmlDocument(
         anchored: [],
         markers: [],
         channels: [],
+        ...(recorder ? { recorder } : {}),
       };
     }
 
-    const start = add(assetStart.get(asset.id) ?? { n: 0, d: 1 }, at(span.in));
-    const hasAudio = audioLayout(asset).length > 0;
+    const start = add(
+      assetStart.get(read.id) ?? { n: 0, d: 1 },
+      at(picture === 'none' ? audio!.in : span.in),
+    );
+    const hasAudio = audioLayout(read).length > 0;
     const intrinsic: Element[] = [];
-    const channels: Element[] = [];
     if (sound && gainOf !== 0) intrinsic.push(element('adjust-volume', { amount: `${gainOf}dB` }));
-    if (sound && sound.streams > 1) {
-      // One source per stream, and only the chosen one active: the lavalier,
-      // not the room tone on the stream in front of it.
-      let channel = 1;
-      for (const [index, layout] of audioLayout(asset).entries()) {
-        const numbers = Array.from({ length: layout.channels }, (_, c) => channel + c);
-        channel += layout.channels;
-        channels.push(
-          element('audio-channel-source', {
-            srcCh: numbers.join(', '),
-            role: 'dialogue',
-            active: index === sound.stream ? 1 : 0,
-          }),
-        );
-      }
-    }
     return {
       node: element('asset-clip', {
         ...placement,
         start: formatTime(start),
         duration: time(span.length),
         tcFormat,
-        // A cutaway's sound is not used, so the clip keeps its picture only. A
-        // file with no sound needs no such thing, and a sound-only file has no
-        // picture to keep.
+        // A cutaway's sound is not used, so the clip keeps its picture only; nor
+        // is a camera's whose sound is a recorder's. A file with no sound needs
+        // no such thing, and a sound-only file has no picture to keep.
         srcEnable: !sound && hasAudio && picture === 'video' ? 'video' : undefined,
         audioRole: sound ? 'dialogue' : undefined,
       }),
@@ -513,7 +581,8 @@ export function buildFcpxmlDocument(
       intrinsic,
       anchored: [],
       markers: [],
-      channels,
+      channels: sound ? channelSources(read, sound) : [],
+      ...(recorder ? { recorder } : {}),
     };
   };
 
@@ -560,10 +629,30 @@ export function buildFcpxmlDocument(
     spine.push(item);
     items.push(item);
   };
+  // Each video track's recorded sound on a lane of its own below the
+  // storyline — track 0's on -1, track 1's on -2 — so no two of them are ever
+  // asked to share one, and the beds below all of them. Resolve makes each lane
+  // an audio track, and two clips claiming the same frames of one track is an
+  // overwrite.
+  let lowestSoundLane = 0;
+  const soundLane = (track: number): number => {
+    lowestSoundLane = Math.min(lowestSoundLane, -(track + 1));
+    return -(track + 1);
+  };
+
   let cursor = 0;
   for (const span of main) {
     const clip = clipItem(span, 0);
     if (!clip) continue;
+    if (clip.recorder) {
+      const connected = recorderClip(
+        clip.recorder,
+        span.length,
+        formatTime(clip.start),
+        soundLane(0),
+      );
+      if (connected) clip.anchored.push(connected);
+    }
     if (span.start > cursor) push(gapItem(cursor, span.start - cursor));
     const before = leading.get(span.operation.operation_id);
     if (before) spine.push(before);
@@ -608,11 +697,21 @@ export function buildFcpxmlDocument(
         ),
       };
       parent.anchored.push(finish(clip));
+      if (clip.recorder) {
+        const connected = recorderClip(
+          clip.recorder,
+          span.length,
+          localTime(parent, span.start),
+          soundLane(track),
+        );
+        if (connected) parent.anchored.push(connected);
+      }
     }
   }
 
-  // Beds: connected clips below the storyline, at their own level.
-  let bedLane = 0;
+  // Beds: connected clips below the storyline, at their own level, and below
+  // any recorder's lane.
+  let bedLane = lowestSoundLane;
   for (const spec of plan.tracks.audio) {
     if (spec.type !== 'external') continue;
     const asset = assetById(assets, spec.asset_id);
