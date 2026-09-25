@@ -6040,7 +6040,9 @@
             "empty_plan",
             "speed_not_supported",
             "plan_schema_invalid",
-            "sequence_mismatch"
+            "sequence_mismatch",
+            "source_audio_missing",
+            "invalid_continuation"
           ]
         },
         "ValidationSeverity": {

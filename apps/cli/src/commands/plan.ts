@@ -6,6 +6,8 @@ import {
   operationTimelineDuration,
   planDurationMs,
   summariseReport,
+  type EditPlan,
+  type SkillManifest,
 } from '@editorial-ir/contracts';
 import { openProject } from '../project.js';
 import { requireIr } from '../ir.js';
@@ -34,6 +36,27 @@ export interface PlanArgs {
   require?: string[];
   /** Events to leave out, whatever they score. */
   drop?: string[];
+}
+
+/**
+ * The skill a stored plan was made with, when it can still be found.
+ *
+ * `oea plan` validates against the skill it planned with, and `oea review` and
+ * `oea apply` validated the same plan without it — so the speech share a
+ * talking-head cut promised, and the "this skill's limit cannot fill the
+ * target" explanation, were checked once and never again. The plan records the
+ * skill's name and version; a built-in, or one in `skillsDir`, with both the
+ * same is the skill it was made with. Anything else validates as before,
+ * without one, rather than against a different skill of the same name.
+ */
+export function skillOfPlan(plan: EditPlan, skillsDir?: string): SkillManifest | undefined {
+  try {
+    const registry = SkillRegistry.withBuiltIns(skillsDir ? [skillsDir] : []);
+    const skill = registry.resolve(plan.skill.name);
+    return skill.version === plan.skill.version ? skill : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function runPlan(args: PlanArgs): number {
@@ -88,6 +111,8 @@ export function runPlan(args: PlanArgs): number {
   detail('target', formatTimecode(plan.sequence.target_duration_ms, false));
   detail('off by', `${Math.round(plan.stats.duration_error_ms / 100) / 10}s`);
   detail('kept', `${plan.stats.events_selected} of ${plan.stats.events_available} events`);
+  const jumpCuts = plan.tracks.video.filter((operation) => operation.continues_previous).length;
+  if (jumpCuts > 0) detail('jump cuts', `${jumpCuts}, where pauses were taken out`);
   detail('compression', `${Math.round(plan.stats.compression_ratio * 1000) / 10}% of the material`);
   detail('saved as', relative(process.cwd(), `${store.paths.plansDir}/${plan.id}.json`));
 
@@ -100,10 +125,18 @@ export function runPlan(args: PlanArgs): number {
         formatTimecode(operation.timeline_start_ms, false),
         `${String(Math.round(operationTimelineDuration(operation) / 100) / 10).padStart(5)}s`,
         colour.cyan((operation.role ?? '').padEnd(10)),
-        truncate(event?.title?.value ?? event?.description.value ?? '', 48),
+        // The pieces of one take are one moment; naming it once reads as one.
+        operation.continues_previous
+          ? colour.grey('  …after a pause')
+          : truncate(event?.title?.value ?? event?.description.value ?? '', 48),
       ];
     });
     table(rows);
+
+    if (plan.markers.length > 0) {
+      heading('chapters');
+      table(plan.markers.map((marker) => [formatTimecode(marker.timeline_ms, false), marker.name]));
+    }
   }
 
   const warnings = report.issues.filter((i) => i.severity === 'warning');

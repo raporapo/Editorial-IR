@@ -206,6 +206,7 @@ export async function main(argv: string[]): Promise<number> {
         ...(values.project ? { project: values.project } : {}),
         ...(values.plan ? { plan: values.plan } : {}),
         ...(values.json ? { json: true } : {}),
+        ...(values['skills-dir'] ? { skillsDir: values['skills-dir'] } : {}),
       });
 
     case 'agent':

@@ -211,7 +211,7 @@ understood.
 | `packages/perception` | Model interfaces, ffmpeg ingestion, the transport to Python.            |
 | `packages/decision`   | "What is this worth to an edit?", as three primitives.                  |
 | `packages/index`      | Multi-vector retrieval over the IR.                                     |
-| `packages/skills`     | Rules as data, and six of them.                                         |
+| `packages/skills`     | Rules as data, and eight of them.                                       |
 | `packages/core`       | The compiler: ingest, observe, segment, understand, judge.              |
 | `packages/agent`      | The planner, the validator and the toolkit an agent works through.      |
 | `packages/adapters`   | OpenTimelineIO, Premiere Pro, AviUtl2.                                  |
