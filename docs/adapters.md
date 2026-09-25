@@ -301,9 +301,13 @@ became a cut is a change to someone's edit, and they are entitled to see it.
 
 `layOnGrid(plan, rate)` places every clip on whole frames the same way for
 every writer: a clip's two lengths agree, no clip overlaps the next on its
-track, and clips the plan butts together touch. Rounding each edge separately
+track, clips the plan butts together touch, and every frame a clip shows is the
+source frame nearest to what the plan plays at that moment — so both of its
+source edges are within a frame of the plan's. Rounding each edge separately
 left a frame of black between clips on three of the worked example's 37 cuts,
-and three adapters rounding three ways disagreed by a frame here and there.
+three adapters rounding three ways disagreed by a frame here and there, and a
+source in rounded apart from its clip's start read up to 1.3 frames past a
+planned out point — on an edited programme, the first frame of the next shot.
 `transitionsOf` then says which joins can really have a dissolve (handles
 permitting) and where a fade sits. Use both.
 

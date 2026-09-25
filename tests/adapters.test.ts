@@ -16,6 +16,7 @@ import {
   buildOtioTimeline,
   createAdapter,
   escapeXml,
+  layOnGrid,
   listAdapters,
   msToFrames,
   negotiate,
@@ -25,6 +26,7 @@ import {
 import { operationTimelineDuration, type EditPlan } from '@editorial-ir/contracts';
 import { exampleSuite, makeExampleProject } from './support/project.js';
 import { childText, findAll, parseXml } from './support/xml.js';
+import { makePlan } from './support/plan.js';
 
 const registry = SkillRegistry.withBuiltIns();
 
@@ -220,10 +222,16 @@ describe('the OpenTimelineIO adapter', () => {
       const operation = plan.tracks.video[index]!;
       const next = plan.tracks.video[index + 1];
       const start = msToFrames(operation.timeline_start_ms, 30000, 1001);
-      const wanted = msToFrames(operationTimelineDuration(operation), 30000, 1001);
+      // Where the plan ends it, placed on the grid as its start is.
+      const wanted =
+        msToFrames(
+          operation.timeline_start_ms + operationTimelineDuration(operation),
+          30000,
+          1001,
+        ) - start;
       const nextStart = next ? msToFrames(next.timeline_start_ms, 30000, 1001) : undefined;
       // A clip the plan butts against the next ends where the next begins; one
-      // followed by a gap keeps its own rounded length.
+      // followed by a gap ends where the plan ends it.
       const touches =
         next !== undefined &&
         next.timeline_start_ms <=
@@ -235,8 +243,69 @@ describe('the OpenTimelineIO adapter', () => {
             ? nextStart - start
             : Math.min(wanted, nextStart - start);
       expect(clip.source_range.duration.value).toBe(expected);
-      expect(Math.abs(clip.source_range.duration.value - wanted)).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(
+          clip.source_range.duration.value -
+            msToFrames(operationTimelineDuration(operation), 30000, 1001),
+        ),
+      ).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('shows at every frame the source frame the plan puts there, at every rate', async () => {
+    // The source in point was rounded on its own while the clip's start on the
+    // timeline was rounded separately, so the picture ran up to a frame out of
+    // step with the plan and a clip's source out overshot by up to 1.3 frames:
+    // on this cut at 30 fps, op_0023 read to frame 7222 of a range that ends at
+    // 7220.7. Placed from where the clip really starts, every frame shown is the
+    // one nearest to what the plan plays at that moment, and both ends are
+    // within a frame.
+    const { plan } = await prepared();
+    for (const [num, den] of [
+      [24000, 1001],
+      [25, 1],
+      [30, 1],
+      [30000, 1001],
+      [60000, 1001],
+    ] as const) {
+      const atRate = {
+        ...plan,
+        sequence: { ...plan.sequence, frame_rate_num: num, frame_rate_den: den },
+      };
+      const grid = layOnGrid(atRate);
+      const perMs = num / den / 1000;
+      for (const span of grid.tracks.get(0)!) {
+        const operation = span.operation;
+        for (let frame = 0; frame < span.length; frame++) {
+          const planned =
+            operation.source_in_ms * perMs +
+            (span.start + frame - operation.timeline_start_ms * perMs);
+          expect(Math.abs(span.in + frame - planned)).toBeLessThanOrEqual(0.5 + 1e-9);
+        }
+        expect(Math.abs(span.in - operation.source_in_ms * perMs)).toBeLessThanOrEqual(1 + 1e-9);
+        expect(Math.abs(span.out - operation.source_out_ms * perMs)).toBeLessThanOrEqual(1 + 1e-9);
+      }
+    }
+  });
+
+  it('never shows the first frame of the next shot when a clip ends on a cut', () => {
+    // op_0002 ends at 6000 ms, frame 180 at 30 fps: the edit's own cut, where cut
+    // snapping put it. It starts at 1010 ms on the timeline, a third of a frame
+    // past frame 30. Rounding its source in (149.6 → 150) and its length
+    // (61 − 30 = 31) each on their own read frames 150 to 180 — the last of them
+    // the first frame of the next shot, a one-frame flash.
+    const plan = makePlan([
+      { source_asset_id: 'asset_001', source_in_ms: 0, source_out_ms: 1010, timeline_start_ms: 0 },
+      {
+        source_asset_id: 'asset_001',
+        source_in_ms: 4987,
+        source_out_ms: 6000,
+        timeline_start_ms: 1010,
+      },
+    ]);
+    const span = layOnGrid(plan).span('op_0002');
+    expect(span.out).toBe(180);
+    expect(span.in).toBe(149);
   });
 });
 

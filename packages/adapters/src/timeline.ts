@@ -97,11 +97,12 @@ export interface FrameGrid {
  * 39 clips in the worked example, and fixing that alone pushed one clip's end a
  * frame past the next clip's start.
  *
- * So the start is placed from the clip's absolute position, the length decided
- * once, and the source out derived from it. Where the next clip on the same
- * track starts sooner than this one's rounded length would end, the length
- * gives way: an overlap is a thing a track cannot represent. Where the plan has
- * the two touching, they touch on the grid too.
+ * So the start and the end are placed from the clip's absolute position, the
+ * source in taken from what the plan plays at the frame the clip really starts
+ * on, and the source out derived from the length. Where the next clip on the
+ * same track starts sooner than this one would end, the length gives way: an
+ * overlap is a thing a track cannot represent. Where the plan has the two
+ * touching, they touch on the grid too.
  *
  * Tracks are laid independently. The Premiere writer used to look for "the next
  * clip" across every track at once, so a clip on V2 shortened whatever V1 clip
@@ -127,7 +128,14 @@ export function layOnGrid(
     const laid: GridSpan[] = [];
     for (const [index, operation] of operations.entries()) {
       const start = frames(operation.timeline_start_ms);
-      const wanted = Math.max(1, frames(operationTimelineDuration(operation)));
+      // The end placed from its absolute position like the start, rather than
+      // the length rounded on its own: two roundings put the last clip of a
+      // track, and any clip before a gap, up to a frame and a half from where
+      // the plan ends it.
+      const wanted = Math.max(
+        1,
+        frames(operation.timeline_start_ms + operationTimelineDuration(operation)) - start,
+      );
       const next = operations[index + 1];
       const nextStart = next ? frames(next.timeline_start_ms) : undefined;
       // A clip the plan butts against the next one ends where the next begins.
@@ -145,7 +153,25 @@ export function layOnGrid(
             ? nextStart - start
             : Math.min(wanted, nextStart - start)
           : wanted;
-      const sourceIn = frames(operation.source_in_ms);
+      // The source frame at the clip's first timeline frame is the one the plan
+      // plays at that instant, not the source in point rounded on its own. The
+      // start was rounded to the grid, and the source has to move with it: the
+      // two rounded apart made the source out overshoot by up to a frame and a
+      // half, and a clip whose planned out point is one of the edit's own cuts
+      // then showed the first frame of the next shot — the flash frame cut
+      // snapping exists to prevent. Measured over 760 clips (the worked example
+      // and the probe plans at 24000/1001, 25, 30, 30000/1001 and 60000/1001):
+      // 16 clips off the plan by more than a frame at one end and 12 showing a
+      // frame from wholly outside their planned range before; none of either
+      // after, with every frame shown the one nearest to what the plan puts at
+      // that moment.
+      const lead = start - (operation.timeline_start_ms / 1000) * (rate.num / rate.den);
+      const sourceIn = Math.max(
+        0,
+        Math.round(
+          (operation.source_in_ms / 1000) * (rate.num / rate.den) + lead * operation.speed,
+        ),
+      );
       const span: GridSpan = {
         operation,
         start,
