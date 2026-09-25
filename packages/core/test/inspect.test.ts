@@ -115,12 +115,12 @@ describe('framePath', () => {
     }
   });
 
-  it('looks where prepare writes, which is named for the rate', () => {
+  it('looks where prepare writes, which is named for the rate and the size', () => {
     // Prepare names the directory after its rate so frames sampled at another
     // rate are never read as these; a path derived by hand from `frames/`
     // found nothing at all once it did.
-    expect(framePath('/w', { sha256: 'a'.repeat(64) }, 0, 1)).toContain('/frames-1fps/');
-    expect(framePath('/w', { sha256: 'a'.repeat(64) }, 0, 2)).toContain('/frames-2fps/');
+    expect(framePath('/w', { sha256: 'a'.repeat(64) }, 0, 1)).toContain('/frames-1fps-768px/');
+    expect(framePath('/w', { sha256: 'a'.repeat(64) }, 0, 2)).toContain('/frames-2fps-768px/');
   });
 
   it('never asks for a frame before the first one', () => {

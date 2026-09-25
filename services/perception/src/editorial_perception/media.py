@@ -532,9 +532,17 @@ def audio_file_name(stream_index: int) -> str:
     return f"audio-a{stream_index}.wav"
 
 
+# The longest edge of a sampled frame, never enlarged past the source. These are
+# what a vision-language model is sent, billed by the pixel: 1,105 tokens for a
+# 1280x720 frame at OpenAI's high detail against 425 at 768x432. The same number
+# as FRAME_LONG_EDGE in the TypeScript preparer.
+FRAME_LONG_EDGE = 768
+
+
 def frames_dir_name(fps: float) -> str:
+    """Named for the rate and the size, so full-size frames from before are never reused."""
     rate = str(int(fps)) if float(fps).is_integer() else f"{fps:.3f}".rstrip("0")
-    return f"frames-{rate}fps"
+    return f"frames-{rate}fps-{FRAME_LONG_EDGE}px"
 
 
 def proxy_args(
@@ -608,8 +616,11 @@ def frame_args(path: str, frames_dir: str, fps: float) -> list[str]:
         "-y",
         "-i",
         path,
+        # After `fps`, so dropped frames are never scaled; boxed by the source
+        # where it is smaller, so nothing is enlarged.
         "-vf",
-        f"fps={fps}",
+        f"fps={fps},scale=w='min({FRAME_LONG_EDGE},iw)':h='min({FRAME_LONG_EDGE},ih)'"
+        ":force_original_aspect_ratio=decrease",
         "-q:v",
         "4",
         str(Path(frames_dir) / "%08d.jpg"),
