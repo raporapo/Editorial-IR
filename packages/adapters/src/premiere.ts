@@ -13,8 +13,10 @@ import {
   bedSpan,
   clipAudio,
   countedRate,
+  furthestReads,
   layOnGrid,
   mediaFramesOf,
+  mediaLengthOf,
   pictureOf,
   streamChannels,
   streamOf,
@@ -151,9 +153,14 @@ export function buildFcpXml(
     const use = stillUse.get(asset.id);
     return use === undefined ? { in: span.in, out: span.out } : { in: use, out: use + span.length };
   };
+  // A file is at least as long as what the cut reads of it: a clip played to
+  // the end of a file is rounded up to a whole frame the file may not quite
+  // have, and a clipitem whose out point is past its file's duration is one
+  // Premiere shortens or refuses (`furthestReads`).
+  const reach = furthestReads(plan, grid, assets);
   const mediaLength = (asset: MediaAsset): number => {
     const use = stillUse.get(asset.id);
-    return use === undefined ? frames(asset.duration_ms) : use * 3;
+    return use === undefined ? mediaLengthOf(asset, frames, reach) : use * 3;
   };
 
   // One <file> definition per asset, at its first appearance in the document;
@@ -446,7 +453,7 @@ export function buildFcpXml(
           end: bed.start + bed.length,
           in: bed.in,
           out: bed.in + bed.length,
-          duration: frames(asset.duration_ms),
+          duration: mediaLength(asset),
           trackIndex: sound.channelOffset + channel + 1,
           gainDb: spec.gain_db,
           links: ids,

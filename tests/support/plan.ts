@@ -285,6 +285,57 @@ export function recorderIr(assets: MediaAsset[] = recorderAssets()): EditorialIR
   return makeIR({ events: [], assets });
 }
 
+/**
+ * Two files each played to its last millisecond, at 30 fps, where the frame
+ * grid reads a little past the end:
+ *
+ * - `asset_201` a 2232 ms mono mp3 at 16 kHz, played whole: 66.96 frames of
+ *   sound, laid as a 67-frame clip (the probe's `ep12_cover.mp3`)
+ * - `asset_202` a 2215 ms camera clip with stereo sound, read from 23 ms to its
+ *   end: the clip reads frames 1 to 67 of a file that rounds to 66
+ */
+export function endOfFileAssets(): MediaAsset[] {
+  return [
+    makeAsset({
+      id: 'asset_201',
+      path: '/media/ep12_cover.mp3',
+      file_name: 'ep12_cover.mp3',
+      kind: 'audio',
+      duration_ms: 2232,
+      width: undefined,
+      height: undefined,
+      fps: undefined,
+      fps_num: undefined,
+      fps_den: undefined,
+      audio_codec: 'mp3',
+      audio_channels: 1,
+      audio_sample_rate: 16_000,
+      audio_streams: [{ index: 0, codec: 'mp3', channels: 1, sample_rate: 16_000 }],
+    }),
+    makeAsset({
+      id: 'asset_202',
+      path: '/media/C0031.MP4',
+      file_name: 'C0031.MP4',
+      duration_ms: 2215,
+      audio_codec: 'aac',
+      audio_channels: 2,
+      audio_streams: [{ index: 0, codec: 'aac', channels: 2, sample_rate: 48_000 }],
+    }),
+  ];
+}
+
+export function endOfFilePlan(): EditPlan {
+  return makePlan([
+    { source_asset_id: 'asset_201', source_in_ms: 0, source_out_ms: 2232, timeline_start_ms: 0 },
+    {
+      source_asset_id: 'asset_202',
+      source_in_ms: 23,
+      source_out_ms: 2215,
+      timeline_start_ms: 2232,
+    },
+  ]);
+}
+
 export function requestFor(plan: EditPlan, ir: EditorialIR = mixedIr()): ApplyRequest {
   return {
     plan,

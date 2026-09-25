@@ -51,6 +51,17 @@ adapter writes (`pictureOf`, `soundOf` in
   so.
 - **Channels** come from the stream: a mono lavalier is one track, not a stereo
   pair whose second channel points at nothing.
+- **A file played to its very end** is declared at least as long as the cut
+  reads of it (`furthestReads`). The grid lays whole frames and a file is rarely
+  a whole number of them: a 2232 ms mp3 played whole at 30 fps is a 67-frame
+  clip, 1.3 ms longer than the file, and FCPXML declared the asset 2232 ms long
+  under it. Such an asset is now declared as long as the clip reads, rounded up
+  to the file's own unit (a sample, or a frame at its own rate). OTIO's
+  `available_range` and Premiere's `<file><duration>` take the same floor; they
+  needed it where a clip starts a fraction of a frame into its file and rounds
+  up at both ends (frames 1 to 67 of a 2215 ms file that rounds to 66). A file
+  no clip reads past is declared exactly as before. The AviUtl job and `.exo`
+  declare no media length, so there is nothing there to read past.
 - **An external bed** (`AudioTrackSpec` `external`: music, a separate
   recorder) is laid on a track of its own at its level, in OTIO, Premiere,
   FCPXML, AviUtl and the preview. It used to be warned about and dropped.

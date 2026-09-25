@@ -17,7 +17,14 @@ import {
   type EditPlan,
 } from '@editorial-ir/contracts';
 import { childText, findAll, parseXml, type XmlNode } from './support/xml.js';
-import { makePlan, mixedIr, mixedPlan, requestFor } from './support/plan.js';
+import {
+  endOfFileAssets,
+  endOfFilePlan,
+  makePlan,
+  mixedIr,
+  mixedPlan,
+  requestFor,
+} from './support/plan.js';
 
 /**
  * Every existing adapter, on material that is not a camera file with stereo
@@ -300,6 +307,65 @@ describe('OpenTimelineIO, on every kind of media', () => {
     expect(marker!.name).toBe('Photos');
     expect(marker!.range.start_time.value).toBe(120);
     expect(marker).not.toHaveProperty('marked_range');
+  });
+});
+
+describe('a file played to its very end', () => {
+  // The grid lays whole frames and a file is rarely a whole number of them: a
+  // clip read from 23 ms to the end of a 2215 ms file reads frames 1 to 67 of a
+  // file that rounds to 66, and an importer may shorten or refuse a clip that
+  // reads past the media it was told about.
+  const plan = endOfFilePlan();
+  const request = () => requestFor(plan, mixedIr(endOfFileAssets()));
+
+  it('gives OTIO a media range that covers every clip reading the file', () => {
+    const timeline = buildOtioTimeline(plan, request()) as unknown as {
+      tracks: { children: OtioTrack[] };
+    };
+    type Range = { start_time: { value: number }; duration: { value: number } };
+    const clips = timeline.tracks.children
+      .flatMap((track) => track.children)
+      .filter((child) => child.OTIO_SCHEMA === 'Clip.1');
+    expect(clips.length).toBeGreaterThanOrEqual(3);
+    for (const clip of clips) {
+      const source = clip.source_range as Range;
+      const available = (clip.media_reference as { available_range: Range }).available_range;
+      expect(
+        source.start_time.value + source.duration.value,
+        `${operationOf(clip)} reads to frame ${source.start_time.value + source.duration.value}`,
+      ).toBeLessThanOrEqual(available.start_time.value + available.duration.value);
+    }
+  });
+
+  it('declares Premiere’s file at least as long as every clipitem reading it', () => {
+    const root = parseXml(buildFcpXml(plan, request()));
+    const files = new Map(
+      findAll(root, 'file')
+        .filter((file) => file.children.length > 0)
+        .map((file) => [file.attributes.id!, file]),
+    );
+    const clips = findAll(root, 'clipitem');
+    expect(clips.length).toBeGreaterThanOrEqual(3);
+    for (const clip of clips) {
+      const file = files.get(clip.children.find((child) => child.tag === 'file')!.attributes.id!)!;
+      const declared = Number(childText(file, 'duration'));
+      expect(Number(childText(clip, 'out')), childText(clip, 'name')).toBeLessThanOrEqual(declared);
+      // The clipitem says the same length of its media as the file does.
+      expect(Number(childText(clip, 'duration'))).toBe(declared);
+    }
+  });
+
+  it('leaves every file no clip reads past at its own length', () => {
+    const timeline = buildOtioTimeline(mixedPlan(), requestFor(mixedPlan())) as unknown as {
+      tracks: { children: OtioTrack[] };
+    };
+    const camera = timeline.tracks.children[0]!.children.find(
+      (child) => operationOf(child) === 'op_0001',
+    )!;
+    const available = (
+      camera.media_reference as { available_range: { duration: { value: number } } }
+    ).available_range;
+    expect(available.duration.value).toBe(1800); // 60 s at 30 fps
   });
 });
 

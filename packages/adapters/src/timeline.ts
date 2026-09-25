@@ -651,6 +651,71 @@ export function assetById(assets: readonly MediaAsset[], id: string): MediaAsset
   return assets.find((asset) => asset.id === id);
 }
 
+/* -------------------------------------------------------------------------- */
+/* How far into each file the cut reads                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One past the last frame the cut reads from each file, counted at the grid's
+ * rate: a picture's own file, the file its sound is read from, and a bed's.
+ * Stills are not counted; they have no length to read past.
+ *
+ * The grid places whole frames, and a file is not a whole number of them. A
+ * clip the plan plays to the very end of a sound file therefore reads a
+ * fraction of a frame the file does not have: measured on a 2232 ms mp3 played
+ * 0–2232 ms at 30 fps, the clip is 67 frames (2233.3 ms) and the file 66.96. A
+ * clip that starts a fraction of a frame into its file and rounds up at both
+ * ends can overshoot by a whole frame (a 2215 ms file read from 23 ms: frames 1
+ * to 67 of a file that rounds to 66).
+ *
+ * A writer that declares a file's length says it with this as the floor
+ * (`mediaLengthOf`). The alternative, trimming the clip to the whole frames the
+ * file has, leaves a frame of silence or black in this writer's timeline that
+ * the others beside it do not have, and moves the cut off the grid every writer
+ * shares. Declaring the file a fraction of a frame longer asks the importer for
+ * nothing it cannot give: the last frame is the file's last, part sound and
+ * part the silence after it.
+ */
+export function furthestReads(
+  plan: EditPlan,
+  grid: FrameGrid,
+  assets: readonly MediaAsset[],
+): Map<string, number> {
+  const reach = new Map<string, number>();
+  const note = (id: string, frame: number): void => {
+    reach.set(id, Math.max(reach.get(id) ?? 0, frame));
+  };
+  const lookup = (id: string): MediaAsset | undefined => assetById(assets, id);
+  for (const spans of grid.tracks.values()) {
+    for (const span of spans) {
+      const asset = lookup(span.operation.source_asset_id);
+      if (asset && pictureOf(asset) === 'video') note(asset.id, span.out);
+      // No warnings: the writer asks for the same sound again and says it then.
+      const audio = clipAudio(span, lookup, grid.rate);
+      if (audio) note(audio.asset.id, audio.out);
+    }
+  }
+  for (const spec of plan.tracks.audio) {
+    if (spec.type !== 'external') continue;
+    const asset = lookup(spec.asset_id);
+    const bed = asset ? bedSpan(spec, asset, grid.length, grid.frames) : undefined;
+    if (asset && bed) note(asset.id, bed.in + bed.length);
+  }
+  return reach;
+}
+
+/**
+ * A file's length in frames at the grid's rate, and never less than the cut
+ * reads of it (`furthestReads`).
+ */
+export function mediaLengthOf(
+  asset: MediaAsset,
+  frames: (ms: number) => number,
+  reach: ReadonlyMap<string, number>,
+): number {
+  return Math.max(frames(asset.duration_ms), reach.get(asset.id) ?? 0);
+}
+
 /** Where an external bed sits, in frames: from its start to its end or the cut's. */
 export function bedSpan(
   spec: { timeline_start_ms: number; source_in_ms: number; duration_ms?: number | undefined },

@@ -13,8 +13,10 @@ import {
   assetById,
   bedSpan,
   clipAudio,
+  furthestReads,
   layOnGrid,
   mediaFramesOf,
+  mediaLengthOf,
   pictureOf,
   streamOf,
   transitionsOf,
@@ -138,13 +140,18 @@ export function buildOtioTimeline(
     }
   }
 
+  // A file's range is at least what the cut reads of it: the grid rounds a clip
+  // played to the end of its file up to a whole frame the file may not quite
+  // have, and a clip outside its media's available range is one an importer
+  // may refuse or shorten (`furthestReads`).
+  const reach = furthestReads(plan, grid, assets);
   const reference = (asset: MediaAsset | undefined, path: string | undefined) => ({
     OTIO_SCHEMA: 'ExternalReference.1',
     target_url: path ? toFileUrl(path) : '',
     available_range: asset
       ? stillUse.has(asset.id)
         ? frameRange(0, stillUse.get(asset.id)! * 3)
-        : frameRange(0, frames(asset.duration_ms))
+        : frameRange(0, mediaLengthOf(asset, frames, reach))
       : null,
     metadata: {},
   });
