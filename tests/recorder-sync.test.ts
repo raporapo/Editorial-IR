@@ -236,6 +236,39 @@ describe.skipIf(!ffmpegInstalled())('a camera and a separate recorder', () => {
     }
   }, 120_000);
 
+  it('writes the recorder under the camera in every editor’s file, and in the rendered preview', async () => {
+    for (const editor of ['otio', 'premiere', 'fcpxml', 'edl', 'aviutl2']) {
+      const out = join(root, `out-${editor}`);
+      expect(await main(['apply', '--project', project, '--editor', editor, '--out', out])).toBe(0);
+      const written = readdirSync(out)
+        .map((name) => readFileSync(join(out, name), 'utf8'))
+        .join('\n');
+      expect(written, editor).toContain('ZOOM0001');
+    }
+
+    const out = join(root, 'out-preview');
+    expect(
+      await main([
+        'apply',
+        '--project',
+        project,
+        '--editor',
+        'preview',
+        '--out',
+        out,
+        '--width',
+        '160',
+      ]),
+    ).toBe(0);
+    const mp4 = readdirSync(out).find((name) => name.endsWith('.mp4'))!;
+    const streams = execFileSync(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', join(out, mp4)],
+      { encoding: 'utf8' },
+    );
+    expect(streams).toContain('audio');
+  }, 180_000);
+
   it('unpairs them when context.yaml says they do not go together, without analysing again', async () => {
     const path = join(project, '.oea', 'context.yaml');
     const context = readFileSync(path, 'utf8');

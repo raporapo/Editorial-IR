@@ -142,7 +142,12 @@ export function buildCaptions(
   let skippedForSubtitles = 0;
   const otherStream: string[] = [];
   const captioned: VideoOperation[] = [];
-  for (const operation of heard) {
+  for (const planned of heard) {
+    // A clip heard through a separate recorder is captioned from what the
+    // recorder heard, where the recorder plays it: the same clip, read in the
+    // recorder's own time. Its camera may have no sound at all, and where it
+    // has some, the transcript that chose the clip is the recorder's.
+    const operation = planned.use_source_audio ? heardThrough(planned) : planned;
     const asset = ir.assets.find((a) => a.id === operation.source_asset_id);
     // Only sound the cut plays: a cutaway's own sound is not heard, and a clip
     // whose file has no sound has nothing to caption.
@@ -216,6 +221,25 @@ export function buildCaptions(
     ...(cue.operation.event_id ? { event_id: cue.operation.event_id } : {}),
     provenance: 'agent_derived',
   }));
+}
+
+/**
+ * A clip as its sound plays it: from its recorder, in the recorder's own time,
+ * when it has one. The stream is the recorder's, never the camera's.
+ */
+function heardThrough(operation: VideoOperation): VideoOperation {
+  const source = operation.audio_source;
+  if (!source) return operation;
+  const { audio_stream_index: _camera, ...rest } = operation;
+  return {
+    ...rest,
+    source_asset_id: source.asset_id,
+    source_in_ms: source.source_in_ms,
+    source_out_ms: source.source_in_ms + (operation.source_out_ms - operation.source_in_ms),
+    ...(source.audio_stream_index === undefined
+      ? {}
+      : { audio_stream_index: source.audio_stream_index }),
+  };
 }
 
 /**

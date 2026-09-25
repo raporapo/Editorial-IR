@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { SkillManifest, type EditPlan, type VideoOperation } from '@editorial-ir/contracts';
-import { planEdit, validatePlan } from '@editorial-ir/agent';
+import {
+  EMPTY_OBSERVATIONS,
+  SkillManifest,
+  type EditPlan,
+  type ObservationTimeline,
+  type VideoOperation,
+} from '@editorial-ir/contracts';
+import { buildCaptions, planEdit, validatePlan } from '@editorial-ir/agent';
 import { makeAsset, makeIR } from './support/ir.js';
 
 /**
@@ -124,5 +130,42 @@ describe('the validator, on a recorder', () => {
     const issue = report.issues.find((i) => i.code === 'range_out_of_bounds');
     expect(issue?.asset_id).toBe(recorder.id);
     expect(report.ok).toBe(false);
+  });
+});
+
+describe('captions, with a recorder', () => {
+  it('captions a clip from what its recorder heard, at the moment it is heard', () => {
+    const ir = build();
+    const plan = planEdit({ ir, skill, targetDurationMs: 16_000 });
+    const first = clips(plan)[0]!;
+    // Said 3.0-4.6 s into the camera's time: 6.2-7.8 s into the recorder's.
+    const observations: ObservationTimeline = {
+      project_id: 'prj_test',
+      pipeline_version: '0.1.0',
+      generated_at: '2026-09-25T00:00:00.000Z',
+      fingerprint: 'test',
+      ...EMPTY_OBSERVATIONS,
+      utterances: [
+        {
+          id: 'utt_0001',
+          asset_id: recorder.id,
+          start_ms: 6_200,
+          end_ms: 7_800,
+          text: 'good morning everyone',
+          confidence: 0.9,
+          words: [
+            { text: 'good', start_ms: 6_200, end_ms: 6_500, confidence: 0.9 },
+            { text: 'morning', start_ms: 6_600, end_ms: 7_100, confidence: 0.9 },
+            { text: 'everyone', start_ms: 7_200, end_ms: 7_800, confidence: 0.9 },
+          ],
+        },
+      ],
+    };
+    const captions = buildCaptions(plan, ir, observations);
+    expect(captions).toHaveLength(1);
+    expect(captions[0]!.text).toBe('good morning everyone');
+    expect(captions[0]!.timeline_start_ms).toBe(
+      first.timeline_start_ms + (3_000 - first.source_in_ms),
+    );
   });
 });
