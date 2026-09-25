@@ -39,11 +39,14 @@
     "motion_profiles": {
       "$ref": "#/$defs/__schema36"
     },
-    "model_runs": {
+    "syncs": {
       "$ref": "#/$defs/__schema41"
     },
+    "model_runs": {
+      "$ref": "#/$defs/__schema45"
+    },
     "failures": {
-      "$ref": "#/$defs/__schema52"
+      "$ref": "#/$defs/__schema56"
     }
   },
   "required": [
@@ -643,6 +646,61 @@
       "default": [],
       "type": "array",
       "items": {
+        "$ref": "#/$defs/AudioSync"
+      }
+    },
+    "AudioSync": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "$ref": "#/$defs/assetId"
+        },
+        "reference_asset_id": {
+          "$ref": "#/$defs/assetId"
+        },
+        "offset_ms": {
+          "$ref": "#/$defs/__schema42"
+        },
+        "score": {
+          "$ref": "#/$defs/__schema43"
+        },
+        "confidence": {
+          "$ref": "#/$defs/Confidence"
+        },
+        "method": {
+          "$ref": "#/$defs/__schema44"
+        }
+      },
+      "required": [
+        "asset_id",
+        "reference_asset_id",
+        "offset_ms",
+        "score",
+        "confidence"
+      ],
+      "additionalProperties": false
+    },
+    "__schema42": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "__schema43": {
+      "type": "number",
+      "minimum": 0
+    },
+    "__schema44": {
+      "default": "onset_xcorr",
+      "type": "string",
+      "enum": [
+        "onset_xcorr",
+        "user"
+      ]
+    },
+    "__schema45": {
+      "default": [],
+      "type": "array",
+      "items": {
         "$ref": "#/$defs/ModelRun"
       }
     },
@@ -656,34 +714,34 @@
           "$ref": "#/$defs/PipelineStage"
         },
         "backend": {
-          "$ref": "#/$defs/__schema42"
-        },
-        "model": {
-          "$ref": "#/$defs/__schema43"
-        },
-        "model_version": {
-          "$ref": "#/$defs/__schema44"
-        },
-        "locality": {
-          "$ref": "#/$defs/__schema45"
-        },
-        "parameters": {
           "$ref": "#/$defs/__schema46"
         },
-        "cost_usd": {
+        "model": {
           "$ref": "#/$defs/__schema47"
         },
-        "input_tokens": {
+        "model_version": {
           "$ref": "#/$defs/__schema48"
         },
-        "output_tokens": {
+        "locality": {
           "$ref": "#/$defs/__schema49"
         },
-        "latency_ms": {
+        "parameters": {
           "$ref": "#/$defs/__schema50"
         },
-        "media_left_device": {
+        "cost_usd": {
           "$ref": "#/$defs/__schema51"
+        },
+        "input_tokens": {
+          "$ref": "#/$defs/__schema52"
+        },
+        "output_tokens": {
+          "$ref": "#/$defs/__schema53"
+        },
+        "latency_ms": {
+          "$ref": "#/$defs/__schema54"
+        },
+        "media_left_device": {
+          "$ref": "#/$defs/__schema55"
         },
         "created_at": {
           "$ref": "#/$defs/Iso8601"
@@ -715,17 +773,17 @@
         "review"
       ]
     },
-    "__schema42": {
+    "__schema46": {
       "type": "string",
       "minLength": 1
     },
-    "__schema43": {
+    "__schema47": {
       "type": "string"
     },
-    "__schema44": {
+    "__schema48": {
       "type": "string"
     },
-    "__schema45": {
+    "__schema49": {
       "default": "unknown",
       "$ref": "#/$defs/ExecutionLocality"
     },
@@ -737,7 +795,7 @@
         "unknown"
       ]
     },
-    "__schema46": {
+    "__schema50": {
       "default": {},
       "type": "object",
       "propertyNames": {
@@ -745,25 +803,25 @@
       },
       "additionalProperties": {}
     },
-    "__schema47": {
+    "__schema51": {
       "default": 0,
       "type": "number",
       "minimum": 0
     },
-    "__schema48": {
+    "__schema52": {
       "type": "integer",
       "minimum": 0,
       "maximum": 9007199254740991
     },
-    "__schema49": {
+    "__schema53": {
       "type": "integer",
       "minimum": 0,
       "maximum": 9007199254740991
     },
-    "__schema50": {
+    "__schema54": {
       "$ref": "#/$defs/Milliseconds"
     },
-    "__schema51": {
+    "__schema55": {
       "default": false,
       "type": "boolean"
     },
@@ -772,7 +830,7 @@
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$",
       "description": "ISO-8601 timestamp, always UTC with a trailing Z."
     },
-    "__schema52": {
+    "__schema56": {
       "default": [],
       "type": "array",
       "items": {

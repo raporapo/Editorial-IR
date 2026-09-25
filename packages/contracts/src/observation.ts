@@ -208,6 +208,26 @@ export const MotionProfile = obj({
 export type MotionProfile = z.infer<typeof MotionProfile>;
 
 /**
+ * Where two recordings of the same moment line up, measured from their sound.
+ *
+ * `offset_ms` is where this asset's time zero falls in the reference's time:
+ * a recorder started 3.2 s after the camera has +3200. An observation, not a
+ * placement: what it is used for — the recorder's sound under the camera's
+ * picture, its transcript for the camera's events — is decided later.
+ */
+export const AudioSync = obj({
+  asset_id: AssetId,
+  reference_asset_id: AssetId,
+  offset_ms: z.int(),
+  /** How far the best alignment stood above the best rival: 1.5 and up is believed. */
+  score: z.number().min(0),
+  confidence: Confidence,
+  /** `onset_xcorr` when measured; `user` when written in context.yaml. */
+  method: z.enum(['onset_xcorr', 'user']).default('onset_xcorr'),
+}).meta({ id: 'AudioSync' });
+export type AudioSync = z.infer<typeof AudioSync>;
+
+/**
  * Everything observed about every asset in a project, before any interpretation.
  *
  * This is a cache artefact keyed by media hash and model identity: it survives a
@@ -235,6 +255,8 @@ export const ObservationTimeline = obj({
   audio_profiles: z.array(AudioProfile).default([]),
   video_events: z.array(VideoEvent).default([]),
   motion_profiles: z.array(MotionProfile).default([]),
+  /** Recordings found to hear the same moment, and by how much they are apart. */
+  syncs: z.array(AudioSync).default([]),
   /**
    * The runs that produced everything above.
    *
@@ -275,6 +297,7 @@ export const EMPTY_OBSERVATIONS: Omit<
   audio_profiles: [],
   video_events: [],
   motion_profiles: [],
+  syncs: [],
   model_runs: [],
   failures: [],
 };

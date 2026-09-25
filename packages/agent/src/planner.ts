@@ -133,6 +133,8 @@ interface CutPolicy {
   settle: boolean;
   useSourceAudio: boolean;
   audioStreamIndex?: number;
+  /** A separate recorder that is this video's sound, when the analysis found one. */
+  companion?: { asset: MediaAsset; offsetMs: number; streamIndex?: number };
   /** Pauses come out of the speech as jump cuts. */
   removeSilences: boolean;
   /** How much the whole event would lose to pause removal, for sizing. */
@@ -423,10 +425,7 @@ export function planEdit(options: PlanOptions): EditPlan {
           ? { transition_out: candidate.directive.transition_out }
           : {}),
         ...(candidate.directive.locked ? { constraints: { locked: true } } : {}),
-        use_source_audio: cut.useSourceAudio,
-        ...(cut.useSourceAudio && cut.audioStreamIndex !== undefined
-          ? { audio_stream_index: cut.audioStreamIndex }
-          : {}),
+        ...soundFor(cut, span),
         ...(first ? {} : { continues_previous: true }),
         provenance: candidate.directive.locked ? 'user_provided' : 'agent_derived',
       };
@@ -1443,7 +1442,15 @@ function cutPolicy(
   // stream that does not exist — which the probe's silent video did, in every
   // adapter. A sound file is its sound: as b-roll it would be a clip with
   // neither picture nor sound. Unknown assets keep the old answer.
-  const sound = asset === undefined ? true : hasAudioStream(asset);
+  // A recorder the analysis lined up with this video is its sound, whether or
+  // not the camera recorded any: a camera with its microphone off and a lavalier
+  // on the speaker is a common pairing.
+  const companionEntry =
+    asset && !still ? ir.audio_companions.find((c) => c.asset_id === asset.id) : undefined;
+  const companionAsset = companionEntry
+    ? context.assets.get(companionEntry.audio_asset_id)
+    : undefined;
+  const sound = asset === undefined ? true : hasAudioStream(asset) || companionAsset !== undefined;
   const useSourceAudio = still || !sound ? false : soundOnly ? true : !directive.as_b_roll;
 
   // The stream the analysis listened to, when there was a choice. Absent means
@@ -1504,6 +1511,21 @@ function cutPolicy(
     settle: kind === 'raw',
     useSourceAudio,
     ...(audioStreamIndex === undefined ? {} : { audioStreamIndex }),
+    ...(companionEntry && companionAsset
+      ? {
+          companion: {
+            asset: companionAsset,
+            offsetMs: companionEntry.offset_ms,
+            ...((companionAsset.audio_streams?.length ?? 0) > 1
+              ? {
+                  streamIndex: observations?.audio_profiles.find(
+                    (profile) => profile.asset_id === companionAsset.id,
+                  )?.stream_index,
+                }
+              : {}),
+          },
+        }
+      : {}),
     removeSilences: removeSilences && removableMs > 0,
     removableMs,
   };
@@ -1516,6 +1538,44 @@ interface Clips {
   /** Pause time taken out, between the pieces and at the edges. */
   removedMs: number;
   removedCount: number;
+}
+
+/**
+ * Where a clip's sound comes from: the recorder that heard it, where the
+ * recorder covers the whole clip; otherwise the clip's own file, if it has one.
+ *
+ * Whole clip or not at all. A clip that starts on the recorder and runs off its
+ * end would switch microphones mid-sentence, which sounds like a fault; the
+ * camera's own sound for the whole clip is the honest second choice.
+ */
+function soundFor(
+  cut: CutPolicy,
+  span: { start_ms: number; end_ms: number },
+): Pick<VideoOperation, 'use_source_audio' | 'audio_stream_index' | 'audio_source'> {
+  if (!cut.useSourceAudio) return { use_source_audio: false };
+  const companion = cut.companion;
+  if (companion) {
+    const start = span.start_ms - companion.offsetMs;
+    const end = span.end_ms - companion.offsetMs;
+    if (start >= 0 && end <= companion.asset.duration_ms) {
+      return {
+        use_source_audio: true,
+        audio_source: {
+          asset_id: companion.asset.id,
+          source_in_ms: start,
+          ...(companion.streamIndex === undefined
+            ? {}
+            : { audio_stream_index: companion.streamIndex }),
+        },
+      };
+    }
+  }
+  const own = cut.asset === undefined || hasAudioStream(cut.asset);
+  if (!own) return { use_source_audio: false };
+  return {
+    use_source_audio: true,
+    ...(cut.audioStreamIndex === undefined ? {} : { audio_stream_index: cut.audioStreamIndex }),
+  };
 }
 
 function clipsFor(

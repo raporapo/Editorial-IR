@@ -11,6 +11,7 @@ import {
   seqId,
   type AudioEvent,
   type AudioProfile,
+  type AudioSync,
   type FrameFeature,
   type MediaAsset,
   type MotionProfile,
@@ -22,12 +23,18 @@ import {
   type Utterance,
   type VideoEvent,
 } from '@editorial-ir/contracts';
-import { ModelScheduler, frameFileName, type PerceptionSuite } from '@editorial-ir/perception';
+import {
+  ModelScheduler,
+  computeHopStatistics,
+  frameFileName,
+  type PerceptionSuite,
+} from '@editorial-ir/perception';
 import { vocabularyFor } from './label-vocabulary.js';
 import type { PerceptionCache } from './cache.js';
 import type { ModelRunRecorder } from './model-runs.js';
 import type { CacheKeyParts } from './fingerprint.js';
 import { inactiveSpans, thinTimestamps, type InactiveSpan } from './activity.js';
+import { MAX_SYNC_PAIRS, SYNC_HOP_MS, SYNC_VERSION, measureSync, syncPairs } from './sync.js';
 
 /**
  * Running perception over every asset.
@@ -580,6 +587,12 @@ export async function observeAssets(
     unavailable.push({ stage: 'ocr', reason: 'no model is configured for it' });
   }
 
+  // ---- which recordings heard the same moment ------------------------------
+  // After the audio stage because it reads the same prepared sound, and cheap:
+  // a loudness envelope per file and one FFT per pair. A recorder's sound under
+  // a camera's picture, and two cameras of one moment, both start here.
+  const syncs = await findSyncs(ordered, derived, options, unavailable);
+
   return {
     observations: {
       ...EMPTY_OBSERVATIONS,
@@ -587,6 +600,7 @@ export async function observeAssets(
       fingerprint: '',
       pipeline_version: PIPELINE_VERSION,
       generated_at: new Date().toISOString(),
+      syncs,
       utterances,
       shots,
       audio_events: audioEvents,
@@ -603,6 +617,88 @@ export async function observeAssets(
     inactive,
     framesNotAnalysed,
   };
+}
+
+/**
+ * Every pair of recordings that heard the same moment, and by how much apart.
+ *
+ * Only files whose sound was prepared in this run can be compared; on a reused
+ * analysis the syncs come back with the observations. A pair that does not
+ * match is cached too — as no match — so an unrelated recorder is not
+ * correlated against every clip again on the next run.
+ */
+async function findSyncs(
+  ordered: readonly MediaAsset[],
+  derived: ReadonlyMap<string, PrepareResult>,
+  options: ObserveOptions,
+  unavailable: UnavailableStage[],
+): Promise<AudioSync[]> {
+  const byId = new Map(ordered.map((asset) => [asset.id, asset]));
+  const wavOf = (id: string): string | undefined => {
+    const path = derived.get(id)?.audio_path;
+    return path && existsSync(path) ? path : undefined;
+  };
+  const { pairs, skipped } = syncPairs(
+    ordered
+      .filter((asset) => wavOf(asset.id) !== undefined)
+      .map((asset) => ({
+        asset_id: asset.id,
+        kind: asset.kind,
+        duration_ms: asset.duration_ms,
+        ...(asset.creation_time === undefined ? {} : { creation_time: asset.creation_time }),
+        hasAudio: hasAudioStream(asset),
+      })),
+  );
+  if (skipped > 0) {
+    unavailable.push({
+      stage: 'sync',
+      reason: `${skipped} pair(s) of recordings were not compared: more than ${MAX_SYNC_PAIRS} in one project`,
+    });
+  }
+
+  const envelopes = new Map<string, number[]>();
+  const envelopeOf = (id: string): number[] => {
+    let rms = envelopes.get(id);
+    if (!rms) {
+      rms = computeHopStatistics(wavOf(id)!, SYNC_HOP_MS).rmsDb;
+      envelopes.set(id, rms);
+    }
+    return rms;
+  };
+
+  const found: AudioSync[] = [];
+  let done = 0;
+  for (const [assetId, referenceId] of pairs) {
+    const asset = byId.get(assetId)!;
+    const reference = byId.get(referenceId)!;
+    options.onProgress?.('sync', asset.file_name, done++, pairs.length);
+    const key: CacheKeyParts = {
+      operation: 'audio_sync',
+      mediaSha256: `${asset.sha256}+${reference.sha256}`,
+      backend: 'onset-xcorr',
+      modelVersion: SYNC_VERSION,
+      parameters: {
+        hop_ms: SYNC_HOP_MS,
+        asset_stream: derived.get(assetId)?.audio_stream_index ?? 0,
+        reference_stream: derived.get(referenceId)?.audio_stream_index ?? 0,
+      },
+      pipelineVersion: PIPELINE_VERSION,
+    };
+    const measured = await cached(options.cache, key, async () => {
+      const result = measureSync(envelopeOf(assetId), envelopeOf(referenceId));
+      return result ?? null;
+    });
+    if (!measured) continue;
+    found.push({
+      asset_id: assetId,
+      reference_asset_id: referenceId,
+      offset_ms: measured.offset_ms,
+      score: measured.score,
+      confidence: measured.confidence,
+      method: 'onset_xcorr',
+    });
+  }
+  return found;
 }
 
 /**

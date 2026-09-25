@@ -40,6 +40,7 @@ import { ModelRunRecorder } from './model-runs.js';
 import { CostBudget, type EscalationPolicy } from './budget.js';
 import { hashObject } from './fingerprint.js';
 import { ACTIVITY_MASK_VERSION, inactiveSpans, totalInactiveMs } from './activity.js';
+import { SYNC_VERSION, audioCompanions, recordersCovered, withCompanionSpeech } from './sync.js';
 
 /**
  * Compiling raw media and user background into an Editorial IR.
@@ -275,18 +276,29 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   // never reached it.
   const materials = classifyMaterials(assets, observations, context);
 
+  // ---- a recorder's sound under a camera's picture -------------------------
+  // From the syncs the observation found: which recorder is the sound of which
+  // video. Its transcript is the better witness for the video's events, and a
+  // recorder that is mostly the sound of videos gets no events of its own —
+  // what it heard is already in theirs.
+  const companions = audioCompanions(observations.syncs, assets);
+  const recorderOnly = recordersCovered(companions, assets);
+  const heard = withCompanionSpeech(observations, companions, assets);
+  const eventAssets =
+    recorderOnly.size === 0 ? assets : assets.filter((asset) => !recorderOnly.has(asset.id));
+
   // ---- still and silent ----------------------------------------------------
   // Recomputed from the observations on every compile rather than stored, so a
   // reused analysis gets exactly the mask a fresh one would, and a change to the
   // rule never needs a re-analysis. Read only after segmentation has cut the
   // events: it decides where not to spend, never where anything begins or ends.
-  const inactive = skipInactive ? inactiveSpans(observations, assets, { materials }) : [];
+  const inactive = skipInactive ? inactiveSpans(heard, assets, { materials }) : [];
 
   // ---- segmentation --------------------------------------------------------
   options.onProgress?.('segment', 'finding events', 0, 1);
   const drafts = segmentAssets(
-    assets,
-    observations,
+    eventAssets,
+    heard,
     annotations,
     options.segmentation ?? {},
     frameVectors.size > 0 ? frameSimilarityFrom(frameVectors) : undefined,
@@ -306,7 +318,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   const built = await buildSemanticEvents(drafts, {
     assets,
     placements,
-    observations,
+    observations: heard,
     context,
     annotations,
     runs,
@@ -659,6 +671,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     assets,
     placements,
     materials,
+    audio_companions: companions,
     chapters,
     events,
     editorial: assessed.editorial,
@@ -751,6 +764,9 @@ export function observationsFingerprint(
             : {}),
         }
       : {}),
+    // Recordings lined up by their sound are stored with the observations, so
+    // a change to how they are lined up has to miss them.
+    ...(suite.preparer ? { sync: SYNC_VERSION } : {}),
   });
 }
 

@@ -27,6 +27,7 @@ function observations(overrides: Partial<ObservationTimeline> = {}): Observation
     audio_profiles: [],
     video_events: [],
     motion_profiles: [],
+    syncs: [],
     ...overrides,
   };
 }

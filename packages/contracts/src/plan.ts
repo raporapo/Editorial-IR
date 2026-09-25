@@ -87,6 +87,20 @@ export const VideoOperation = obj({
    * cut. Absent means false.
    */
   continues_previous: z.boolean().optional(),
+  /**
+   * Where the clip's sound comes from when it is not the clip's own file: a
+   * separate recorder that heard the same moment.
+   *
+   * `source_in_ms` is in that file's own time and the sound runs for the
+   * clip's length. The camera's microphone is a metre or more from the speaker;
+   * the recorder or lavalier is at their collar, and it is what the transcript
+   * that chose this clip was made from. Absent means the clip's own sound.
+   */
+  audio_source: obj({
+    asset_id: AssetId,
+    source_in_ms: Milliseconds,
+    audio_stream_index: z.int().min(0).optional(),
+  }).optional(),
   provenance: Provenance.default('agent_derived'),
 }).meta({ id: 'VideoOperation', title: 'VideoOperation' });
 export type VideoOperation = z.infer<typeof VideoOperation>;

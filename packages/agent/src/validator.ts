@@ -141,7 +141,39 @@ export function validatePlan(plan: unknown, options: ValidateOptions = {}): Vali
     // stream that does not exist: the probe's drone clip, with no audio track,
     // came out with two audio clips in Premiere and one in OTIO. A warning,
     // because the picture is fine and an adapter can leave the sound out.
-    if (asset && operation.use_source_audio && !hasAudioStream(asset)) {
+    // The sound of another file: a recorder lined up with this one. It has to
+    // exist and hold the whole clip, or the export links sound that is not there.
+    const audioSource = operation.audio_source;
+    if (ir && audioSource) {
+      const recorder = ir.assets.find((a) => a.id === audioSource.asset_id);
+      const length = operation.source_out_ms - operation.source_in_ms;
+      if (!recorder) {
+        issues.push({
+          code: 'unknown_asset',
+          severity: 'error',
+          message: `${operation.operation_id} takes its sound from ${audioSource.asset_id}, which is not in this project`,
+          operation_id: operation.operation_id,
+          asset_id: audioSource.asset_id,
+        });
+      } else if (
+        recorder.duration_ms > 0 &&
+        audioSource.source_in_ms + length > recorder.duration_ms
+      ) {
+        issues.push({
+          code: 'range_out_of_bounds',
+          severity: 'error',
+          message: `${operation.operation_id} reads its sound past the end of ${recorder.file_name}`,
+          operation_id: operation.operation_id,
+          asset_id: recorder.id,
+          details: {
+            source_out_ms: audioSource.source_in_ms + length,
+            duration_ms: recorder.duration_ms,
+          },
+        });
+      }
+    }
+
+    if (asset && operation.use_source_audio && !audioSource && !hasAudioStream(asset)) {
       issues.push({
         code: 'source_audio_missing',
         severity: 'warning',

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { Iso8601, Milliseconds, obj, compareText } from './primitives.js';
+import { Confidence, Iso8601, Milliseconds, obj, compareText } from './primitives.js';
+import { AssetId } from './ids.js';
 import { AssetPlacement, MaterialProfile, MediaAsset } from './media.js';
 import { Project, ProjectContext, UserAnnotation } from './project.js';
 import { Chapter, SemanticEvent } from './event.js';
@@ -10,6 +11,18 @@ import { ModelRun } from './model-run.js';
 import { AnalysisQuality } from './quality.js';
 import { EmbeddingKind } from './embedding.js';
 import { IR_VERSION } from './version.js';
+
+/** A recorder that is the sound of one video. */
+export const AudioCompanion = obj({
+  /** The video whose picture the sound goes under. */
+  asset_id: AssetId,
+  /** The recorder. */
+  audio_asset_id: AssetId,
+  /** Where the recorder's time zero falls in the video's time. */
+  offset_ms: z.int(),
+  confidence: Confidence,
+}).meta({ id: 'AudioCompanion' });
+export type AudioCompanion = z.infer<typeof AudioCompanion>;
 
 /**
  * Editorial IR — the artefact this whole project exists to produce.
@@ -77,6 +90,15 @@ export const EditorialIR = obj({
   placements: z.array(AssetPlacement).default([]),
   /** What kind of material each asset is, and why that was decided. */
   materials: z.array(MaterialProfile).default([]),
+  /**
+   * Separate recorders that are the sound of a video: a lavalier or a field
+   * recorder that heard the same moment, found by lining up the two sounds.
+   *
+   * The recorder's transcript is used for the video's events, and a clip of the
+   * video plays the recorder's sound. Decided once here so the planner and every
+   * exporter read one answer rather than each deciding again.
+   */
+  audio_companions: z.array(AudioCompanion).default([]),
 
   chapters: z.array(Chapter).default([]),
   events: z.array(SemanticEvent).default([]),

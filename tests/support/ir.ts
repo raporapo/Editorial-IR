@@ -211,6 +211,7 @@ export function makeIR(spec: IrSpec): EditorialIR {
       ordered_by: 'file_name' as const,
     })),
     materials: [],
+    audio_companions: [],
     chapters: [],
     events,
     editorial,

@@ -58,6 +58,7 @@ function observations(ocr: OcrObservation[]): ObservationTimeline {
     audio_profiles: [],
     video_events: [],
     motion_profiles: [],
+    syncs: [],
   };
 }
 
