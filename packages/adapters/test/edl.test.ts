@@ -48,6 +48,52 @@ function eventLines(text: string): EdlLine[] {
     });
 }
 
+/** The tracks a channel field puts an event on, as OpenTimelineIO's reader names them. */
+const TRACKS: Record<string, string[]> = {
+  V: ['V'],
+  A: ['A1'],
+  A2: ['A2'],
+  AA: ['A1', 'A2'],
+  B: ['V', 'A1'],
+  'A2/V': ['V', 'A2'],
+  'AA/V': ['V', 'A1', 'A2'],
+};
+
+/**
+ * Each track's events in list order, read the way a conform splits a list by
+ * channel: the line an event records (the second of a dissolve's two), where.
+ */
+function tracksOf(lines: EdlLine[]): Map<string, EdlLine[]> {
+  const tracks = new Map<string, EdlLine[]>();
+  const events = new Map<number, EdlLine[]>();
+  for (const line of lines) events.set(line.event, [...(events.get(line.event) ?? []), line]);
+  for (const event of events.values()) {
+    const recorded = event.at(-1)!;
+    const names = TRACKS[recorded.channel];
+    if (!names) throw new Error(`not a channel field: ${recorded.channel}`);
+    for (const name of names) tracks.set(name, [...(tracks.get(name) ?? []), recorded]);
+  }
+  return tracks;
+}
+
+/**
+ * What a reader needs of every track: events in record order that never
+ * overlap, and no dissolve as a track's first event — there is nothing on that
+ * track to dissolve from, and OpenTimelineIO refuses the whole list over it.
+ */
+function expectReadableByChannel(text: string): void {
+  const frames = (tc: string) => smpteToFrames(tc, 30, 1)!;
+  for (const [name, events] of tracksOf(eventLines(text))) {
+    expect(events[0]!.dissolve, `${name} starts with a dissolve`).toBeUndefined();
+    for (const [index, event] of events.entries()) {
+      if (index === 0) continue;
+      expect(frames(event.recordIn), `${name} event ${event.event}`).toBeGreaterThanOrEqual(
+        frames(events[index - 1]!.recordOut),
+      );
+    }
+  }
+}
+
 function edlOf(plan = mixedPlan(), assets = mixedAssets()) {
   const request = requestFor(plan, mixedIr(assets));
   const { plan: negotiated } = negotiate(plan, new EdlAdapter().capabilities, assets);
@@ -226,6 +272,130 @@ describe('the CMX 3600 edit list', () => {
     expect(downgrades).toEqual([
       expect.objectContaining({ operation_id: 'op_0003', capability: 'transition_in' }),
     ]);
+  });
+
+  it('dissolves only the channels both clips carry, and cuts the new clip’s sound in on its own', () => {
+    // Measured on the worked example's memory-film cut: a clip whose sound is
+    // not used, dissolving into one with stereo sound, was written
+    // `004 IMG1001 AA/V C` / `004 IMG1001 AA/V D 024` — asking the conform for
+    // the first clip's sound through the dissolve, and read by OpenTimelineIO
+    // as a transition at the very start of the sound tracks, which it refuses.
+    const plan = makePlan([
+      {
+        source_asset_id: 'asset_004',
+        source_in_ms: 5000,
+        source_out_ms: 9000,
+        timeline_start_ms: 0,
+      },
+      {
+        source_asset_id: 'asset_001',
+        source_in_ms: 30_000,
+        source_out_ms: 34_000,
+        timeline_start_ms: 4000,
+        transition_in: { type: 'cross_dissolve', duration_ms: 1000 },
+      },
+    ]);
+    const { text } = edlOf(plan);
+    const lines = eventLines(text);
+    expect(lines.map((line) => [line.event, line.reel, line.channel, line.dissolve])).toEqual([
+      [1, 'DJI0042', 'V', undefined],
+      [2, 'DJI0042', 'V', undefined],
+      [2, 'C0001', 'V', 30],
+      [3, 'C0001', 'AA', undefined],
+    ]);
+    // The picture dissolves from half a second before the cut; the sound comes
+    // in on the cut, where the plan puts the clip, from the plan's in point.
+    expect(lines[2]).toMatchObject({ recordIn: '00:00:03:15', sourceIn: '00:00:29:15' });
+    expect(lines[3]).toMatchObject({
+      recordIn: '00:00:04:00',
+      recordOut: '00:00:08:00',
+      sourceIn: '00:00:30:00',
+      sourceOut: '00:00:34:00',
+    });
+    expectReadableByChannel(text);
+  });
+
+  it('keeps the outgoing clip’s sound to the cut when the clip after it has none', () => {
+    // The other way round, the camera's sound ended with its picture, half a
+    // dissolve before the cut, and the half second before the cut was silent.
+    const plan = makePlan([
+      {
+        source_asset_id: 'asset_001',
+        source_in_ms: 10_000,
+        source_out_ms: 14_000,
+        timeline_start_ms: 0,
+      },
+      {
+        source_asset_id: 'asset_004',
+        source_in_ms: 5000,
+        source_out_ms: 9000,
+        timeline_start_ms: 4000,
+        transition_in: { type: 'cross_dissolve', duration_ms: 1000 },
+      },
+    ]);
+    const { text } = edlOf(plan);
+    const lines = eventLines(text);
+    expect(lines.map((line) => [line.event, line.reel, line.channel, line.recordOut])).toEqual([
+      [1, 'C0001', 'V', '00:00:03:15'],
+      [2, 'C0001', 'AA', '00:00:04:00'],
+      [3, 'C0001', 'V', '00:00:03:15'],
+      [3, 'DJI0042', 'V', '00:00:08:00'],
+    ]);
+    expect(lines[1]).toMatchObject({ sourceIn: '00:00:10:00', sourceOut: '00:00:14:00' });
+    expectReadableByChannel(text);
+  });
+
+  it('dissolves a mono sound into a stereo one on the channel they share', () => {
+    const plan = makePlan([
+      {
+        source_asset_id: 'asset_301',
+        source_in_ms: 10_000,
+        source_out_ms: 14_000,
+        timeline_start_ms: 0,
+      },
+      {
+        source_asset_id: 'asset_303',
+        source_in_ms: 5000,
+        source_out_ms: 9000,
+        timeline_start_ms: 4000,
+        transition_in: { type: 'cross_dissolve', duration_ms: 400 },
+      },
+    ]);
+    const text = buildEdl(plan, requestFor(plan, mixedIr(soundOnlyAssets())));
+    expect(eventLines(text).map((line) => [line.event, line.reel, line.channel])).toEqual([
+      [1, 'MEMO', 'A'],
+      [2, 'MEMO', 'A'],
+      [2, 'FIELD', 'A'],
+      [3, 'FIELD', 'A2'],
+    ]);
+    expectReadableByChannel(text);
+  });
+
+  it('keeps a clip one event where the clips either side of a dissolve carry the same channels', () => {
+    const plan = makePlan([
+      {
+        source_asset_id: 'asset_001',
+        source_in_ms: 10_000,
+        source_out_ms: 14_000,
+        timeline_start_ms: 0,
+      },
+      {
+        source_asset_id: 'asset_001',
+        source_in_ms: 30_000,
+        source_out_ms: 34_000,
+        timeline_start_ms: 4000,
+        transition_in: { type: 'cross_dissolve', duration_ms: 1000 },
+      },
+    ]);
+    const { text } = edlOf(plan);
+    expect(eventLines(text).map((line) => [line.event, line.channel])).toEqual([
+      [1, 'AA/V'],
+      [2, 'AA/V'],
+      [2, 'AA/V'],
+    ]);
+    // And a cut with a still left out, a sound-only clip and a picture-only one
+    // is read a channel at a time as it always was.
+    expectReadableByChannel(edlOf(mixedPlan()).text);
   });
 
   it('fades from and to black through the BL reel', () => {

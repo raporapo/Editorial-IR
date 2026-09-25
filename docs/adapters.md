@@ -239,8 +239,16 @@ and Resolve ignores — give Resolve the `.srt`.
 (`V`, `B`, `AA/V`, `A`, `AA`). Reel names are made from file names within eight
 characters, deterministic and never colliding, with the full name in a
 `* FROM CLIP NAME:` comment and the path in `* SOURCE FILE:`. Dissolves are
-`D nnn` with the outgoing clip's zero-length line before them; fades go through
-the `BL` reel; chapters are `* LOC:` comments under the event they fall in. No
+`D nnn` with the outgoing clip's zero-length line before them, on the channels
+both clips carry. A channel only one side has comes in or goes out on the cut,
+where the plan puts the clip, as an event of its own at the same record time
+(`A2` and `A2/V` name a stereo pair's second channel alone): a clip whose sound
+is not used, dissolving into one with stereo sound, is a `V` dissolve and the
+second clip's `AA` from the cut. It used to be an `AA/V` dissolve that asked the
+conform for the first clip's sound, which OpenTimelineIO refused as a
+transition at the start of the sound tracks; the other way round, the outgoing
+sound stopped half a dissolve early. Fades go through the `BL` reel; chapters
+are `* LOC:` comments under the picture's event they fall in. No
 stills, no second track, no music bed, no speed changes, and a list of more than
 999 events is warned about.
 
