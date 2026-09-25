@@ -74,6 +74,7 @@ export const EDL_CAPABILITIES: AdapterCapabilities = AdapterCapabilities.parse({
     'Drop-frame timecode for 29.97 and 59.94; source timecodes start at each file’s embedded start timecode.',
     'Reel names are made from file names within eight characters, with the full name in a FROM CLIP NAME comment; chapters are LOC comments.',
     'No stills, no second video track and no music bed: negotiation reports each one it leaves out.',
+    'Black is a BL event: from the first frame to each channel’s first event, and wherever no event covers the cut.',
     'Options: record_start (the record timecode of the first frame, e.g. 01:00:00:00; default 00:00:00:00).',
   ],
 });
@@ -163,8 +164,12 @@ interface EdlLine {
 interface EdlEvent {
   lines: EdlLine[];
   comments: string[];
+  /** The channels the event records. */
+  channels: Channels;
   recordIn: number;
   recordOut: number;
+  /** Black (and silence) where the cut has nothing the list can hold. */
+  black?: true;
   /**
    * Sound under a picture event, as an event of its own: a separate recorder's,
    * or a clip's own sound split from its picture at a dissolve. Chapters are
@@ -448,6 +453,7 @@ export function buildEdlDocument(
         comments.push(`* AUDIO STREAM: ${d.sound.stream + 1} OF ${d.sound.streams}`);
       }
       const placement = {
+        channels: part.channels,
         recordIn: record(recordIn),
         recordOut: record(recordOut),
         // The clip's own sound split from its picture: chapters go under the picture.
@@ -515,6 +521,7 @@ export function buildEdlDocument(
           },
         ],
         comments: soundComments,
+        channels: channelsOf(false, r.sound),
         recordIn: record(d.span.start),
         recordOut: record(d.span.end),
         underPicture: true,
@@ -544,20 +551,26 @@ export function buildEdlDocument(
           },
         ],
         comments: [`* FROM CLIP NAME: ${d.asset.file_name}`],
+        channels: d.channels,
         recordIn: record(fadeOutAt),
         recordOut: record(d.span.end),
       });
     }
   }
 
+  fillWithBlack(events, record(0));
+
   // Chapters as LOC comments under the event they fall in, which is where
   // Avid-style readers look for them: the picture's, not a recorder's sound
-  // under it.
-  const located = events.filter((e) => !e.underPicture);
+  // under it, and black only where there is nothing else.
+  const located = events.filter((e) => !e.underPicture && !e.black);
+  const black = events.filter((e) => e.black);
   for (const marker of plan.markers) {
     const at = record(grid.frames(marker.timeline_ms));
+    const within = (e: EdlEvent): boolean => e.recordIn <= at && at < e.recordOut;
     const event =
-      located.find((e) => e.recordIn <= at && at < e.recordOut) ??
+      located.find(within) ??
+      black.find(within) ??
       [...located].reverse().find((e) => e.recordIn <= at) ??
       located[0];
     if (!event) continue;
@@ -610,6 +623,98 @@ function channelCode(channels: Channels): string {
   const audio = sound === '1,2' ? 'AA' : sound === '1' ? 'A' : sound === '2' ? 'A2' : '';
   if (!channels.picture) return audio;
   return audio === '' ? 'V' : audio === 'A' ? 'B' : `${audio}/V`;
+}
+
+/**
+ * Black, and silence, where the list would otherwise say nothing: from the
+ * list's first frame to each channel's first event, and across any stretch no
+ * event covers at all. `BL` is CMX 3600's own source for it, and the list
+ * already uses it for fades.
+ *
+ * A cut that opens on something a list cannot hold (a still, left out by
+ * negotiation) made the first event start after 00:00:00:00, and a reader that
+ * starts a track at its first event had nothing to say the head was black.
+ * OpenTimelineIO's reader kept it as the track's own offset, after which every
+ * `trimmed_range_in_parent()` on the track raised — measured on the sweep's
+ * stills case, whose only video starts 9 s in. It does the same to each sound
+ * track separately: the worked example's memory-film list opens on clips that
+ * use no sound, and its sound tracks were read 228 frames short at the end.
+ * So every channel is held from the first frame.
+ *
+ * A stretch in the middle that no event covers (a still left out between two
+ * clips) was an unmarked jump in the record times. Every reader fills that
+ * with a gap, but a list that writes black at the head and says nothing in the
+ * middle says the same thing two ways, so it is black too, on the channels in
+ * use there. A channel simply not used by the events around it — the sound
+ * under a clip whose sound is not used, the picture over a sound-only clip —
+ * is left empty, as every list leaves it. The end is not filled: nothing
+ * follows it for a reader to misplace.
+ */
+function fillWithBlack(events: EdlEvent[], start: number): void {
+  if (events.length === 0) return;
+  const blackEvent = (channels: Channels, from: number, to: number): EdlEvent => ({
+    lines: [
+      {
+        reel: 'BL',
+        channel: channelCode(channels),
+        sourceIn: 0,
+        sourceOut: to - from,
+        recordIn: from,
+        recordOut: to,
+      },
+    ],
+    comments: [],
+    channels,
+    recordIn: from,
+    recordOut: to,
+    black: true,
+  });
+
+  // Where each channel's first event starts.
+  const first = new Map<'V' | number, number>();
+  for (const event of events) {
+    for (const channel of [
+      ...(event.channels.picture ? ['V' as const] : []),
+      ...event.channels.sound,
+    ]) {
+      first.set(channel, Math.min(first.get(channel) ?? Infinity, event.recordIn));
+    }
+  }
+  /** The channels whose first event starts where `keep` says. */
+  const channelsFrom = (keep: (firstAt: number) => boolean): Channels => ({
+    picture: first.has('V') && keep(first.get('V')!),
+    sound: [1, 2].filter((c) => first.has(c) && keep(first.get(c)!)),
+  });
+
+  // The middle: each stretch no event covers, on the channels already in use,
+  // placed in the list where the record reaches it.
+  const ordered = [...events].sort((a, b) => a.recordIn - b.recordIn);
+  let reached = ordered[0]!.recordIn;
+  for (const event of ordered) {
+    if (event.recordIn > reached) {
+      const hole = blackEvent(
+        channelsFrom((at) => at <= reached),
+        reached,
+        event.recordIn,
+      );
+      const at = events.findIndex((e) => !e.black && e.recordIn >= hole.recordOut);
+      events.splice(at === -1 ? events.length : at, 0, hole);
+    }
+    reached = Math.max(reached, event.recordOut);
+  }
+
+  // The head: each channel from the first frame to its first event, the
+  // channels that start together in one event.
+  const starts = [...new Set(first.values())].filter((at) => at > start).sort((a, b) => a - b);
+  events.unshift(
+    ...starts.map((at) =>
+      blackEvent(
+        channelsFrom((f) => f === at),
+        start,
+        at,
+      ),
+    ),
+  );
 }
 
 function blackLine(channel: string): EdlLine {

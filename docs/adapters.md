@@ -247,10 +247,21 @@ is not used, dissolving into one with stereo sound, is a `V` dissolve and the
 second clip's `AA` from the cut. It used to be an `AA/V` dissolve that asked the
 conform for the first clip's sound, which OpenTimelineIO refused as a
 transition at the start of the sound tracks; the other way round, the outgoing
-sound stopped half a dissolve early. Fades go through the `BL` reel; chapters
-are `* LOC:` comments under the picture's event they fall in. No
-stills, no second track, no music bed, no speed changes, and a list of more than
-999 events is warned about.
+sound stopped half a dissolve early. Fades go through the `BL` reel, and so
+does black: every channel the list uses is held from the first frame by a `BL`
+event until its first event, and a stretch no event covers (a still left out
+between two clips) is a `BL` event on the channels in use there. A cut that
+opened on a still used to start the list after 00:00:00:00, which
+OpenTimelineIO's reader kept as the track's own offset (after which every
+`trimmed_range_in_parent()` raised), and it did the same to sound tracks whose
+first event came late: the memory-film list's were read 228 frames short. The
+middle of the list used to be an unmarked jump in the record times; it is black
+now so the list says the same thing the same way wherever it says it. A
+channel the events around it do not use (the sound under a clip whose sound is
+not used) is left empty, as every list leaves it, and the end is not filled.
+Chapters are `* LOC:` comments under the picture's event they fall in, or the
+black where nothing else is. No stills, no second track, no music bed, no speed
+changes, and a list of more than 999 events is warned about.
 
 **AviUtl2** proves independence with an editor that shares nothing with
 Premiere. The JSON job is the supported output (version 0.2.0 says what each clip

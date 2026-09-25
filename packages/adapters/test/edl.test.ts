@@ -112,8 +112,9 @@ describe('the CMX 3600 edit list', () => {
   });
 
   it('covers the record timeline without a gap or an overlap the plan did not have', () => {
-    // The still is left out (an EDL has none), so its four seconds are the one
-    // gap; every other event starts where the last one ended.
+    // The still is left out (an EDL has none), and its four seconds are black
+    // rather than an unmarked jump in the record times: every event starts
+    // where the last one ended.
     const { text, plan } = edlOf();
     const frames = (tc: string) => smpteToFrames(tc, 30, 1)!;
     const lines = eventLines(text).filter((line) => line.recordOut !== line.recordIn);
@@ -130,8 +131,78 @@ describe('the CMX 3600 edit list', () => {
       }
       cursor = frames(line.recordOut);
     }
-    expect(gaps).toBe(1);
+    expect(gaps).toBe(0);
     expect(cursor).toBe(layOnGrid(plan).length);
+    expect(lines.filter((line) => line.reel === 'BL' && line.dissolve === undefined)).toEqual([
+      expect.objectContaining({
+        channel: 'AA/V',
+        sourceIn: '00:00:00:00',
+        sourceOut: '00:00:04:00',
+        recordIn: '00:00:04:00',
+        recordOut: '00:00:08:00',
+      }),
+    ]);
+  });
+
+  it('starts at the first frame with black where the cut opens on what the list cannot hold', () => {
+    // A cut that opens on a photograph: the list's first event started 4 s
+    // in, and OpenTimelineIO kept that as the track's own offset, after which
+    // every trimmed_range_in_parent() on it raised.
+    const plan = makePlan([
+      { source_asset_id: 'asset_002', source_in_ms: 0, source_out_ms: 4000, timeline_start_ms: 0 },
+      {
+        source_asset_id: 'asset_001',
+        source_in_ms: 10_000,
+        source_out_ms: 14_000,
+        timeline_start_ms: 4000,
+      },
+    ]);
+    const { text } = edlOf(plan);
+    const lines = eventLines(text);
+    expect(lines.map((line) => [line.event, line.reel, line.channel])).toEqual([
+      [1, 'BL', 'AA/V'],
+      [2, 'C0001', 'AA/V'],
+    ]);
+    expect(lines[0]).toMatchObject({
+      sourceIn: '00:00:00:00',
+      sourceOut: '00:00:04:00',
+      recordIn: '00:00:00:00',
+      recordOut: '00:00:04:00',
+    });
+    expectReadableByChannel(text);
+  });
+
+  it('holds each sound channel from the first frame when the cut opens on clips that use none', () => {
+    // The worked example's memory-film cut opens on clips whose sound is not
+    // used, and OpenTimelineIO started its sound tracks at their first event:
+    // it read them 228 frames short at the end.
+    const plan = makePlan([
+      {
+        source_asset_id: 'asset_004',
+        source_in_ms: 5000,
+        source_out_ms: 9000,
+        timeline_start_ms: 0,
+      },
+      {
+        source_asset_id: 'asset_001',
+        source_in_ms: 10_000,
+        source_out_ms: 14_000,
+        timeline_start_ms: 4000,
+      },
+    ]);
+    const lines = eventLines(edlOf(plan).text);
+    expect(lines.map((line) => [line.reel, line.channel, line.recordIn, line.recordOut])).toEqual([
+      ['BL', 'AA', '00:00:00:00', '00:00:04:00'],
+      ['DJI0042', 'V', '00:00:00:00', '00:00:04:00'],
+      ['C0001', 'AA/V', '00:00:04:00', '00:00:08:00'],
+    ]);
+  });
+
+  it('puts a chapter that falls in black under the black', () => {
+    const plan = mixedPlan({ markers: [{ timeline_ms: 5000, name: 'Photos', kind: 'chapter' }] });
+    const blocks = edlOf(plan).text.split('\n\n');
+    const black = blocks.find((block) => /^\d{3} {2}BL {7}AA\/V {2}C/.test(block))!;
+    expect(black).toContain('* LOC: 00:00:05:00 GREEN  Photos');
   });
 
   it('says what each event carries: picture, stereo, mono, or sound alone', () => {
@@ -256,17 +327,19 @@ describe('the CMX 3600 edit list', () => {
       buildEdl(plan, requestFor(plan, mixedIr(soundOnlyAssets())), [], downgrades),
     );
     expect(lines.map((line) => [line.event, line.reel, line.channel, line.dissolve])).toEqual([
-      [1, 'MEMO', 'A', undefined],
+      // The second sound channel is silent until the stereo recording starts.
+      [1, 'BL', 'A2', undefined],
       [2, 'MEMO', 'A', undefined],
-      [2, 'PODCAST', 'A', 12],
-      [3, 'FIELD', 'AA', undefined],
+      [3, 'MEMO', 'A', undefined],
+      [3, 'PODCAST', 'A', 12],
       [4, 'FIELD', 'AA', undefined],
-      [4, 'BL', 'AA', 30],
+      [5, 'FIELD', 'AA', undefined],
+      [5, 'BL', 'AA', 30],
     ]);
     // Centred on the cut at 4 s: the podcast comes in six frames before its
     // 5 s in point, six frames before the cut.
-    expect(lines[2]).toMatchObject({ sourceIn: '00:00:04:24', recordIn: '00:00:03:24' });
-    expect(lines[1]).toMatchObject({ sourceIn: '00:00:13:24', recordIn: '00:00:03:24' });
+    expect(lines[3]).toMatchObject({ sourceIn: '00:00:04:24', recordIn: '00:00:03:24' });
+    expect(lines[2]).toMatchObject({ sourceIn: '00:00:13:24', recordIn: '00:00:03:24' });
     // The field recording starts at its first frame: no sound before it to
     // overlap, so that join is a cut, and is reported as one.
     expect(downgrades).toEqual([
@@ -297,16 +370,17 @@ describe('the CMX 3600 edit list', () => {
     ]);
     const { text } = edlOf(plan);
     const lines = eventLines(text);
-    expect(lines.map((line) => [line.event, line.reel, line.channel, line.dissolve])).toEqual([
-      [1, 'DJI0042', 'V', undefined],
+    const clips = lines.filter((line) => line.reel !== 'BL');
+    expect(clips.map((line) => [line.event, line.reel, line.channel, line.dissolve])).toEqual([
       [2, 'DJI0042', 'V', undefined],
-      [2, 'C0001', 'V', 30],
-      [3, 'C0001', 'AA', undefined],
+      [3, 'DJI0042', 'V', undefined],
+      [3, 'C0001', 'V', 30],
+      [4, 'C0001', 'AA', undefined],
     ]);
     // The picture dissolves from half a second before the cut; the sound comes
     // in on the cut, where the plan puts the clip, from the plan's in point.
-    expect(lines[2]).toMatchObject({ recordIn: '00:00:03:15', sourceIn: '00:00:29:15' });
-    expect(lines[3]).toMatchObject({
+    expect(clips[2]).toMatchObject({ recordIn: '00:00:03:15', sourceIn: '00:00:29:15' });
+    expect(clips[3]).toMatchObject({
       recordIn: '00:00:04:00',
       recordOut: '00:00:08:00',
       sourceIn: '00:00:30:00',
@@ -362,11 +436,15 @@ describe('the CMX 3600 edit list', () => {
       },
     ]);
     const text = buildEdl(plan, requestFor(plan, mixedIr(soundOnlyAssets())));
-    expect(eventLines(text).map((line) => [line.event, line.reel, line.channel])).toEqual([
-      [1, 'MEMO', 'A'],
+    expect(
+      eventLines(text)
+        .filter((line) => line.reel !== 'BL')
+        .map((line) => [line.event, line.reel, line.channel]),
+    ).toEqual([
       [2, 'MEMO', 'A'],
-      [2, 'FIELD', 'A'],
-      [3, 'FIELD', 'A2'],
+      [3, 'MEMO', 'A'],
+      [3, 'FIELD', 'A'],
+      [4, 'FIELD', 'A2'],
     ]);
     expectReadableByChannel(text);
   });
