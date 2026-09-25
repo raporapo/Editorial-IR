@@ -253,10 +253,13 @@ export function takeEvidence(
   // of a new picture counts; where nothing measured how much it changed (a
   // static span handed in with no envelope), the span is taken at its word.
   const profile = observations.motion_profiles.find((p) => p.asset_id === assetId);
-  const visual = observations.video_events
+  const stillEnds = observations.video_events
     .filter((event) => event.asset_id === assetId && event.event_type === 'static')
-    .filter((event) => !profile || changeAfter(profile, event.end_ms) >= TAKE_CHANGE_MOTION)
-    .map((event) => event.end_ms);
+    .map((event) => event.end_ms)
+    .sort((a, b) => a - b);
+  const visual = stillEnds.filter(
+    (end) => !profile || changeAfter(profile, end) >= TAKE_CHANGE_MOTION,
+  );
 
   // Scene text that changed between two reads: the slide is a different slide.
   // Subtitles are left out, because they change every few seconds whatever the
@@ -268,12 +271,26 @@ export function takeEvidence(
     keys.add(textKey(read.text));
     moments.set(read.start_ms, keys);
   }
+  //
+  // Where between the two reads it changed is the moment the picture changed,
+  // when the motion analysis saw it do so there; only with no such moment is it
+  // the midpoint. Reads were one per shot, and a slide read ten seconds after
+  // the last one put its boundary five seconds from the change: measured on the
+  // screen-recording probe once each slide was read, the midpoints fell at
+  // 19.75, 44.5 and 54.5 s against changes at 20, 40 and 50.
   const times = [...moments.keys()].sort((a, b) => a - b);
   for (let i = 1; i < times.length; i++) {
-    const before = moments.get(times[i - 1]!)!;
-    const after = moments.get(times[i]!)!;
+    const from = times[i - 1]!;
+    const to = times[i]!;
+    const before = moments.get(from)!;
+    const after = moments.get(to)!;
     const same = before.size === after.size && [...before].every((key) => after.has(key));
-    if (!same) visual.push(Math.round((times[i - 1]! + times[i]!) / 2));
+    if (same) continue;
+    const middle = Math.round((from + to) / 2);
+    const changed = stillEnds
+      .filter((end) => end > from && end <= to)
+      .sort((a, b) => Math.abs(a - middle) - Math.abs(b - middle) || a - b)[0];
+    visual.push(changed ?? middle);
   }
 
   const pauses: Span[] = [];
