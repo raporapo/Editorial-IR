@@ -1,6 +1,7 @@
 import {
   STATIC_MIN_MS,
   compareText,
+  type AudioCompanion,
   type MaterialProfile,
   type MediaAsset,
   type MotionProfile,
@@ -302,6 +303,13 @@ export function inactiveSpans(
      * static spans. Absent, every asset is treated as camera footage.
      */
     materials?: readonly Pick<MaterialProfile, 'asset_id' | 'kind'>[];
+    /**
+     * Recorders that are some video's sound. Over the stretch a recorder
+     * covers, its silence is the video's: a camera with its microphone off is
+     * not silent while the lavalier hears music, and one with a scratch track
+     * is judged by the better microphone.
+     */
+    companions?: readonly AudioCompanion[];
   } = {},
 ): InactiveSpan[] {
   const margin = options.marginMs ?? INACTIVE_MARGIN_MS;
@@ -312,7 +320,16 @@ export function inactiveSpans(
     const screen = options.materials?.some(
       (profile) => profile.asset_id === asset.id && profile.kind === 'screen_recording',
     );
-    const still = inactiveCandidatesFor(observations, asset, screen === true);
+    const companion = options.companions?.find((c) => c.asset_id === asset.id);
+    const recorder = companion
+      ? assets.find((candidate) => candidate.id === companion.audio_asset_id)
+      : undefined;
+    const still = inactiveCandidatesFor(
+      observations,
+      asset,
+      screen === true,
+      companion && recorder ? { recorder, offsetMs: companion.offset_ms } : undefined,
+    );
     for (const interval of still) {
       const start = interval.start + margin;
       const end = interval.end - margin;
@@ -326,6 +343,7 @@ function inactiveCandidatesFor(
   observations: ObservationTimeline,
   asset: MediaAsset,
   screen: boolean,
+  companion?: { recorder: MediaAsset; offsetMs: number },
 ): Interval[] {
   const whole: Interval[] = [{ start: 0, end: asset.duration_ms }];
   if (asset.kind === 'image') return [];
@@ -377,6 +395,23 @@ function inactiveCandidatesFor(
             ...belowLevel(profile.rms_db, profile.hop_ms, ABSOLUTE_SILENCE_DB),
           ])
         : relative;
+  }
+
+  // Where a recorder is this video's sound, its silence is the video's, moved
+  // into the video's time. A recorder whose sound was never analysed has no
+  // silence, so what it covers is not quiet: unknown is not silent.
+  if (companion) {
+    const covered: Interval[] = [
+      {
+        start: Math.max(0, companion.offsetMs),
+        end: Math.min(asset.duration_ms, companion.offsetMs + companion.recorder.duration_ms),
+      },
+    ].filter((interval) => interval.end > interval.start);
+    const heard = silentSpans(observations, companion.recorder).map((span) => ({
+      start: span.start_ms + companion.offsetMs,
+      end: span.end_ms + companion.offsetMs,
+    }));
+    silent = merge([...subtract(silent, covered), ...intersect(merge(heard), covered)]);
   }
 
   // Words the transcriber heard override a silence the level meter reported: a

@@ -304,7 +304,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   // reused analysis gets exactly the mask a fresh one would, and a change to the
   // rule never needs a re-analysis. Read only after segmentation has cut the
   // events: it decides where not to spend, never where anything begins or ends.
-  const inactive = skipInactive ? inactiveSpans(heard, assets, { materials }) : [];
+  const inactive = skipInactive ? inactiveSpans(heard, assets, { materials, companions }) : [];
 
   // ---- segmentation --------------------------------------------------------
   options.onProgress?.('segment', 'finding events', 0, 1);

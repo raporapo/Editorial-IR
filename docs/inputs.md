@@ -216,6 +216,9 @@ becomes that video's companion (`EditorialIR.audio_companions`):
 - The video's events hear the recorder. Its utterances, moved into the video's
   time with their words, replace the camera's own over the stretch the recorder
   covers; the stored observations are not changed.
+- The still-and-silent mask ([cost](cost.md)) takes the recorder's silence as the
+  video's over that stretch: a locked-off camera with its microphone off is not
+  silent while the lavalier hears music.
 - A recorder that is mostly some video's sound gets no events of its own: what it
   heard is already in the videos' events. One that ran long after the camera
   stopped keeps its own events.

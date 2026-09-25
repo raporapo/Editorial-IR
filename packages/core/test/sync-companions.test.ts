@@ -17,7 +17,8 @@ import {
   withCompanionSpeech,
   type SyncCandidate,
 } from '../src/sync.js';
-import { makeEvent } from '../../../tests/support/ir.js';
+import { inactiveSpans } from '../src/activity.js';
+import { makeAsset, makeEvent } from '../../../tests/support/ir.js';
 
 /**
  * A separate recorder as the sound of a camera: which pairs are compared, which
@@ -364,5 +365,65 @@ describe('two cameras of one moment', () => {
   it('links nothing when no two videos were lined up', () => {
     const events = [makeEvent({ asset_id: camera.id }, 0), makeEvent({ asset_id: second.id }, 1)];
     expect(sameMoments(events, [])).toEqual([]);
+  });
+});
+
+describe('the still-and-silent mask, through a recorder', () => {
+  // A locked-off camera with its microphone off, and a recorder hearing music
+  // for the whole of it. Still, but not silent.
+  const still = makeAsset({
+    id: camera.id,
+    file_name: camera.file_name,
+    duration_ms: camera.duration_ms,
+    audio_streams: [],
+  });
+  const lavalier = makeAsset({
+    id: recorder.id,
+    file_name: recorder.file_name,
+    kind: 'audio',
+    duration_ms: recorder.duration_ms,
+    audio_codec: 'pcm_s16le',
+    audio_streams: [{ index: 0, channels: 1 }],
+  });
+  const observations = {
+    ...EMPTY_OBSERVATIONS,
+    project_id: 'prj_test',
+    pipeline_version: 'test',
+    generated_at: '2026-09-25T00:00:00.000Z',
+    fingerprint: 'f',
+    video_events: [
+      {
+        id: 'vev_0001',
+        asset_id: camera.id,
+        start_ms: 0,
+        end_ms: camera.duration_ms,
+        event_type: 'static' as const,
+        confidence: 0.9,
+      },
+    ],
+    // Music at -20 dBFS throughout.
+    audio_profiles: [
+      { asset_id: recorder.id, hop_ms: 100, rms_db: new Array<number>(900).fill(-20) },
+    ],
+  } as ObservationTimeline;
+  const companions = audioCompanions([sync()], assets);
+
+  it('is not silent where the recorder hears something', () => {
+    const alone = inactiveSpans(observations, [still, lavalier]);
+    // Without the pairing, a camera with no microphone is silent end to end.
+    expect(alone.filter((s) => s.asset_id === camera.id)).toHaveLength(1);
+    const heard = inactiveSpans(observations, [still, lavalier], { companions });
+    expect(heard.filter((s) => s.asset_id === camera.id)).toEqual([]);
+  });
+
+  it('is silent where the recorder is', () => {
+    const quiet = {
+      ...observations,
+      audio_profiles: [
+        { asset_id: recorder.id, hop_ms: 100, rms_db: new Array<number>(900).fill(-70) },
+      ],
+    };
+    const heard = inactiveSpans(quiet, [still, lavalier], { companions });
+    expect(heard.filter((s) => s.asset_id === camera.id)).toHaveLength(1);
   });
 });
