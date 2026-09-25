@@ -1,10 +1,10 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ProbeResult } from '@editorial-ir/contracts';
 import type { MediaProbe } from '@editorial-ir/perception';
-import { ingestPaths } from '../src/index.js';
+import { findMedia, ingestPaths, isMediaFile } from '../src/index.js';
 
 /**
  * What ingest accepts, and where it puts what it accepts.
@@ -87,6 +87,84 @@ function jpegTakenAt(date: string, offset?: string): Uint8Array {
   ]);
 }
 
+describe('finding media in a folder', () => {
+  it('follows links to files and to folders, which is how footage on a card is gathered', () => {
+    // Dirent.isFile() is false for a link, so a folder of links registered
+    // nothing at all.
+    const card = folder();
+    writeFileSync(join(card, 'C0001.MP4'), 'clip');
+    mkdirSync(join(card, 'DCIM'));
+    writeFileSync(join(card, 'DCIM', 'IMG_0001.JPG'), 'photo');
+    const project = folder();
+    symlinkSync(join(card, 'C0001.MP4'), join(project, 'C0001.MP4'));
+    symlinkSync(join(card, 'DCIM'), join(project, 'DCIM'));
+    expect(findMedia(project).map((path) => path.slice(project.length + 1))).toEqual([
+      'C0001.MP4',
+      'DCIM/IMG_0001.JPG',
+    ]);
+  });
+
+  it('walks a folder once, however many links lead back to it', () => {
+    const dir = folder();
+    writeFileSync(join(dir, 'a.mov'), 'clip');
+    symlinkSync(dir, join(dir, 'again'));
+    expect(findMedia(dir)).toHaveLength(1);
+  });
+
+  it('lists a link to nothing, so it is reported rather than silently skipped', () => {
+    const dir = folder();
+    symlinkSync(join(dir, 'gone.mp4'), join(dir, 'broken.mp4'));
+    expect(findMedia(dir).map((path) => basename(path))).toEqual(['broken.mp4']);
+  });
+
+  it("skips dot-files, macOS's ._ shadows included", () => {
+    const dir = folder();
+    writeFileSync(join(dir, '._C0001.MP4'), 'resource fork');
+    writeFileSync(join(dir, 'C0001.MP4'), 'clip');
+    expect(findMedia(dir).map((path) => basename(path))).toEqual(['C0001.MP4']);
+  });
+
+  it('tells a transport stream from a TypeScript file, though both are .ts', () => {
+    const dir = folder();
+    const packets = new Uint8Array(188 * 3);
+    packets[0] = packets[188] = packets[376] = 0x47;
+    writeFileSync(join(dir, 'stream.ts'), packets);
+    const m2ts = new Uint8Array(192 * 3);
+    m2ts[4] = m2ts[196] = m2ts[388] = 0x47;
+    writeFileSync(join(dir, 'avchd.ts'), m2ts);
+    writeFileSync(join(dir, 'index.ts'), 'export const answer = 42;\n');
+    expect(isMediaFile(join(dir, 'stream.ts'))).toBe(true);
+    expect(isMediaFile(join(dir, 'index.ts'))).toBe(false);
+    expect(findMedia(dir).map((path) => basename(path))).toEqual(['avchd.ts', 'stream.ts']);
+  });
+
+  it('accepts the broadcast, camera, audio and still containers by name', () => {
+    const dir = folder();
+    const names = [
+      'a.mxf',
+      'b.mpg',
+      'c.mpeg',
+      'd.mts',
+      'e.m2ts',
+      'f.3gp',
+      'g.3g2',
+      'h.aif',
+      'i.aiff',
+      'j.caf',
+      'k.opus',
+      'l.ogg',
+      'm.oga',
+      'n.flac',
+      'o.webp',
+      'p.avif',
+      'q.heif',
+      'r.heic',
+    ];
+    for (const name of names) writeFileSync(join(dir, name), 'x');
+    expect(findMedia(dir).map((path) => basename(path))).toEqual(names);
+  });
+});
+
 describe('capture times at ingest', () => {
   it("reads a JPEG's EXIF date, which ffprobe does not, and invents no zone for it", async () => {
     const root = folder();
@@ -156,5 +234,33 @@ describe('capture times at ingest', () => {
     const { added } = await ingestPaths([root], { projectRoot: root, probe });
     expect(added.find((a) => a.file_name === 'A001.MOV')?.start_timecode).toBe('01:00:00;00');
     expect(added.find((a) => a.file_name === 'still.png')?.start_timecode).toBeUndefined();
+  });
+});
+
+describe('a HEIC the installed ffmpeg cannot read', () => {
+  it('is reported as that, with what would fix it, not as a corrupt file', async () => {
+    const root = folder();
+    const heic = Uint8Array.from([
+      0,
+      0,
+      0,
+      24,
+      ...Buffer.from('ftypheic', 'latin1'),
+      0,
+      0,
+      0,
+      0,
+      ...Buffer.from('mif1heic', 'latin1'),
+    ]);
+    writeFileSync(join(root, 'IMG_0001.HEIC'), heic);
+    writeFileSync(join(root, 'broken.mp4'), 'not a movie');
+    const { failed } = await ingestPaths([root], { projectRoot: root, probe: new TableProbe({}) });
+    const photo = failed.find((f) => f.path.endsWith('IMG_0001.HEIC'));
+    expect(photo?.reason).toBe(
+      'a HEIF/HEIC photo, and the installed ffmpeg cannot read HEIF (ffprobe: moov atom not found)',
+    );
+    expect(photo?.fix).toMatch(/FFmpeg 7\.1 or newer.*JPEG/);
+    // A file that is not a HEIF keeps its own reason.
+    expect(failed.find((f) => f.path.endsWith('broken.mp4'))?.fix).toBeUndefined();
   });
 });

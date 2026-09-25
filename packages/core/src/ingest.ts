@@ -1,4 +1,12 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from 'node:fs';
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
   compareText,
@@ -18,7 +26,7 @@ import {
 import type { MediaProbe } from '@editorial-ir/perception';
 import { canonicalJson, hashFile } from './fingerprint.js';
 import type { PerceptionCache } from './cache.js';
-import { photoDateOf, type PhotoDate } from './exif.js';
+import { isHeifFile, photoDateOf, type PhotoDate } from './exif.js';
 
 /**
  * Registering media.
@@ -29,6 +37,18 @@ import { photoDateOf, type PhotoDate } from './exif.js';
  * re-analyse it and copying a project to another machine does not either.
  */
 
+/**
+ * The extensions ingest looks at. Each was probed with ffmpeg 6.1 on a
+ * synthesised file (docs/inputs.md has the table); what a file turns out to
+ * hold is then decided by its streams, not by this list.
+ *
+ * - Broadcast and camera containers: MXF (P2, XDCAM, most professional
+ *   cameras), MPEG program streams (.mpg, .mpeg, DVD camcorders), MPEG
+ *   transport streams (.ts, and AVCHD's .mts/.m2ts), 3GP/3G2 (older phones).
+ * - Audio: AIFF and CAF (Apple's recorders and Logic), Ogg in all three names.
+ * - Stills: WebP, AVIF and HEIF/HEIC beside JPEG, PNG and TIFF. HEIF needs an
+ *   ffmpeg that can read it; ingest says so when this one cannot.
+ */
 const VIDEO_EXTENSIONS = new Set([
   '.mp4',
   '.mov',
@@ -38,9 +58,38 @@ const VIDEO_EXTENSIONS = new Set([
   '.webm',
   '.mts',
   '.m2ts',
+  '.ts',
+  '.mxf',
+  '.mpg',
+  '.mpeg',
+  '.3gp',
+  '.3g2',
+  '.ogv',
 ]);
-const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.opus']);
-const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.heic', '.tif', '.tiff']);
+const AUDIO_EXTENSIONS = new Set([
+  '.wav',
+  '.mp3',
+  '.m4a',
+  '.aac',
+  '.flac',
+  '.ogg',
+  '.oga',
+  '.opus',
+  '.aif',
+  '.aiff',
+  '.caf',
+]);
+const IMAGE_EXTENSIONS = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.heic',
+  '.heif',
+  '.avif',
+  '.tif',
+  '.tiff',
+]);
 
 export function mediaKindOf(path: string): MediaKind | undefined {
   const extension = extname(path).toLowerCase();
@@ -50,7 +99,48 @@ export function mediaKindOf(path: string): MediaKind | undefined {
   return undefined;
 }
 
-/** Every media file under a path, recursively, in a stable order. */
+/**
+ * Whether a file with a media extension is worth handing to the probe.
+ *
+ * `.ts` is an MPEG transport stream and it is also TypeScript. Accepted by name
+ * alone, a script in a footage folder — or every source file of a repository,
+ * on `oea ingest .` — would be handed to ffprobe and listed under "could not
+ * read". A transport stream is 188-byte packets that each start 0x47 (192
+ * bytes with the 4-byte clock of an M2TS, measured on ffmpeg's own AVCHD
+ * output), so two sync bytes in the right places say which it is; a text file
+ * with a 'G' at both is not one anybody has.
+ */
+export function isMediaFile(path: string): boolean {
+  if (mediaKindOf(path) === undefined) return false;
+  if (extname(path).toLowerCase() !== '.ts') return true;
+  return looksLikeTransportStream(path);
+}
+
+function looksLikeTransportStream(path: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, 'r');
+    const head = new Uint8Array(400);
+    const read = readSync(fd, head, 0, head.length, 0);
+    const sync = (at: number) => at < read && head[at] === 0x47;
+    return (sync(0) && sync(188)) || (sync(4) && sync(196));
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/**
+ * Every media file under a path, recursively, in a stable order.
+ *
+ * A symbolic link is followed, to a file or to a folder: `Dirent.isFile()` is
+ * false for a link, so a footage folder assembled from links to a card or an
+ * archive drive — which is how many people avoid copying forty gigabytes —
+ * ingested as nothing at all. A folder is walked once however many links lead
+ * to it, so a link to a parent cannot loop. A link that points nowhere is
+ * listed, so it is reported as unreadable rather than silently skipped.
+ */
 export function findMedia(target: string): string[] {
   // A path that is not there is a typo, which is a thing to say plainly rather
   // than a Node ENOENT with a stack trace through statSync.
@@ -58,18 +148,33 @@ export function findMedia(target: string): string[] {
     throw new EditorialError('not_found', `there is nothing at ${target}`);
   }
   const stat = statSync(target);
-  if (stat.isFile()) return mediaKindOf(target) ? [target] : [];
+  if (stat.isFile()) return isMediaFile(target) ? [target] : [];
 
   const found: string[] = [];
+  const walked = new Set<string>();
   const walk = (directory: string): void => {
+    const real = realpathSync(directory);
+    if (walked.has(real)) return;
+    walked.add(real);
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
       compareText(a.name, b.name),
     )) {
-      // Skip our own directory, or ingesting a project would ingest its proxies.
+      // Skip our own directory, or ingesting a project would ingest its proxies;
+      // and macOS's `._` shadow files, which carry a media extension and no media.
       if (entry.name.startsWith('.')) continue;
       const path = join(directory, entry.name);
-      if (entry.isDirectory()) walk(path);
-      else if (entry.isFile() && mediaKindOf(path)) found.push(path);
+      if (entry.isSymbolicLink()) {
+        let linked;
+        try {
+          linked = statSync(path);
+        } catch {
+          if (mediaKindOf(path)) found.push(path);
+          continue;
+        }
+        if (linked.isDirectory()) walk(path);
+        else if (linked.isFile() && isMediaFile(path)) found.push(path);
+      } else if (entry.isDirectory()) walk(path);
+      else if (entry.isFile() && isMediaFile(path)) found.push(path);
     }
   };
   walk(target);
@@ -204,16 +309,20 @@ export async function ingestPaths(
       stat = statSync(file);
     } catch (error) {
       // One unreadable file should not abandon an ingest of thirty.
-      failed.push({
-        path: file,
-        reason: error instanceof Error ? error.message : String(error),
-        // A missing program is the commonest first-run failure and the one
-        // thing here the user can actually act on, so carry the remedy up
-        // rather than making them go and find it.
-        ...(EditorialError.is(error) && typeof error.details.install === 'string'
-          ? { fix: error.details.install }
-          : {}),
-      });
+      failed.push(
+        probe === undefined && isHeifFile(file) && !isMissingProgram(error)
+          ? heifFailure(file, error)
+          : {
+              path: file,
+              reason: error instanceof Error ? error.message : String(error),
+              // A missing program is the commonest first-run failure and the one
+              // thing here the user can actually act on, so carry the remedy up
+              // rather than making them go and find it.
+              ...(EditorialError.is(error) && typeof error.details.install === 'string'
+                ? { fix: error.details.install }
+                : {}),
+            },
+      );
       continue;
     }
 
@@ -242,6 +351,36 @@ export async function ingestPaths(
     duplicates,
     refreshed: [...refreshed.values()].sort((a, b) => compareText(a.id, b.id)),
     failed,
+  };
+}
+
+function isMissingProgram(error: unknown): boolean {
+  return EditorialError.is(error) && typeof error.details.install === 'string';
+}
+
+/**
+ * A HEIC the installed ffmpeg cannot open, said as that.
+ *
+ * ffmpeg reads HEIF through its MP4 reader, and before HEIF support was added
+ * that reader looks for a movie and reports, measured on ffmpeg 6.1 with a
+ * one-picture HEIC: "moov atom not found ... Invalid data found when processing
+ * input". Every iPhone photo in a folder failed with that, which reads as a
+ * corrupt file. It is a missing feature of one program, with two remedies.
+ */
+function heifFailure(file: string, error: unknown): IngestResult['failed'][number] {
+  // What ffprobe said, not the command line and the path again.
+  const message = error instanceof Error ? error.message : String(error);
+  const detail = /moov atom not found/i.test(message)
+    ? 'moov atom not found'
+    : message.trim().split('\n').at(-1)?.replace(/^.*: /, '');
+  return {
+    path: file,
+    reason:
+      'a HEIF/HEIC photo, and the installed ffmpeg cannot read HEIF' +
+      (detail ? ` (ffprobe: ${detail})` : ''),
+    fix:
+      'HEIF photos need FFmpeg 7.1 or newer (which also reads the tiled pictures phones take); ' +
+      'or export them as JPEG, which keeps their EXIF capture time',
   };
 }
 
