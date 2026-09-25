@@ -82,15 +82,21 @@ export async function runAnalyze(args: AnalyzeArgs): Promise<number> {
     });
     progress.clear();
 
+    // The IR carries the project record as the compile read it, which is the
+    // record from before this command: the perception it is about to store was
+    // not in it yet. So the first analysis of a project said nothing about how
+    // it was perceived, the second (same footage, same models) said `local` —
+    // two different IRs from one input — and a re-analysis with another
+    // perception was labelled with the previous one. The record written here
+    // and the one inside the IR are the same record.
+    const project = { ...result.ir.project, ...(perception ? { perception } : {}) };
+    const ir = { ...result.ir, project };
     store.writeObservations(result.observations);
-    store.writeIr(result.ir);
+    store.writeIr(ir);
     store.writeEmbeddings(result.embeddings);
-    store.writeProject({
-      ...result.ir.project,
-      ...(perception ? { perception } : {}),
-    });
+    store.writeProject(project);
 
-    const { ir, report } = result;
+    const { report } = result;
     success(`${ir.stats.event_count} events in ${ir.stats.chapter_count} chapters`);
 
     heading('the analysis');
