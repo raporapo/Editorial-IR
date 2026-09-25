@@ -126,7 +126,18 @@ function withCaptionsIfMissing(
   if (plan.tracks.text.some((text) => text.kind === 'caption')) return plan;
   const notes: string[] = [];
   const captions = buildCaptions(plan, ir, observations, { notes });
-  note(`worked out ${captions.length} caption(s) from the transcript`);
+  if (captions.length > 0) {
+    note(`worked out ${captions.length} caption(s) from the transcript`);
+  } else if ((observations?.utterances.length ?? 0) === 0) {
+    // Said here because the adapter can only say "no captions", and its advice
+    // — run this very command — is what the user just did.
+    note(
+      'no captions: the analysis has no transcript. Captions need a speech model — analyse with ' +
+        '"--perception python" (see "oea doctor")',
+    );
+  } else {
+    note('no captions: nothing is said inside the clips of this cut');
+  }
   for (const line of notes) note(`  ${line}`);
   return { ...plan, tracks: { ...plan.tracks, text: [...plan.tracks.text, ...captions] } };
 }

@@ -146,8 +146,8 @@ abstract class SubtitleAdapter implements EditorAdapter {
     }
     if (cues.length === 0) {
       warnings.push(
-        'the plan has no captions, so nothing was written; run "oea plan --captions", or ' +
-          '"oea apply --editor srt", which works them out from the transcript',
+        'the plan has no captions, so nothing was written; "oea plan --captions" and ' +
+          '"oea apply --editor srt" work them out from the transcript, when the analysis has one',
       );
       return {
         adapter: this.capabilities.id,
