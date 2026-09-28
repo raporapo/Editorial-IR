@@ -121,6 +121,16 @@ Read the cut. Not the summary line — the list of clips, in order, with their
 lengths and roles. Several of the bugs listed at the top of this page were found
 by reading that list and nothing else.
 
+The worked example replays recorded perception, so it never touches a media
+file. For the media path, `scripts/probe-footage.sh <dir>` makes nine kinds of
+material with ffmpeg — an edited programme, phone-trimmed clips, sound files,
+photographs, a silent drone clip, a screen recording, variable frame rate, two
+audio streams, a camera left running — the same bytes on every run. Each case is
+`<dir>/<case>/footage`, ready for `oea ingest`; running every skill and every
+editor over them is how the output checks were written. The sound is tones, not
+speech, so they measure timing, structure and cost per event, not what a
+transcript makes of them.
+
 ### Turning a judgement into a measurement
 
 "This cut is better" is not reviewable, and taste is not a regression test. When
