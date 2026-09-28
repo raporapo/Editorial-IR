@@ -72,6 +72,10 @@ export function rejectsResponseFormat(status: number, body: string): boolean {
   // A 500 counts, unfortunately: llama.cpp answers a validation error with one.
   if (status !== 400 && status !== 404 && status !== 422 && status !== 500) return false;
   const text = body.toLowerCase();
+  // Gemini's OpenAI-compatible endpoint turns `response_format` into its own
+  // `generation_config.response_schema` and reports a schema it cannot take
+  // under that name, so neither of the OpenAI words appears in the error.
+  if (text.includes('response_schema') || text.includes('responseschema')) return true;
   if (!text.includes('response_format') && !text.includes('json_schema')) return false;
   return (
     text.includes('json_schema') ||

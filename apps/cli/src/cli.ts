@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util';
 import { EditorialError } from '@editorial-ir/contracts';
-import { colour, fail, heading, line, note } from './ui.js';
+import { colour, fail, heading, line, note, warn } from './ui.js';
+import { applyProviderPreset, confirmPresetModels, type ProviderPreset } from './provider.js';
 import { runInit } from './commands/init.js';
 import { runIngest } from './commands/ingest.js';
 import { runAnalyze } from './commands/analyze.js';
@@ -83,6 +84,15 @@ export async function main(argv: string[]): Promise<number> {
   if (!command || values.help) {
     printHelp(command);
     return command ? 0 : values.help ? 0 : 1;
+  }
+
+  // One key standing for every model stage (`OEA_GEMINI_API_KEY`). Before any
+  // command reads the stage variables, and into `process.env` so the Python
+  // worker sees the same.
+  const preset = applyProviderPreset();
+  if (preset && MODEL_COMMANDS.has(command)) {
+    const refused = await checkPreset(preset);
+    if (refused) return 1;
   }
 
   const number = (value: string | undefined): number | undefined => {
@@ -259,7 +269,7 @@ export async function main(argv: string[]): Promise<number> {
       });
 
     case 'doctor':
-      return runDoctor();
+      return runDoctor(preset);
 
     case 'schema':
       return runSchema({
@@ -275,6 +285,26 @@ export async function main(argv: string[]): Promise<number> {
       note('Run "oea --help" for the list.');
       return 2;
   }
+}
+
+/** Commands that call a model, and so are worth one request to check the preset's. */
+const MODEL_COMMANDS = new Set(['analyze', 'analyse', 'agent', 'search', 'demo']);
+
+/**
+ * Asks Gemini which models the key can use before the command spends anything.
+ * Returns true when the key was refused, which nothing that needs a model can
+ * get past: said once here rather than once per event.
+ */
+async function checkPreset(preset: ProviderPreset): Promise<boolean> {
+  const checked = await confirmPresetModels(preset);
+  // To stderr: `search --json` prints its answer on stdout.
+  for (const message of checked.notes) warn(message);
+  if (checked.refused) {
+    fail(checked.refused);
+    note('Check the key at https://aistudio.google.com/apikey, or unset it to run without Gemini.');
+    return true;
+  }
+  return false;
 }
 
 /**

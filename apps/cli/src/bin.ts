@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { EditorialError } from '@editorial-ir/contracts';
 import { main } from './cli.js';
+import { loadDotEnv } from './provider.js';
 import { fail, note } from './ui.js';
 
 /**
@@ -25,6 +26,12 @@ function formatDetail(value: unknown): string {
   if (value === null || typeof value !== 'object') return String(value);
   return JSON.stringify(value);
 }
+
+// A `.env` in the directory the command runs in: how "paste the key into a
+// file" becomes the whole local setup (see .env.example). Here and not in
+// `main`, so that a test calling `main` never picks up a developer's real key
+// and starts paying a provider.
+loadDotEnv();
 
 try {
   process.exitCode = await main(process.argv.slice(2));

@@ -1,0 +1,108 @@
+# Models: one key, a local server, or both
+
+Three stages decide what the edit says, and each needs a model for standard
+quality: **description** (looking at an event's frames), **judgement** (what the
+event is worth to the piece) and **search** (text embeddings). All three speak
+the OpenAI chat-completions and embeddings shapes, so any provider or local
+server that does is the same configuration. Transcription, on-screen text and
+picture features run on this machine in the Python worker, with no key at all.
+
+`oea doctor` says what is configured, what each stage will use, and whether a
+key works.
+
+## One Gemini key
+
+Copy `.env.example` to `.env` in the directory you run `oea` from (the
+repository root for `pnpm oea`) and paste the key:
+
+```bash
+OEA_GEMINI_API_KEY=…
+```
+
+In a hosted environment, set that one variable in its settings instead. The key
+comes from [Google AI Studio](https://aistudio.google.com/apikey).
+
+That line fills every stage through Gemini's OpenAI-compatible endpoint
+(`https://generativelanguage.googleapis.com/v1beta/openai`):
+
+| stage                    | variable it fills          | default model           | why this one                                          |
+| ------------------------ | -------------------------- | ----------------------- | ----------------------------------------------------- |
+| description, `oea agent` | `OEA_VLM_*`, `OEA_AGENT_*` | `gemini-3.8-flash`      | sees frames, writes the transcript's language         |
+| judgement                | `OEA_DECISION_*`           | `gemini-3.5-flash-lite` | called for every event, with ~1,560 input tokens each |
+| search                   | `OEA_EMBED_*`              | `gemini-embedding-001`  | multilingual; `夜景` finds "night view of the city"   |
+
+It also sets `OEA_VLM_SCOPE=base` (describe every event, not only the ones that
+earn a closer look — without it a hosted-only setup cannot reach standard
+quality) and `OEA_DECISION=local-system-one` (the model judges, the rules are
+the fallback).
+
+- **Only what is not set.** A stage whose own `…_BASE_URL` is already set keeps
+  all of its settings, and this key is never sent to that URL. A local vision
+  model beside Gemini judgement is `OEA_VLM_BASE_URL` plus this key.
+- **Only when asked.** A `GEMINI_API_KEY` that other tools put in your shell does
+  nothing by itself; set `OEA_PROVIDER=gemini` to use it. Turning the preset on
+  sends frames to Google, and nothing here does that uninvited.
+- **Model names move.** Before a command that calls a model, `oea` asks Gemini
+  which models the key can use (one request). A default the list lacks is
+  replaced by the newest plain release of the same family — never a `-preview`,
+  `-exp` or `-image` variant — and the replacement is said. A model you name is
+  never replaced. Pin your own with `OEA_GEMINI_MODEL`,
+  `OEA_GEMINI_JUDGE_MODEL` and `OEA_GEMINI_EMBED_MODEL`.
+- **A refused key stops the command** before any analysis, with Google's own
+  message, rather than failing once per event.
+
+### What it costs, and how to bound it
+
+Every event is described and judged once, and cached: a re-analysis, another
+skill or another duration costs nothing again. Still, silent footage is described
+and judged by rules instead ([the mask](cost.md)), and frames are sent at 768
+pixels on the long edge. `--budget <usd>` refuses to spend past a limit, and a
+spending cap in the Google console is a second guard. `oea analyze` reports what
+it spent and what the mask saved.
+
+### What leaves the machine
+
+Frames of each described event, the transcript's words, and the text of events
+for search go to Google. The video file, the audio and everything else stay
+here. Every analysis says `media left this machine: yes` when this is on
+([privacy](privacy.md)).
+
+## Everything on this machine
+
+No key, no cost, nothing sent anywhere. A local server that speaks the OpenAI
+shape serves description and judgement; the Python worker serves the rest.
+
+```bash
+# the worker: transcription, on-screen text, picture features, text embeddings
+python3 -m venv .venv && . .venv/bin/activate
+pip install -e 'services/perception[all]'
+export OEA_PERCEPTION=python
+export OEA_ASR_MODEL=small                            # base by default; small or larger for Japanese
+export OEA_TEXT_MODEL=intfloat/multilingual-e5-small  # search by meaning
+
+# a local server for description and judgement (Ollama shown; vLLM, LM Studio
+# and llama.cpp work the same way)
+ollama pull qwen2.5vl:7b && ollama pull qwen3:8b
+export OEA_VLM_BASE_URL=http://localhost:11434/v1 OEA_VLM_MODEL=qwen2.5vl:7b
+export OEA_DECISION=local-system-one
+export OEA_DECISION_BASE_URL=http://localhost:11434/v1 OEA_DECISION_MODEL=qwen3:8b
+```
+
+The model names are examples; any vision model and any instruction model the
+server offers will do. A model on `localhost` describes every event, because
+that is free. Sixteen gigabytes of memory is a comfortable floor, and a GPU
+makes transcription and description several times faster.
+
+## Both
+
+The variables are per stage, so any mix works: transcription in the worker,
+descriptions from a local vision model, judgement and search from Gemini.
+
+```bash
+OEA_GEMINI_API_KEY=…
+OEA_PERCEPTION=python
+OEA_VLM_BASE_URL=http://localhost:11434/v1
+OEA_VLM_MODEL=qwen2.5vl:7b
+```
+
+Here the frames never leave the machine; only the text of each event does.

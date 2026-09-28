@@ -99,6 +99,11 @@ what the edit says and all three have a stand-in that will quietly do a worse jo
 
 Any OpenAI-compatible server satisfies all three — Ollama, vLLM, LM Studio,
 llama.cpp, or a hosted provider. `oea doctor` reports what your machine can reach.
+
+The shortest setup is one Gemini key: copy `.env.example` to `.env` and paste it
+after `OEA_GEMINI_API_KEY=`. That line fills all three stages; how, what it
+costs and what it sends are in [docs/models.md](docs/models.md), beside the
+fully local setup.
 A model on `localhost` describes every event, because that is free; a hosted one
 waits for the events that earn it unless you set `OEA_VLM_SCOPE=base`.
 

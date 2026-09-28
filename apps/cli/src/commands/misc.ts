@@ -14,6 +14,7 @@ import { NodeCommandRunner } from '@editorial-ir/perception';
 import { SkillRegistry, validateSkill } from '@editorial-ir/skills';
 import { listAdapters } from '@editorial-ir/adapters';
 import { resolveBackends } from '../backends.js';
+import { confirmPresetModels, describePreset, type ProviderPreset } from '../provider.js';
 import { createProject, openProject } from '../project.js';
 import { colour, detail, fail, heading, line, note, success, table, warn } from '../ui.js';
 
@@ -86,7 +87,7 @@ export function runSkills(args: { name?: string; skillsDir?: string }): number {
 /* doctor                                                                      */
 /* -------------------------------------------------------------------------- */
 
-export async function runDoctor(): Promise<number> {
+export async function runDoctor(preset?: ProviderPreset): Promise<number> {
   const runner = new NodeCommandRunner();
   let problems = 0;
 
@@ -104,6 +105,25 @@ export async function runDoctor(): Promise<number> {
     warn('ffprobe is the one hard dependency: without it, media cannot be registered.');
     note('  macOS: brew install ffmpeg   Debian: apt install ffmpeg');
     note('  You can still try everything with: oea demo ./demo');
+  }
+
+  // One key standing for every stage, when that is how this machine is set up:
+  // which key, which models, and whether the key works — the one request that
+  // answers "why did nothing happen" before an analysis spends an hour finding out.
+  if (preset) {
+    heading('gemini');
+    detail('key', `from ${preset.keyFrom}`);
+    const checked = await confirmPresetModels(preset);
+    if (checked.refused) {
+      problems++;
+      warn(`  ${checked.refused}`);
+    } else {
+      for (const message of checked.notes) warn(`  ${message}`);
+    }
+    detail('models', describePreset(preset));
+    if (preset.keptOwn.length > 0) {
+      note(`  kept their own settings: ${preset.keptOwn.map((p) => p.slice(4)).join(', ')}`);
+    }
   }
 
   heading('what is configured');
