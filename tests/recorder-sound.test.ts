@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   AviUtl2Adapter,
   EdlAdapter,
@@ -613,32 +613,37 @@ describe.skipIf(!ffmpegInstalled())('the preview, rendered with a separate recor
   const recorder = join(dir, 'recorder.wav');
   const ff = (args: string[]) =>
     execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args]);
-  ff([
-    '-f',
-    'lavfi',
-    '-i',
-    'testsrc=s=320x240:r=30:d=4',
-    '-c:v',
-    'libx264',
-    '-preset',
-    'ultrafast',
-    camera,
-  ]);
-  ff([
-    '-f',
-    'lavfi',
-    '-i',
-    'anullsrc=r=48000:cl=mono:d=5',
-    '-f',
-    'lavfi',
-    '-i',
-    'sine=f=440:r=48000:d=5',
-    '-filter_complex',
-    '[0:a][1:a]concat=n=2:v=0:a=1',
-    '-c:a',
-    'pcm_s16le',
-    recorder,
-  ]);
+  // Made in beforeAll, not in the suite's body: vitest runs the body of a
+  // skipped suite too, and on a machine with no ffmpeg it threw there.
+  beforeAll(() => {
+    ff([
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc=s=320x240:r=30:d=4',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      camera,
+    ]);
+    ff([
+      '-f',
+      'lavfi',
+      '-i',
+      'anullsrc=r=48000:cl=mono:d=5',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=f=440:r=48000:d=5',
+      '-filter_complex',
+      '[0:a][1:a]concat=n=2:v=0:a=1',
+      '-c:a',
+      'pcm_s16le',
+      recorder,
+    ]);
+  }, 60_000);
+
   const assets = [
     makeAsset({
       id: 'asset_101',

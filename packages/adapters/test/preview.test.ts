@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { EditorialError, type EditPlan } from '@editorial-ir/contracts';
 import {
   PreviewAdapter,
@@ -347,48 +347,52 @@ describe.skipIf(!ffmpegInstalled())('the preview, rendered by ffmpeg', () => {
   };
   const ff = (args: string[]) =>
     execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args]);
-  ff([
-    '-f',
-    'lavfi',
-    '-i',
-    'testsrc=s=320x240:r=30000/1001:d=6',
-    '-f',
-    'lavfi',
-    '-i',
-    'anullsrc=r=48000:cl=stereo',
-    '-f',
-    'lavfi',
-    '-i',
-    'sine=f=440:r=48000:d=6',
-    '-map',
-    '0:v',
-    '-map',
-    '1:a',
-    '-map',
-    '2:a',
-    '-t',
-    '6',
-    '-c:v',
-    'libx264',
-    '-preset',
-    'ultrafast',
-    '-c:a',
-    'aac',
-    media.camera,
-  ]);
-  ff(['-f', 'lavfi', '-i', 'color=c=blue:s=400x300:d=1', '-frames:v', '1', media.still]);
-  ff(['-f', 'lavfi', '-i', 'sine=f=220:r=44100:d=4', '-ac', '1', '-c:a', 'aac', media.memo]);
-  ff([
-    '-f',
-    'lavfi',
-    '-i',
-    'testsrc2=s=320x240:r=25:d=4',
-    '-c:v',
-    'libx264',
-    '-preset',
-    'ultrafast',
-    media.drone,
-  ]);
+  // Made in beforeAll, not in the suite's body: vitest runs the body of a
+  // skipped suite too, and on a machine with no ffmpeg it threw there.
+  beforeAll(() => {
+    ff([
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc=s=320x240:r=30000/1001:d=6',
+      '-f',
+      'lavfi',
+      '-i',
+      'anullsrc=r=48000:cl=stereo',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=f=440:r=48000:d=6',
+      '-map',
+      '0:v',
+      '-map',
+      '1:a',
+      '-map',
+      '2:a',
+      '-t',
+      '6',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-c:a',
+      'aac',
+      media.camera,
+    ]);
+    ff(['-f', 'lavfi', '-i', 'color=c=blue:s=400x300:d=1', '-frames:v', '1', media.still]);
+    ff(['-f', 'lavfi', '-i', 'sine=f=220:r=44100:d=4', '-ac', '1', '-c:a', 'aac', media.memo]);
+    ff([
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=s=320x240:r=25:d=4',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      media.drone,
+    ]);
+  }, 60_000);
 
   const assets = [
     makeAsset({
