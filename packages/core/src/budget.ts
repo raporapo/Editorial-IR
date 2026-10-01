@@ -89,6 +89,92 @@ export function selectForEscalation(
 }
 
 /**
+ * A selection with some candidates left out, and what leaving them out changed.
+ *
+ * Leaving out still, silent events was never counted, because nothing measured
+ * the selection that would have been made with them in. It is the same pure
+ * function run twice over the same candidates, so the answer is as reproducible
+ * as the selection itself.
+ *
+ * - `leftOutPicked`: left-out candidates the full selection would have taken —
+ *   looks that would have been spent on nothing.
+ * - `redirected`: candidates taken only because those were left out. Under a
+ *   count or cost limit the look is not saved but moved, to an event with
+ *   something in it; with no limit it is saved.
+ */
+export function selectLeavingOut(
+  candidates: readonly EscalationCandidate[],
+  leftOut: ReadonlySet<string>,
+  policy: EscalationPolicy = {},
+): { decision: EscalationDecision; leftOutPicked: string[]; redirected: string[] } {
+  const decision = selectForEscalation(
+    candidates.filter((candidate) => !leftOut.has(candidate.id)),
+    policy,
+  );
+  if (leftOut.size === 0) return { decision, leftOutPicked: [], redirected: [] };
+  const everything = new Set(selectForEscalation(candidates, policy).selected);
+  return {
+    decision,
+    leftOutPicked: [...everything].filter((id) => leftOut.has(id)),
+    redirected: decision.selected.filter((id) => !everything.has(id)),
+  };
+}
+
+/**
+ * An escalation policy that cannot spend more than the budget has left.
+ *
+ * The base pass now spends from the same budget, first. An escalation still
+ * selected against the whole limit would pick looks the budget can no longer
+ * pay for — and its `spend` throws, out of the compile.
+ */
+export function withinBudget(policy: EscalationPolicy, budget?: CostBudget): EscalationPolicy {
+  if (!budget || budget.remainingUsd === Infinity) return policy;
+  return { ...policy, maxCostUsd: Math.min(policy.maxCostUsd ?? Infinity, budget.remainingUsd) };
+}
+
+/**
+ * Tokens per character of prompt, and tokens per answer, as this run's own calls
+ * measured them — so a call that was not made can be priced by its own size.
+ *
+ * The mean of the calls that were made was used instead, and it answered the
+ * wrong question: the events not asked about are the still, silent ones, whose
+ * prompts carry no transcript and no on-screen text, so they were priced at the
+ * size of the talkative events that were asked about. And a run whose every
+ * call came from the cache estimated nothing at all.
+ *
+ * Answers served from the cache count as measurements: the tokens recorded on
+ * them were measured when they were first asked, of the same model, on the same
+ * kind of prompt.
+ */
+export class TokenRate {
+  private chars = 0;
+  private input = 0;
+  private output = 0;
+  private calls = 0;
+
+  observe(promptChars: number, inputTokens?: number, outputTokens?: number): void {
+    // A backend that reports no usage measured nothing, and nothing is
+    // estimated from it.
+    if (inputTokens === undefined || promptChars <= 0) return;
+    this.chars += promptChars;
+    this.input += inputTokens;
+    this.output += outputTokens ?? 0;
+    this.calls++;
+  }
+
+  /** Tokens a call with a prompt this size would have used. Zero when nothing was measured. */
+  estimate(promptChars: number): number {
+    if (this.calls === 0 || this.chars === 0) return 0;
+    return Math.round((promptChars * this.input) / this.chars + this.output / this.calls);
+  }
+}
+
+/** The size of what a model is shown, for {@link TokenRate}. */
+export function promptChars(value: unknown): number {
+  return JSON.stringify(value)?.length ?? 0;
+}
+
+/**
  * A running total that stops the run rather than surprising the user.
  *
  * A pipeline that can spend money must have a number it will not exceed, and it
@@ -121,5 +207,21 @@ export class CostBudget {
       );
     }
     this.spent += costUsd;
+  }
+
+  /**
+   * Records money already spent.
+   *
+   * A call's price is sometimes known only once it has answered — a backend that
+   * prices by the tokens it was sent. Refusing to record it then would leave the
+   * total lower than the invoice; recording it is what makes the next
+   * `canAfford` say no.
+   */
+  charge(costUsd: number): void {
+    this.spent += costUsd;
+  }
+
+  get limit(): number {
+    return this.limitUsd;
   }
 }

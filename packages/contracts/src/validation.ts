@@ -27,6 +27,7 @@ export const VALIDATION_CODES = [
   'essential_event_missing',
   'excluded_event_present',
   'excluded_asset_present',
+  'required_asset_missing',
   'duration_out_of_tolerance',
   'below_minimum_speech_share',
   'clip_too_short',
@@ -40,6 +41,8 @@ export const VALIDATION_CODES = [
   'speed_not_supported',
   'plan_schema_invalid',
   'sequence_mismatch',
+  'source_audio_missing',
+  'invalid_continuation',
 ] as const;
 
 export const ValidationCode = z.enum(VALIDATION_CODES).meta({ id: 'ValidationCode' });

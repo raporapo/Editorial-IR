@@ -19,6 +19,7 @@
  *   node scripts/scene-report.mjs ./my-footage --continuous
  *   node scripts/scene-report.mjs a.mp4 --cuts-at 12.0,45.5,98.2
  *   node scripts/scene-report.mjs ./my-footage --names
+ *   node scripts/scene-report.mjs a.mp4 --candidates 25
  *
  * `--continuous` says these clips are unedited camera takes, so every boundary
  * found inside one is a false positive. That needs no annotation from you and
@@ -26,6 +27,11 @@
  *
  * `--cuts-at` gives the true cut times of one edited clip in seconds, so recall
  * can be measured too.
+ *
+ * `--candidates N` lists the N highest-scoring moments as timestamps, so the
+ * question "which of these are real cuts?" can be answered by reading a short
+ * list rather than by typing every cut time from scratch. Timestamps and scores
+ * only — still nothing from the picture or the sound.
  *
  * Needs only ffmpeg. Paste the output back; it is a few hundred bytes.
  */
@@ -40,8 +46,9 @@ const VIDEO = new Set(['.mp4', '.mov', '.mkv', '.m4v', '.avi', '.webm', '.mts', 
 // `detect_shots` scales them for ffmpeg.
 const FFMPEG_SCALE = 1 / 3;
 const CANDIDATES = [0.05, 0.1, 0.15, 0.2, 0.3, 0.45];
-const CURRENT = 0.15;
-const PREVIOUS = 0.3;
+const CURRENT = 0.3;
+// The value between the unscaled bug and the measurement that replaced it.
+const PREVIOUS = 0.15;
 // Matches the detector's own floor, so a burst of boundaries one frame apart
 // counts once here exactly as it would there.
 const MIN_SHOT_MS = 800;
@@ -110,14 +117,61 @@ async function sceneScores(file) {
 /** Boundaries a threshold would produce, after the detector's minimum shot length. */
 function boundariesAt(hits, sensitivity) {
   const cutoff = sensitivity * FFMPEG_SCALE;
-  const kept = [];
+  return coalesce(afterTheStart(hits.filter((hit) => hit.score > cutoff)), MIN_SHOT_MS).map(
+    (hit) => hit.seconds,
+  );
+}
+
+/**
+ * Drop what the detector absorbs into the first shot.
+ *
+ * ffmpeg scores the opening frame against nothing and can return a large value
+ * for it — 0.181 on one real clip. `build_shots` starts its cut list at zero
+ * and then drops anything closer than the minimum shot length, so that opening
+ * score never becomes a boundary there.
+ *
+ * This script had no such anchor, so it counted one boundary per clip that the
+ * detector does not produce. Filtering on `> 0` did not fix it either: the
+ * first frame arrives at 0.04s, not 0.
+ */
+function afterTheStart(hits) {
+  return hits.filter((hit) => hit.seconds * 1000 >= MIN_SHOT_MS);
+}
+
+/**
+ * Collapse hits closer together than the detector's minimum shot length.
+ *
+ * The strongest of each run survives, because when a burst of frames all clear
+ * the threshold the interesting one is the peak, not whichever came first.
+ *
+ * Both callers need this and only one had it. `boundariesAt` was coalescing and
+ * the candidate list was not, so a single violent second could spend four of
+ * the twenty-five slots — which is exactly what the first real measurement
+ * reported: `22:06.4` through `22:06.8` on four consecutive lines.
+ */
+function coalesce(hits, windowMs) {
+  const runs = [];
   for (const hit of hits) {
-    if (hit.score <= cutoff) continue;
-    const last = kept[kept.length - 1];
-    if (last !== undefined && (hit.seconds - last) * 1000 < MIN_SHOT_MS) continue;
-    kept.push(hit.seconds);
+    const last = runs[runs.length - 1];
+    if (last !== undefined && (hit.seconds - last.seconds) * 1000 < windowMs) {
+      if (hit.score > last.score) runs[runs.length - 1] = hit;
+      continue;
+    }
+    runs.push(hit);
   }
-  return kept;
+  return runs;
+}
+
+/**
+ * `359.96` is six minutes, not `5:60.0`.
+ *
+ * Taking the minutes before rounding the seconds means a value that rounds up
+ * to sixty is printed against the minute it has just left.
+ */
+function timecode(seconds) {
+  const tenths = Math.round(seconds * 10);
+  const whole = Math.floor(tenths / 10);
+  return `${Math.floor(whole / 60)}:${(tenths / 10 - Math.floor(whole / 60) * 60).toFixed(1).padStart(4, '0')}`;
 }
 
 function percentile(sorted, p) {
@@ -168,8 +222,16 @@ async function main() {
     : undefined;
   const continuous = flags.has('--continuous');
   const showNames = flags.has('--names');
+  const candidatesArg = args.find((a) => a.startsWith('--candidates='));
+  const candidatesIndex = args.indexOf('--candidates');
+  const rawCandidates = candidatesArg
+    ? candidatesArg.slice('--candidates='.length)
+    : candidatesIndex >= 0
+      ? args[candidatesIndex + 1]
+      : undefined;
+  const candidates = rawCandidates ? Number.parseInt(rawCandidates, 10) || 0 : 0;
 
-  const targets = args.filter((a) => !a.startsWith('--') && a !== rawCuts);
+  const targets = args.filter((a) => !a.startsWith('--') && a !== rawCuts && a !== rawCandidates);
   if (targets.length === 0) {
     console.error(
       'usage: node scripts/scene-report.mjs <file-or-directory> [--continuous] [--names] [--cuts-at 12.0,45.5]',
@@ -206,7 +268,7 @@ async function main() {
     });
   }
   process.stderr.write('        \r');
-  report(rows, { continuous, truth });
+  report(rows, { continuous, truth, candidates });
 }
 
 /**
@@ -215,7 +277,7 @@ async function main() {
  * Durations, counts and score percentiles. Nothing derived from the picture or
  * the sound beyond how much consecutive frames differ.
  */
-function report(rows, { continuous, truth }) {
+function report(rows, { continuous, truth, candidates }) {
   const line = (s = '') => console.log(s);
 
   line('--- scene detector report -------------------------------------------');
@@ -269,6 +331,23 @@ function report(rows, { continuous, truth }) {
     const s = rows[0].scored;
     line(`against ${s.truth} cut(s) you gave, at the current sensitivity ${CURRENT}`);
     line(`  matched ${s.hit}/${s.truth} within 1.0s, with ${s.extra} extra`);
+    line();
+  }
+
+  if (candidates > 0) {
+    line(`the ${candidates} highest-scoring moments, so you can say which are real cuts`);
+    line(`  (mark each R for a real cut or F for not one, and send the line back)`);
+    for (const row of rows) {
+      // Coalesced first, so one violent second cannot spend four of the slots.
+      const top = coalesce(afterTheStart(row.hits), MIN_SHOT_MS)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, candidates)
+        .sort((a, b) => a.seconds - b.seconds);
+      line(`  ${row.label}:`);
+      for (const hit of top) {
+        line(`    ${timecode(hit.seconds).padStart(8)}   ${hit.score.toFixed(3)}   [ ]`);
+      }
+    }
     line();
   }
 

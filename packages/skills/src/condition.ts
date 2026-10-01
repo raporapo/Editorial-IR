@@ -117,6 +117,7 @@ const NUMERIC_FACTS = new Set([
   'silence_ratio',
   'shot_count',
   'motion',
+  'inactive_ratio',
 ]);
 
 /** Fields that compare a boolean held directly on the facts. */
@@ -129,6 +130,7 @@ const BOOLEAN_FACTS = new Set([
   'has_text_on_screen',
   'is_user_essential',
   'is_user_excluded',
+  'has_subtitles',
 ]);
 
 /**
@@ -160,6 +162,11 @@ export function evaluateCondition(condition: Record<string, unknown>, facts: Eve
         continue;
       case 'event_type':
         if (!matchesString(facts.event_type, expected)) return false;
+        continue;
+      case 'material':
+        // Unclassified material matches no kind: a rule for edited programmes
+        // must not fire on footage nobody has looked at.
+        if (facts.material === undefined || !matchesString(facts.material, expected)) return false;
         continue;
       case 'chapter_position':
         if (facts.chapter_position !== expected) return false;

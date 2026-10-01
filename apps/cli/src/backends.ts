@@ -7,10 +7,14 @@ import {
 } from '@editorial-ir/contracts';
 import {
   HashingTextEmbedding,
+  LanguageRoutedSpeechModel,
   OpenAiCompatibleContextModel,
+  OpenAiCompatibleSpeechModel,
   OpenAiCompatibleTextEmbedding,
   PythonWorkerClient,
   WorkerAudioModel,
+  WorkerVideoModel,
+  FfmpegVideoAnalyzer,
   WorkerContextModel,
   WorkerMediaPreparer,
   WorkerMediaProbe,
@@ -22,6 +26,7 @@ import {
   createFixtureSuite,
   createLocalSuite,
   isLocalEndpoint,
+  languagesFor,
   loadPerceptionFixture,
   workerHealth,
   type ContextModel,
@@ -141,10 +146,8 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
     // said it cannot run turns "this stage is unavailable" into "the whole
     // analysis failed". The compiler is built to degrade around a missing
     // model; it cannot degrade around one that is present and throws.
-    const { capabilities, stageLocality, stageModels } = await workerHealthOrNothing(
-      client,
-      options.onLog,
-    );
+    const { capabilities, stageLocality, stageModels, stageQueryLanguages } =
+      await workerHealthOrNothing(client, options.onLog);
     // The name that decides a stage's output, which only the worker knows. The
     // perception cache keys on it, so a placeholder meant changing the ASR
     // model and re-running served the old model's transcript. A worker that
@@ -168,7 +171,12 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
         : {}),
       ...(has('detect_shots') ? { shots: new WorkerShotDetector(client) } : {}),
       ...(has('analyze_audio') ? { audio: new WorkerAudioModel(client) } : {}),
-      ...(has('ocr') ? { ocr: new WorkerOcrModel(client) } : {}),
+      // An older worker that does not know the op still gets the picture
+      // envelope: it needs nothing but ffmpeg, and this process can run that.
+      video: has('analyze_video')
+        ? new WorkerVideoModel(client, named('analyze_video', 'cell-max-64x36'))
+        : new FfmpegVideoAnalyzer(),
+      ...(has('ocr') ? { ocr: new WorkerOcrModel(client, named('ocr', 'ocr')) } : {}),
       // A worker-backed closer look is the base model only when it runs here.
       // The base pass goes over *every* event, and the worker's `describe` is an
       // HTTP call to whatever OEA_VLM_BASE_URL names — so pointing the worker at
@@ -178,8 +186,17 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
       ...(has('describe') && describeLocality !== 'remote_api'
         ? { context: new WorkerContextModel(client, named('describe', 'vlm'), describeLocality) }
         : {}),
+      // `canEmbedQuery` is a separate capability from `embed_frames` on purpose:
+      // an export with no text tower embeds frames perfectly well and cannot be
+      // asked about them, and a client that assumes otherwise builds an index
+      // whose visual aspect nothing can reach.
       ...(has('embed_frames')
-        ? { visual: new WorkerVisualEmbeddingModel(client, named('embed_frames', 'visual')) }
+        ? {
+            visual: new WorkerVisualEmbeddingModel(client, named('embed_frames', 'visual'), {
+              canEmbedQuery: has('embed_text_visual'),
+              queryLanguage: stageQueryLanguages.embed_text_visual ?? 'en',
+            }),
+          }
         : {}),
       text: has('embed_text')
         ? new WorkerTextEmbeddingModel(client, named('embed_text', 'text-embedding'))
@@ -205,6 +222,37 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
   } else {
     suite = createLocalSuite();
     description.push('perception: ffmpeg only (no transcription, no vision)');
+  }
+
+  // ---- transcription from a server ----------------------------------------
+  //
+  // Any server speaking OpenAI's /audio/transcriptions: Phonon-2 behind
+  // `phonon serve`, a local Whisper server, or a hosted one. It works without
+  // the Python worker — prepare's WAV is all it needs — and beside it, a server
+  // limited to some languages (Phonon-2: English) takes those and leaves the
+  // rest to the worker's Whisper.
+  const transcribeBase = process.env.OEA_TRANSCRIBE_BASE_URL;
+  const transcribeModel = process.env.OEA_TRANSCRIBE_MODEL;
+  if (transcribeBase && transcribeModel) {
+    const server = new OpenAiCompatibleSpeechModel({
+      baseUrl: transcribeBase,
+      model: transcribeModel,
+      languages: languagesFor(transcribeModel, process.env.OEA_TRANSCRIBE_LANGUAGES),
+      ...(process.env.OEA_TRANSCRIBE_API_KEY ? { apiKey: process.env.OEA_TRANSCRIBE_API_KEY } : {}),
+    });
+    if (server.languages.length === 0) {
+      suite = { ...suite, speech: server };
+      description.push(`transcription: ${transcribeModel} at ${transcribeBase}`);
+    } else {
+      const fallback = suite.speech;
+      suite = { ...suite, speech: new LanguageRoutedSpeechModel(server, fallback) };
+      const others = fallback
+        ? `${fallback.identity.model ?? fallback.identity.backend} for the rest`
+        : 'nothing for the rest';
+      description.push(
+        `transcription: ${transcribeModel} at ${transcribeBase} for ${server.languages.join(', ')}, ${others}`,
+      );
+    }
   }
 
   // A configured embedding service replaces the hashing stand-in everywhere.
@@ -448,6 +496,7 @@ async function workerHealthOrNothing(
   capabilities: Record<string, boolean>;
   stageLocality: Record<string, string>;
   stageModels: Record<string, string>;
+  stageQueryLanguages: Record<string, string>;
 }> {
   try {
     const health = await workerHealth(client);
@@ -455,11 +504,17 @@ async function workerHealthOrNothing(
       capabilities: health.capabilities,
       stageLocality: health.stage_locality,
       stageModels: health.stage_models,
+      stageQueryLanguages: health.stage_query_languages,
     };
   } catch (error) {
     onLog?.(
       `the Python worker did not answer health (${error instanceof Error ? error.message : String(error)})`,
     );
-    return { capabilities: {}, stageLocality: {}, stageModels: {} };
+    return {
+      capabilities: {},
+      stageLocality: {},
+      stageModels: {},
+      stageQueryLanguages: {},
+    };
   }
 }

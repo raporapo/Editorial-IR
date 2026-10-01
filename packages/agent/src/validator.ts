@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import {
   EditPlan as EditPlanSchema,
+  hasAudioStream,
   operationTimelineDuration,
   operationTimelineEnd,
   operationsInOrder,
@@ -107,7 +108,15 @@ export function validatePlan(plan: unknown, options: ValidateOptions = {}): Vali
         operation_id: operation.operation_id,
         asset_id: operation.source_asset_id,
       });
-    } else if (asset && asset.duration_ms > 0 && operation.source_out_ms > asset.duration_ms) {
+    } else if (
+      asset &&
+      // A photograph is the same at every instant, so a still held for three
+      // seconds reads 0-3000 of a file whose duration is nothing, and that is
+      // valid by construction rather than by the accident of a zero duration.
+      asset.kind !== 'image' &&
+      asset.duration_ms > 0 &&
+      operation.source_out_ms > asset.duration_ms
+    ) {
       issues.push({
         code: 'range_out_of_bounds',
         severity: 'error',
@@ -127,6 +136,83 @@ export function validatePlan(plan: unknown, options: ValidateOptions = {}): Vali
         event_id: operation.event_id,
       });
     }
+
+    // Sound asked of a file that has none. The export then links an audio
+    // stream that does not exist: the probe's drone clip, with no audio track,
+    // came out with two audio clips in Premiere and one in OTIO. A warning,
+    // because the picture is fine and an adapter can leave the sound out.
+    // The sound of another file: a recorder lined up with this one. It has to
+    // exist and hold the whole clip, or the export links sound that is not there.
+    const audioSource = operation.audio_source;
+    if (ir && audioSource) {
+      const recorder = ir.assets.find((a) => a.id === audioSource.asset_id);
+      const length = operation.source_out_ms - operation.source_in_ms;
+      if (!recorder) {
+        issues.push({
+          code: 'unknown_asset',
+          severity: 'error',
+          message: `${operation.operation_id} takes its sound from ${audioSource.asset_id}, which is not in this project`,
+          operation_id: operation.operation_id,
+          asset_id: audioSource.asset_id,
+        });
+      } else if (
+        recorder.duration_ms > 0 &&
+        audioSource.source_in_ms + length > recorder.duration_ms
+      ) {
+        issues.push({
+          code: 'range_out_of_bounds',
+          severity: 'error',
+          message: `${operation.operation_id} reads its sound past the end of ${recorder.file_name}`,
+          operation_id: operation.operation_id,
+          asset_id: recorder.id,
+          details: {
+            source_out_ms: audioSource.source_in_ms + length,
+            duration_ms: recorder.duration_ms,
+          },
+        });
+      }
+    }
+
+    if (asset && operation.use_source_audio && !audioSource && !hasAudioStream(asset)) {
+      issues.push({
+        code: 'source_audio_missing',
+        severity: 'warning',
+        message: `${operation.operation_id} uses the sound of ${asset.file_name}, which has none`,
+        operation_id: operation.operation_id,
+        asset_id: asset.id,
+      });
+    }
+  }
+
+  // ---- jump cuts -----------------------------------------------------------
+  // A clip that says it continues the one before is read differently by
+  // everything downstream: the reviewer does not call it too short or ask what
+  // context it is missing, and an adapter never puts a dissolve into it. So it
+  // has to be true — the same take of the same recording, later in it, and cut
+  // hard — or those allowances cover a real jump.
+  const mainOrder = operationsInOrder(editPlan);
+  for (const [index, operation] of mainOrder.entries()) {
+    if (!operation.continues_previous) continue;
+    const previous = mainOrder[index - 1];
+    const problem =
+      previous === undefined || previous.track !== operation.track
+        ? 'nothing comes before it on its track'
+        : previous.source_asset_id !== operation.source_asset_id ||
+            previous.event_id !== operation.event_id
+          ? `${previous.operation_id} is a different moment`
+          : operation.source_in_ms < previous.source_out_ms
+            ? `it starts before ${previous.operation_id} ends in the source`
+            : (operation.transition_in && operation.transition_in.type !== 'hard_cut') ||
+                (previous.transition_out && previous.transition_out.type !== 'hard_cut')
+              ? 'a jump cut is a hard cut, and this one has a transition'
+              : undefined;
+    if (problem === undefined) continue;
+    issues.push({
+      code: 'invalid_continuation',
+      severity: 'warning',
+      message: `${operation.operation_id} says it continues the clip before it, but ${problem}`,
+      operation_id: operation.operation_id,
+    });
   }
 
   // ---- media ---------------------------------------------------------------
@@ -218,6 +304,23 @@ export function validatePlan(plan: unknown, options: ValidateOptions = {}): Vali
       }
     }
 
+    // The other half of the same constraint, which had no half at all.
+    // `required_assets` — "assets that must appear at least once" — sits beside
+    // `excluded_assets` in the same object, in the worked example's own
+    // context.yaml, and nothing read it. Verified: setting
+    // `required_assets: [asset_002]` produced a cut using asset_001 four times
+    // and asset_003 once, with `oea review` reporting "nothing to report".
+    for (const assetId of ir.context.constraints.required_assets) {
+      if (!editPlan.tracks.video.some((o) => o.source_asset_id === assetId)) {
+        issues.push({
+          code: 'required_asset_missing',
+          severity: 'error',
+          message: `${assetId} must appear at least once and is not in the cut`,
+          asset_id: assetId,
+        });
+      }
+    }
+
     if (editPlan.ir_fingerprint && ir.fingerprint && editPlan.ir_fingerprint !== ir.fingerprint) {
       issues.push({
         code: 'stale_ir_fingerprint',
@@ -248,7 +351,7 @@ export function validatePlan(plan: unknown, options: ValidateOptions = {}): Vali
       severity: 'warning',
       message: capped
         ? `the cut is ${formatSeconds(duration)} against a target of ${formatSeconds(target)}: ` +
-          `${editPlan.tracks.video.length} moment(s) at this skill's ${formatSeconds(
+          `${momentsIn(editPlan)} moment(s) at this skill's ${formatSeconds(
             options.skill?.defaults.max_clip_duration_ms ?? 0,
           )} limit cannot fill it. Analyse more material, raise the limit, or aim shorter.`
         : `the cut is ${formatSeconds(duration)} against a target of ${formatSeconds(target)}`,
@@ -374,11 +477,25 @@ export function capabilityIssues(
     }
   }
 
-  if (plan.tracks.text.length > 0 && !capabilities.text) {
+  // Captions and authored text are asked about separately, as negotiation
+  // does: a subtitle file carries captions and no titles, and an interchange
+  // format may carry a title and have no caption track. Asked together, a plan
+  // with captions validated against SubRip was told its captions "will be
+  // dropped" by the one target that exists to write them.
+  const captions = plan.tracks.text.filter((item) => item.kind === 'caption').length;
+  const authored = plan.tracks.text.length - captions;
+  if (authored > 0 && !capabilities.text) {
     issues.push({
       code: 'unsupported_capability',
       severity: 'warning',
-      message: `${capabilities.name} cannot add text; ${plan.tracks.text.length} text item(s) will be dropped`,
+      message: `${capabilities.name} cannot add text; ${authored} text item(s) will be dropped`,
+    });
+  }
+  if (captions > 0 && !capabilities.captions) {
+    issues.push({
+      code: 'unsupported_capability',
+      severity: 'warning',
+      message: `${capabilities.name} cannot carry captions; ${captions} caption(s) will be dropped (write them with --editor srt or vtt)`,
     });
   }
 
@@ -411,5 +528,15 @@ function maximumReachableMs(
 ): number | undefined {
   const cap = skill?.defaults.max_clip_duration_ms;
   if (cap === undefined || cap <= 0) return undefined;
-  return editPlan.tracks.video.length * cap;
+  return momentsIn(editPlan) * cap;
+}
+
+/**
+ * How many moments a plan holds: its clips, with the pieces of a take that had
+ * its pauses taken out counted once. The skill's clip limit is a limit on a
+ * moment, and counting each piece against it made the longest possible cut of a
+ * talking-head plan look several times longer than it could be.
+ */
+function momentsIn(editPlan: EditPlan): number {
+  return editPlan.tracks.video.filter((operation) => !operation.continues_previous).length;
 }

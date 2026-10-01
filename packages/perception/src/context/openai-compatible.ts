@@ -253,7 +253,20 @@ const SYSTEM_PROMPT = [
   'The user background you are given is knowledge you do not have. Use it, and never contradict it.',
   'If the frames and the background disagree, describe the frames and leave the background alone.',
   'Answer in the language of the transcript.',
+  // Measured on Gemini with no frames attached: a Mandelbrot fractal became "a
+  // tabby cat peeks over the edge of a bed" and colour bars "a person in a dark
+  // blue shirt". A model asked what is happening will say something; this is
+  // what makes "nothing I was shown" an answer it is allowed to give.
+  'Describe only what the frames, transcript, on-screen text and sound tags given here show.',
+  'Never name a person, animal, object or place that is not in them;',
+  'without frames, say only what the words and sounds establish.',
 ].join(' ');
+
+/**
+ * Part of every description's cache key. Raise it when the instructions change
+ * what a model would say, so an answer given under the old ones is not reused.
+ */
+export const DESCRIBE_PROMPT_VERSION = '2';
 
 /** Exported so the prompt can be reviewed and tested rather than only observed in logs. */
 export function buildPrompt(params: DescribeParams): string {
@@ -263,6 +276,11 @@ export function buildPrompt(params: DescribeParams): string {
   }
   if (params.previous_summary) sections.push(`Previous event: ${params.previous_summary}`);
   if (params.transcript.length > 0) sections.push(`Speech:\n${params.transcript.join('\n')}`);
+  if (params.subtitles && params.subtitles.length > 0) {
+    sections.push(
+      `Subtitles burned into the picture (what was said):\n${params.subtitles.join('\n')}`,
+    );
+  }
   if (params.ocr.length > 0) sections.push(`Text on screen:\n${params.ocr.join('\n')}`);
   if (params.audio_tags.length > 0) sections.push(`Sound: ${params.audio_tags.join(', ')}`);
   if (params.next_summary) sections.push(`Next event: ${params.next_summary}`);

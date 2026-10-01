@@ -2,6 +2,8 @@ import type {
   StandInDeclaration,
   AnalyzeAudioParams,
   AnalyzeAudioResult,
+  AnalyzeVideoParams,
+  AnalyzeVideoResult,
   DescribeParams,
   DescribeResult,
   DetectShotsParams,
@@ -72,10 +74,40 @@ export interface ShotDetector extends PerceptionModel {
 export interface VisualEmbeddingModel extends PerceptionModel {
   readonly dim: number;
   embedFrames(params: EmbedFramesParams): Promise<EmbedFramesResult>;
+  /**
+   * Encodes a query into the same space as this model's frame vectors.
+   *
+   * Absent when the model has no text tower, and that is not a small gap: frame
+   * vectors go into the `visual` aspect of the index, a query encoded by the
+   * sentence encoder arrives a different width, and the index refuses to compare
+   * them — so every frame is embedded at real cost and none of it can be asked
+   * anything. Search reports the aspect unsearchable and falls back to matching
+   * its labels as words.
+   */
+  embedQuery?(texts: string[]): Promise<number[][]>;
+  /**
+   * The natural language `embedQuery` can actually be asked in: `en` or `multi`.
+   *
+   * CLIP's and SigLIP-base's text towers are English-only. A Japanese query does
+   * not fail against them — it returns a confident ranking of noise, measured at
+   * 4/6 top-1 with the margins at noise level where English scored 6/6. Search
+   * reads this and declines rather than answering badly.
+   */
+  readonly queryLanguage?: string;
 }
 
 export interface AudioModel extends PerceptionModel {
   analyzeAudio(params: AnalyzeAudioParams): Promise<AnalyzeAudioResult>;
+}
+
+/**
+ * How much the picture moves and where it is black, per sample.
+ *
+ * Cheap by contract: it runs over every second of every file, and its whole
+ * purpose is to tell the expensive stages where they need not look.
+ */
+export interface VideoModel extends PerceptionModel {
+  analyzeVideo(params: AnalyzeVideoParams): Promise<AnalyzeVideoResult>;
 }
 
 export interface OcrModel extends PerceptionModel {
@@ -124,6 +156,7 @@ export interface PerceptionSuite {
   readonly shots?: ShotDetector;
   readonly visual?: VisualEmbeddingModel;
   readonly audio?: AudioModel;
+  readonly video?: VideoModel;
   readonly ocr?: OcrModel;
   readonly context?: ContextModel;
   readonly text: TextEmbeddingModel;
@@ -134,7 +167,16 @@ export interface PerceptionSuite {
 }
 
 export type PerceptionCapability =
-  'probe' | 'prepare' | 'speech' | 'shots' | 'visual' | 'audio' | 'ocr' | 'context' | 'text';
+  | 'probe'
+  | 'prepare'
+  | 'speech'
+  | 'shots'
+  | 'visual'
+  | 'audio'
+  | 'video'
+  | 'ocr'
+  | 'context'
+  | 'text';
 
 export function availableCapabilities(suite: PerceptionSuite): PerceptionCapability[] {
   const caps: PerceptionCapability[] = ['probe', 'text'];
@@ -143,6 +185,7 @@ export function availableCapabilities(suite: PerceptionSuite): PerceptionCapabil
   if (suite.shots) caps.push('shots');
   if (suite.visual) caps.push('visual');
   if (suite.audio) caps.push('audio');
+  if (suite.video) caps.push('video');
   if (suite.ocr) caps.push('ocr');
   if (suite.context) caps.push('context');
   return caps;

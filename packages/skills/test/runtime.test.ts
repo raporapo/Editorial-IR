@@ -57,6 +57,8 @@ describe('the built-in skill library', () => {
   it('ships the skills the documentation promises', () => {
     expect(registry.list().map((s) => s.name)).toEqual([
       'base-editor',
+      'clip-reel',
+      'cut-down',
       'memory-film',
       'shorts',
       'talking-head',
@@ -500,5 +502,23 @@ describe('a rule a child skill disagrees with', () => {
   it('replaces the inherited rule rather than adding a second one', () => {
     const ids = registry.resolve('tech-youtube').rules.map((rule) => rule.id);
     expect(ids.filter((id) => id === 'drop-silence')).toHaveLength(1);
+  });
+});
+
+describe('keeping whole and taking pauses out', () => {
+  it('carries both actions to the directive, which were accepted and dropped', () => {
+    // Both validated and did nothing: the runtime hard-coded them to false.
+    const skill = SkillManifest.parse({
+      name: 'keep-and-tighten',
+      rules: [
+        { id: 'whole', when: { has_speech: false }, action: { keep_whole: true } },
+        { id: 'tighten', when: { has_speech: true }, action: { remove_silences: true } },
+      ],
+    });
+    const facts = deriveFacts(ir);
+    const runtime = new SkillRuntime(skill);
+    const directives = [...facts.values()].map((f) => runtime.evaluateEvent(f));
+    expect(directives.some((d) => d.keep_whole && !d.remove_silences)).toBe(true);
+    expect(directives.some((d) => d.remove_silences && !d.keep_whole)).toBe(true);
   });
 });

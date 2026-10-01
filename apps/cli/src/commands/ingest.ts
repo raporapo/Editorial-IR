@@ -1,5 +1,5 @@
 import { ingestPaths, placeAssets } from '@editorial-ir/core';
-import { formatTimecode } from '@editorial-ir/contracts';
+import { formatTimecode, type AssetPlacement, type MediaAsset } from '@editorial-ir/contracts';
 import { resolveBackends } from '../backends.js';
 import { openProject } from '../project.js';
 import { Progress, detail, fail, heading, note, success, table, warn } from '../ui.js';
@@ -66,6 +66,23 @@ export async function runIngest(args: IngestArgs): Promise<number> {
       }
     }
 
+    if (result.refreshed.length > 0) {
+      note(
+        refreshNote(
+          result.refreshed.map((asset) => asset.id),
+          store.readObservations() !== undefined,
+        ),
+      );
+    }
+
+    const worthSaying = [...result.added, ...result.refreshed].flatMap((asset) =>
+      mediaNotes(asset).map((line) => `  ${asset.id} ${asset.file_name}: ${line}`),
+    );
+    if (worthSaying.length > 0) {
+      heading('worth knowing');
+      for (const line of worthSaying) note(line);
+    }
+
     if (result.failed.length > 0) {
       heading('could not read');
       const fixes = new Set<string>();
@@ -85,15 +102,141 @@ export async function runIngest(args: IngestArgs): Promise<number> {
 
     heading('the capture timeline');
     detail('length', formatTimecode(total, false));
-    detail('ordered by', placements[0]?.ordered_by ?? 'file_name');
-    if (placements[0]?.ordered_by === 'file_name') {
-      warn('no capture times in the metadata, so file name decides the order');
+    const order = orderingSummary(result.assets, placements);
+    detail('ordered by', order.headline);
+    if (order.warning) {
+      warn(order.warning);
       note('  A wrong order invents continuity that was never there; check it.');
     }
+    for (const line of order.lines) note(line);
 
     return result.failed.length > 0 ? 1 : 0;
   } finally {
     progress.clear();
     await backends.close();
   }
+}
+
+/**
+ * What re-reading known files means for the next analysis, said so it is true.
+ *
+ * It said '"oea analyze" uses what was learned' whatever the project held. An
+ * analysis already stored is reused on the media's content and the models, not
+ * on what the probe says about the media, so a project analysed before its
+ * camera's second audio track was known kept the room-tone analysis: measured,
+ * after the refresh `oea analyze` answered "perception was reused" and the
+ * lavalier was heard only with `--force`. Forcing costs little: every stage's
+ * result is cached on its own parameters, so only what the new facts change is
+ * made again.
+ */
+export function refreshNote(ids: readonly string[], analysed: boolean): string {
+  const read = `  read again: ${ids.join(', ')} (ids and places unchanged)`;
+  return analysed
+    ? `${read}; the stored analysis predates it, and "oea analyze --force" makes it again ` +
+        '(what has not changed comes from the cache)'
+    : `${read}; "oea analyze" uses what was learned`;
+}
+
+/**
+ * The facts about a file that change what happens to it, in words.
+ *
+ * Each of these used to be silent and wrong: a clip with no sound was put
+ * through three audio stages, a second audio track was never heard, a phone
+ * clip's dropped frames set the sequence rate.
+ */
+export function mediaNotes(asset: MediaAsset): string[] {
+  const notes: string[] = [];
+  const streams = asset.audio_streams;
+  if (asset.kind === 'video' && streams !== undefined && streams.length === 0) {
+    notes.push('no audio track; nothing will be transcribed, and that is not an error');
+  }
+  if (streams !== undefined && streams.length > 1) {
+    notes.push(
+      `${streams.length} audio streams; the one with the most speech is analysed, ` +
+        'and the analysis says which',
+    );
+  }
+  if (asset.start_timecode !== undefined && !/^00:00:00[:;]00$/.test(asset.start_timecode)) {
+    notes.push(
+      `starts at timecode ${asset.start_timecode}; an EDL or FCPXML export counts from there`,
+    );
+  }
+  if (asset.variable_frame_rate && asset.fps !== undefined) {
+    const average = asset.avg_fps === undefined ? '' : ` (averaging ${asset.avg_fps.toFixed(2)})`;
+    notes.push(
+      `variable frame rate${average}; treated as ${Number(asset.fps.toFixed(3))} fps, ` +
+        'the rate an editor will conform it to',
+    );
+  }
+  return notes;
+}
+
+/**
+ * How the capture timeline was ordered, in words, with every asset that is not
+ * where its own capture time would put it and the reason.
+ *
+ * It printed the first placement's `ordered_by` and nothing else, which was
+ * true while the order was one rule for the whole project. It is per asset now:
+ * a photo with no date is placed beside its file-name neighbour among clips
+ * that keep their capture order, and saying only "creation_time" would hide that
+ * the photo's place is a guess.
+ */
+export function orderingSummary(
+  assets: readonly MediaAsset[],
+  placements: readonly AssetPlacement[],
+): { headline: string; warning?: string; lines: string[] } {
+  const byId = new Map(assets.map((asset) => [asset.id, asset]));
+  const dated = placements.filter((p) => p.ordered_by === 'creation_time');
+  const guessed = placements.filter((p) => p.ordered_by === 'file_name');
+  const clock = dated[0]?.clock ?? 'utc';
+  const onClock =
+    clock === 'local'
+      ? 'capture time, on the wall clock where it was shot (not every file says its time zone)'
+      : 'capture time';
+
+  if (dated.length === 0) {
+    return {
+      headline: 'file name',
+      warning: 'no capture times in the metadata, so file name decides the order',
+      lines: [],
+    };
+  }
+  if (guessed.length === 0) {
+    return { headline: onClock, lines: [] };
+  }
+
+  const name = (id: string) => byId.get(id)?.file_name ?? id;
+  const lines = guessed.map((placement) => {
+    const asset = byId.get(placement.asset_id);
+    const beside = placement.beside
+      ? `; placed ${placement.beside.side} ${placement.beside.asset_id} ${name(placement.beside.asset_id)}, ` +
+        `the dated file its name sorts ${placement.beside.side === 'after' ? 'after' : 'before'}`
+      : '';
+    return `  ${placement.asset_id} ${name(placement.asset_id)}: ${undatedReason(asset, clock)}${beside}`;
+  });
+  return {
+    headline: `${onClock} for ${dated.length} of ${placements.length}; file name places the rest`,
+    lines,
+  };
+}
+
+/** Why an asset has no place on the clock the rest of the project was ordered on. */
+function undatedReason(asset: MediaAsset | undefined, clock: 'utc' | 'local'): string {
+  const capture = asset?.capture_time;
+  if (capture?.precision === 'date') {
+    return `only a date (${capture.date ?? capture.raw}), which is not a time of day`;
+  }
+  if (clock === 'utc' && capture?.local !== undefined && asset?.creation_time === undefined) {
+    return (
+      `its time (${capture.raw}) has no zone, and the others are instants; ` +
+      'reading it as UTC would invent an offset'
+    );
+  }
+  if (clock === 'local' && asset?.creation_time !== undefined && capture?.local === undefined) {
+    return (
+      'its time is an instant with no local clock, and the others are local times ' +
+      'with no zone; the two cannot be compared'
+    );
+  }
+  return 'no capture time in the file';
 }

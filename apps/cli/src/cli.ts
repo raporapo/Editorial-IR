@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util';
 import { EditorialError } from '@editorial-ir/contracts';
-import { colour, fail, heading, line, note } from './ui.js';
+import { colour, fail, heading, line, note, warn } from './ui.js';
+import { applyProviderPreset, confirmPresetModels, type ProviderPreset } from './provider.js';
 import { runInit } from './commands/init.js';
 import { runIngest } from './commands/ingest.js';
 import { runAnalyze } from './commands/analyze.js';
@@ -46,10 +47,14 @@ const OPTIONS = {
   sheet: { type: 'boolean' as const },
   require: { type: 'string' as const, multiple: true },
   drop: { type: 'string' as const, multiple: true },
+  captions: { type: 'boolean' as const },
+  width: { type: 'string' as const },
+  option: { type: 'string' as const, multiple: true },
   budget: { type: 'string' as const },
   'max-escalations': { type: 'string' as const },
   force: { type: 'boolean' as const },
   'offline-minimal': { type: 'boolean' as const },
+  'no-skip-inactive': { type: 'boolean' as const },
   json: { type: 'boolean' as const },
   full: { type: 'boolean' as const },
   quiet: { type: 'boolean' as const },
@@ -79,6 +84,15 @@ export async function main(argv: string[]): Promise<number> {
   if (!command || values.help) {
     printHelp(command);
     return command ? 0 : values.help ? 0 : 1;
+  }
+
+  // One key standing for every model stage (`OEA_GEMINI_API_KEY`). Before any
+  // command reads the stage variables, and into `process.env` so the Python
+  // worker sees the same.
+  const preset = applyProviderPreset();
+  if (preset && MODEL_COMMANDS.has(command)) {
+    const refused = await checkPreset(preset);
+    if (refused) return 1;
   }
 
   const number = (value: string | undefined): number | undefined => {
@@ -126,6 +140,7 @@ export async function main(argv: string[]): Promise<number> {
         ...(values.decision ? { decision: values.decision } : {}),
         ...(values['offline-minimal'] ? { offlineMinimal: true } : {}),
         ...(values.force ? { force: true } : {}),
+        ...(values['no-skip-inactive'] ? { skipInactive: false } : {}),
         ...(number(values.budget) === undefined ? {} : { budget: number(values.budget) }),
         ...(number(values['max-escalations']) === undefined
           ? {}
@@ -164,6 +179,7 @@ export async function main(argv: string[]): Promise<number> {
         ...(values.quiet ? { quiet: true } : {}),
         ...(list(values.require) ? { require: list(values.require)! } : {}),
         ...(list(values.drop) ? { drop: list(values.drop)! } : {}),
+        ...(values.captions ? { captions: true } : {}),
       });
 
     case 'explain':
@@ -206,6 +222,7 @@ export async function main(argv: string[]): Promise<number> {
         ...(values.project ? { project: values.project } : {}),
         ...(values.plan ? { plan: values.plan } : {}),
         ...(values.json ? { json: true } : {}),
+        ...(values['skills-dir'] ? { skillsDir: values['skills-dir'] } : {}),
       });
 
     case 'agent':
@@ -231,6 +248,9 @@ export async function main(argv: string[]): Promise<number> {
         ...(values.plan ? { plan: values.plan } : {}),
         ...(values.out ? { out: values.out } : {}),
         ...(values.name ? { name: values.name } : {}),
+        ...(values.captions ? { captions: true } : {}),
+        ...(number(values.width) === undefined ? {} : { width: number(values.width) }),
+        ...(list(values.option) ? { options: list(values.option)! } : {}),
       });
 
     case 'editors':
@@ -249,7 +269,7 @@ export async function main(argv: string[]): Promise<number> {
       });
 
     case 'doctor':
-      return runDoctor();
+      return runDoctor(preset);
 
     case 'schema':
       return runSchema({
@@ -265,6 +285,26 @@ export async function main(argv: string[]): Promise<number> {
       note('Run "oea --help" for the list.');
       return 2;
   }
+}
+
+/** Commands that call a model, and so are worth one request to check the preset's. */
+const MODEL_COMMANDS = new Set(['analyze', 'analyse', 'agent', 'search', 'demo']);
+
+/**
+ * Asks Gemini which models the key can use before the command spends anything.
+ * Returns true when the key was refused, which nothing that needs a model can
+ * get past: said once here rather than once per event.
+ */
+async function checkPreset(preset: ProviderPreset): Promise<boolean> {
+  const checked = await confirmPresetModels(preset);
+  // To stderr: `search --json` prints its answer on stdout.
+  for (const message of checked.notes) warn(message);
+  if (checked.refused) {
+    fail(checked.refused);
+    note('Check the key at https://aistudio.google.com/apikey, or unset it to run without Gemini.');
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -342,10 +382,15 @@ function printHelp(command: string | undefined): void {
   line('  oea plan --skill <name> --duration <seconds>');
   line('               --require evt_0031  keep a moment, whatever it scores');
   line('               --drop evt_0044     leave one out');
+  line('               --captions          add captions from the transcript');
   line('  oea agent "<what you want>"  plan with a model in the loop (needs one)');
   line('  oea review                   what is wrong with the latest cut');
   line('  oea editors                  what each editing application can take');
-  line('  oea apply --editor <id>      write the cut out');
+  line('  oea apply --editor <id>      write the cut out: otio, premiere, fcpxml, edl, aviutl2,');
+  line('                               srt, vtt, youtube-chapters, or preview (renders an mp4)');
+  line('               --captions          add captions first if the plan has none');
+  line('               --width 640         the width of the preview, in pixels');
+  line('               --option key=value  a setting for one editor (see "oea editors")');
 
   heading('everything else');
   line('  oea doctor                   what is installed and what is configured');
@@ -357,6 +402,7 @@ function printHelp(command: string | undefined): void {
   line('  --decision heuristic|local-system-one|jev');
   line('  --budget <usd>               refuse to spend more than this');
   line('  --force                      re-run perception even if nothing changed');
+  line('  --no-skip-inactive           ask the models about still, silent footage too');
   line('  --json                       machine-readable output');
   line('  --quiet                      the summary without the list of clips');
 

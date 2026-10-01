@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { obj } from './primitives.js';
+import { Milliseconds, obj } from './primitives.js';
 
 /**
  * How much of this analysis was done by a model, and how much by a stand-in.
@@ -98,10 +98,68 @@ export const AnalysisTier = z
   .meta({ id: 'AnalysisTier' });
 export type AnalysisTier = z.infer<typeof AnalysisTier>;
 
+/**
+ * Model work deliberately not done, because the material held nothing to find.
+ *
+ * Separate from `stand_ins` on purpose, and the separation is load-bearing. A
+ * stand-in is a stage that ran without the model it wanted; a skip is a model
+ * that was available and was not asked, about a span of footage that was both
+ * still and silent. Folded together, a project with a long static stretch would
+ * look degraded — the tier logic counts descriptions that came from the fallback
+ * — when the only thing that happened is that nobody paid to have a closed lens
+ * cap described.
+ *
+ * No time value anywhere depends on this. The spans are metadata beside the
+ * media, the media is never cut or re-encoded for it, and event boundaries,
+ * source ranges and plan timecodes are the same whether it was applied or not.
+ */
+export const AnalysisSavings = obj({
+  /** Total source time judged both static and silent. */
+  inactive_ms: Milliseconds.default(0),
+  /**
+   * Events described from their observations instead of by the base model, where
+   * asking would have cost something. A call the cache would have answered for
+   * nothing is not counted: nothing was saved by not making it.
+   */
+  describe_calls_skipped: z.int().min(0).default(0),
+  /** Events judged by the rules instead of the decision model, on the same terms. */
+  judge_calls_skipped: z.int().min(0).default(0),
+  /** Frames left out of closer looks that were actually taken, not answered from the cache. */
+  frames_not_sent: z.int().min(0).default(0),
+  /** OCR reads not made in this compile's observation pass, beyond one kept per span. */
+  frames_not_analysed: z.int().min(0).default(0),
+  /**
+   * An estimate, labelled as one: each call not made priced by its own prompt, at
+   * the tokens per character this run's calls measured.
+   */
+  estimated_tokens_avoided: z.int().min(0).default(0),
+  /**
+   * Closer looks and second opinions the still, silent events would have been
+   * given had they been candidates, net of the ones given to other events
+   * instead and of the ones the cache would have answered. Counted by running
+   * the same selection with them in.
+   */
+  escalations_avoided: z.int().min(0).default(0),
+  /**
+   * Closer looks and second opinions that went to other events because the
+   * still, silent ones were not candidates. Under a count or cost limit a look
+   * is not saved but moved, to something worth looking at.
+   */
+  escalations_redirected: z.int().min(0).default(0),
+  /**
+   * An estimate, labelled as one: calls not made times the per-event cost each
+   * pass charges. Zero for models on this machine, because they are free.
+   */
+  estimated_cost_avoided_usd: z.number().min(0).default(0),
+}).meta({ id: 'AnalysisSavings' });
+export type AnalysisSavings = z.infer<typeof AnalysisSavings>;
+
 export const AnalysisQuality = obj({
   tier: AnalysisTier,
   /** Every stage that ran without the model the standard path wants. */
   stand_ins: z.array(StandIn).default([]),
+  /** What was not asked of a model because there was nothing there. Absent when off. */
+  savings: AnalysisSavings.optional(),
 }).meta({ id: 'AnalysisQuality' });
 export type AnalysisQuality = z.infer<typeof AnalysisQuality>;
 

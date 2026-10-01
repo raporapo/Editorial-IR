@@ -9,6 +9,12 @@ dist/
 *.tsbuildinfo
 coverage/
 
+# --- secrets ----------------------------------------------------------------
+# API keys live here (see .env.example), and never in the repository.
+.env
+.env.*
+!.env.example
+
 # --- runtime artefacts -----------------------------------------------------
 .oea/
 *.log

@@ -34,6 +34,37 @@ material cannot settle — colour fields with grain are adversarial for a conten
 metric in ways a camera is not. A few hundred bytes of output from real footage
 decides it; the footage itself is not needed and should not be sent.
 
+### What it has already settled
+
+62 minutes of real camera footage, four unedited takes, every boundary found
+therefore wrong:
+
+| sensitivity | raw cutoff | false boundaries | per minute |
+| ----------- | ---------- | ---------------- | ---------- |
+| 0.10        | 0.033      | 194              | 3.13       |
+| 0.15        | 0.050      | 79               | 1.28       |
+| 0.20        | 0.067      | 33               | 0.53       |
+| **0.30**    | **0.100**  | **14**           | **0.23**   |
+
+The distributions were consistent across all four: median near 0.014, 90th
+percentile near 0.027, 99th between 0.054 and 0.090. 0.3 is the smallest value
+tested whose cutoff clears the 99th percentile of every clip, which is the
+criterion — a threshold inside the noise distribution admits noise at the rate
+that distribution dictates.
+
+Two things it did **not** settle, both worth knowing before trusting the number:
+
+- **Recall is unmeasured.** Unedited takes give the false-positive side for
+  free; the other side needs an edited clip and its true cut times
+  (`--cuts-at`, or `--candidates N` and mark the list).
+- **No threshold separates these cleanly.** The false positives arrived in
+  bursts of a few seconds during violent camera movement, peaking at 0.435 —
+  which is squarely in the range a real cut occupies. Height cannot tell them
+  apart. Shape might: a cut is one frame that changes and stays changed, while
+  motion is elevated for seconds. That is the direction, and it needs the recall
+  data first, because a rule that quiets sustained motion would quiet a
+  rapid-cut sequence just as well.
+
 ## 1. Is it still correct?
 
 `pnpm verify`. Formatting, types, lint, build, tests, and a check that the
@@ -89,6 +120,16 @@ pnpm oea plan --project ./tmp/demo --skill travel-vlog --duration 180
 Read the cut. Not the summary line — the list of clips, in order, with their
 lengths and roles. Several of the bugs listed at the top of this page were found
 by reading that list and nothing else.
+
+The worked example replays recorded perception, so it never touches a media
+file. For the media path, `scripts/probe-footage.sh <dir>` makes nine kinds of
+material with ffmpeg — an edited programme, phone-trimmed clips, sound files,
+photographs, a silent drone clip, a screen recording, variable frame rate, two
+audio streams, a camera left running — the same bytes on every run. Each case is
+`<dir>/<case>/footage`, ready for `oea ingest`; running every skill and every
+editor over them is how the output checks were written. The sound is tones, not
+speech, so they measure timing, structure and cost per event, not what a
+transcript makes of them.
 
 ### Turning a judgement into a measurement
 

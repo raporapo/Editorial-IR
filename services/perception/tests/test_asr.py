@@ -108,6 +108,41 @@ def test_a_word_with_no_timing_is_left_out_rather_than_placed_at_zero():
     assert [w["text"] for w in words] == ["hello"]
 
 
+def test_a_segment_spanning_a_long_silence_is_split_where_its_words_pause():
+    # With voice-activity filtering on, one segment can span the silence the
+    # filter removed. Its words know better, and the event over that silence
+    # must not be told somebody was talking through it.
+    model = FakeModel(
+        [
+            segment(
+                8.38,
+                91.04,
+                " Let me leave it running for a while. Okay, I am back.",
+                words=[
+                    word(8.4, 8.6, " Let"),
+                    word(8.6, 8.8, " me"),
+                    word(9.6, 10.1, " while."),
+                    word(89.96, 90.3, " Okay,"),
+                    word(90.5, 91.0, " back."),
+                ],
+            )
+        ]
+    )
+    utterances = asr.transcribe(model, "a.wav")["utterances"]
+    assert [(u["start_ms"], u["end_ms"]) for u in utterances] == [(8400, 10100), (89960, 91000)]
+    assert [u["text"] for u in utterances] == ["Let me while.", "Okay, back."]
+    assert [len(u["words"]) for u in utterances] == [3, 2]
+
+
+def test_a_pause_inside_a_sentence_does_not_split_it():
+    model = FakeModel(
+        [segment(0, 3, "well, then", words=[word(0.0, 0.4, " well,"), word(1.9, 2.3, " then")])]
+    )
+    utterances = asr.transcribe(model, "a.wav")["utterances"]
+    assert len(utterances) == 1
+    assert utterances[0]["start_ms"] == 0 and utterances[0]["end_ms"] == 3000
+
+
 def test_a_segment_without_words_simply_has_none():
     model = FakeModel([segment(0, 1, "no word timings here", words=None)])
     assert "words" not in asr.transcribe(model, "a.wav")["utterances"][0]

@@ -6,12 +6,15 @@ import {
 import { recordRevision, reviewPlan, suggestRevisions, validatePlan } from '@editorial-ir/agent';
 import { openProject } from '../project.js';
 import { requireIr, requirePlan } from '../ir.js';
+import { skillOfPlan } from './plan.js';
 import { colour, detail, heading, line, note, success, table, warn } from '../ui.js';
 
 export interface ReviewArgs {
   project?: string;
   plan?: string;
   json?: boolean;
+  /** Where a skill of the user's own lives, so a plan made with it is checked against it. */
+  skillsDir?: string;
 }
 
 /**
@@ -28,8 +31,12 @@ export function runReview(args: ReviewArgs): number {
 
   const plan = requirePlan(store, args.plan);
 
+  // Against the skill the plan was made with, where it can be found: without it
+  // the speech share that skill promised was checked by `oea plan` and never
+  // again.
   const validation = validatePlan(plan, {
     ir,
+    skill: skillOfPlan(plan, args.skillsDir),
     projectRoot: store.paths.root,
     checkMediaExists: true,
   });

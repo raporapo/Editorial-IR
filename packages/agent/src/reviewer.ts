@@ -8,6 +8,7 @@ import {
   type EditorialIR,
   type PlanRevision,
   type ReviewObservation,
+  REQUIRES_CONTEXT_THRESHOLD,
 } from '@editorial-ir/contracts';
 
 /**
@@ -69,8 +70,39 @@ export function reviewPlan(
 
   const usedEvents = new Set(operations.map((o) => o.event_id).filter(Boolean) as string[]);
 
+  // A take with its pauses taken out is several clips and one moment, and the
+  // viewer sees one moment: a two-word piece of a sentence is not "too short to
+  // register", the second half of it is not missing its context, and the cut
+  // between them is not a jump. So each moment is measured whole, from its first
+  // clip, and the pieces after it are only walked through.
+  //
+  // Only a piece that really continues the clip before it — the same event of
+  // the same recording, on the same track — is excused. The flag is a claim, and a plan from an
+  // agent can make it about a clip that is a different moment altogether; the
+  // validator says so (`invalid_continuation`), and this does not hide what
+  // such a clip would otherwise be told.
+  const continues = (index: number): boolean => {
+    const operation = operations[index]!;
+    const previous = operations[index - 1];
+    return (
+      operation.continues_previous === true &&
+      previous !== undefined &&
+      previous.track === operation.track &&
+      previous.event_id === operation.event_id &&
+      previous.source_asset_id === operation.source_asset_id
+    );
+  };
+  const momentLength = new Map<string, number>();
+  let head: string | undefined;
   for (const [index, operation] of operations.entries()) {
-    const duration = operationTimelineDuration(operation);
+    if (!continues(index) || head === undefined) head = operation.operation_id;
+    momentLength.set(head, (momentLength.get(head) ?? 0) + operationTimelineDuration(operation));
+  }
+
+  for (const [index, operation] of operations.entries()) {
+    if (continues(index)) continue;
+    const duration =
+      momentLength.get(operation.operation_id) ?? operationTimelineDuration(operation);
 
     if (duration < settings.minReadableMs) {
       add(
@@ -97,7 +129,7 @@ export function reviewPlan(
     // A clip that only makes sense after another clip, where the other clip is
     // not in the cut. This is the most recognisable failure of an automatic edit.
     const assessment = ir.editorial.find((e) => e.event_id === event.id)?.current;
-    if ((assessment?.flags.requires_previous_context ?? 0) > 0.6) {
+    if ((assessment?.flags.requires_previous_context ?? 0) > REQUIRES_CONTEXT_THRESHOLD) {
       const ordered = [...ir.events].sort((a, b) => a.start_ms - b.start_ms);
       const position = ordered.findIndex((e) => e.id === event.id);
       const previous = position > 0 ? ordered[position - 1] : undefined;

@@ -15,6 +15,7 @@ from typing import Any
 
 from .backends import asr, audio_tags, hashing, text_embedding, visual, vlm
 from .backends import audio as audio_backend
+from .backends import motion as motion_backend
 from .backends import ocr as ocr_backend
 from .errors import BadRequest, MissingDependency
 from .media import detect_shots, has_ffmpeg, has_ffprobe, prepare, probe
@@ -40,9 +41,10 @@ def handle_health(params: dict[str, Any], session: Session) -> dict[str, Any]:
             "prepare": has_ffmpeg(),
             "detect_shots": has_ffmpeg(),
             "analyze_audio": True,
+            "analyze_video": has_ffmpeg(),
             "transcribe": _importable("faster_whisper"),
-            "embed_frames": _importable("transformers") and _importable("torch"),
-            "ocr": _importable("rapidocr_onnxruntime"),
+            "embed_frames": visual.available(),
+            "ocr": ocr_backend.available(),
             "describe": bool(
                 os.environ.get("OEA_VLM_BASE_URL") and os.environ.get("OEA_VLM_MODEL")
             ),
@@ -54,6 +56,12 @@ def handle_health(params: dict[str, Any], session: Session) -> dict[str, Any]:
             # "night view" at all — cosine exactly 0.0, since the two share no
             # character n-grams.
             "embed_text": text_embedding.available(),
+            # Whether a query can be put in the *vision* model's space, which is
+            # a different question from whether frames can be embedded. An
+            # export with no text tower embeds frames perfectly well and cannot
+            # be asked about them, and the client has to know which it has
+            # before it builds an index it cannot search.
+            "embed_text_visual": visual.available() and visual.has_text_tower(),
         },
         # Where the work would happen, which is not always here. `describe` is
         # an HTTP call to whatever OEA_VLM_BASE_URL names, and the client cannot
@@ -61,6 +69,10 @@ def handle_health(params: dict[str, Any], session: Session) -> dict[str, Any]:
         # a run that posted the user's transcripts to a hosted endpoint was
         # written into the record as having stayed on the machine.
         "stage_locality": {"describe": _describe_locality()},
+        # The visual text tower is English on every checkpoint this is likely to
+        # be pointed at, and a Japanese query against it ranks noise confidently
+        # rather than failing. The client declines instead.
+        "stage_query_languages": _stage_query_languages(),
         # The names that actually decide each stage's output. The client keys
         # its cache on these, and it had no way to learn them: every
         # worker-backed stage reported a placeholder, so changing the ASR model
@@ -92,7 +104,6 @@ def _stage_models() -> dict[str, str]:
     """What each stage would load, without loading any of it."""
     from .backends.asr import DEFAULT_COMPUTE  # noqa: PLC0415
     from .backends.asr import DEFAULT_MODEL as ASR_MODEL
-    from .backends.visual import DEFAULT_MODEL as VISUAL_MODEL  # noqa: PLC0415
 
     models = {
         # The compute type changes the numbers that come out, so it is part of
@@ -103,12 +114,27 @@ def _stage_models() -> dict[str, str]:
         # somebody's home directory inside a document meant to be shared, and
         # made the cache miss on the same model moved elsewhere.
         "transcribe": f"{_model_name(ASR_MODEL)}/{DEFAULT_COMPUTE}",
-        "embed_frames": VISUAL_MODEL,
     }
+    # The name that actually loaded, never the path it was asked for. A locally
+    # provisioned model is pointed at with an absolute directory, and that
+    # directory was going into the cache key and into every ModelRun record —
+    # putting somebody's home directory inside a document meant to be shared.
+    visual_model = visual.describe()
+    if visual_model:
+        models["embed_frames"] = visual_model
+        if visual.has_text_tower():
+            models["embed_text_visual"] = visual_model
     # The name that actually produced the vectors, which is not always the
     # name that was asked for: an unloadable model falls back to hashing, and
     # the cache must not serve one stage's vectors under the other's key.
     models["embed_text"] = text_embedding.describe()
+    # Same algorithm and same name as the TypeScript analyser, so the cache
+    # entry one runtime wrote is the one the other would have written.
+    models["analyze_video"] = motion_backend.MODEL
+    if ocr_backend.available():
+        # The version, not the word "ocr". The cache keys on this, so a
+        # placeholder meant an upgraded reader served the old reader's text.
+        models["ocr"] = ocr_backend.describe()
     tagger = audio_tags.describe()
     if tagger:
         models["analyze_audio"] = tagger
@@ -116,6 +142,16 @@ def _stage_models() -> dict[str, str]:
     if vlm:
         models["describe"] = vlm
     return models
+
+
+def _stage_query_languages() -> dict[str, str]:
+    """Where a stage reads less than it analyses. Empty when nothing is narrowed."""
+    languages: dict[str, str] = {}
+    if visual.available() and visual.has_text_tower():
+        loaded = visual.resolve()
+        if loaded is not None:
+            languages["embed_text_visual"] = str(loaded["text_language"])
+    return languages
 
 
 def _describe_locality() -> str:
@@ -130,12 +166,17 @@ def handle_probe(params: dict[str, Any], session: Session) -> dict[str, Any]:
 
 
 def handle_prepare(params: dict[str, Any], session: Session) -> dict[str, Any]:
+    asked = params.get("audio_stream_index")
     return prepare(
         _require(params, "path"),
         _require(params, "work_dir"),
         proxy_height=int(params.get("proxy_height", 480)),
         extract_audio=bool(params.get("extract_audio", True)),
         frame_fps=float(params.get("frame_fps", 1.0)),
+        audio_stream_index=None if asked is None else int(asked),
+        # Constant unless asked otherwise, as the contract says: the proxy is
+        # what every timestamp downstream is taken from.
+        constant_frame_rate=params.get("constant_frame_rate") is not False,
     )
 
 
@@ -203,6 +244,9 @@ def handle_embed_frames(params: dict[str, Any], session: Session) -> dict[str, A
         _require(params, "path"),
         [int(t) for t in params.get("timestamps_ms") or []],
         label_vocabulary=params.get("label_vocabulary") or [],
+        # Passed through rather than guessed. Without it the stage wrote frames
+        # into the directory the footage lives in and left them there.
+        frames_dir=params.get("frames_dir"),
         progress=lambda fraction: session.progress(fraction),
     )
 
@@ -228,12 +272,45 @@ def handle_embed_text(params: dict[str, Any], session: Session) -> dict[str, Any
     texts = params.get("texts") or []
     if not isinstance(texts, list) or not texts:
         raise BadRequest("embed_text needs a non-empty list of texts")
+    wanted = [str(text) for text in texts]
+
+    space = str(params.get("space", "text"))
+    if space not in ("text", "visual"):
+        raise BadRequest("space must be 'text' or 'visual'", given=space)
+
+    if space == "visual":
+        # Refused rather than answered in the other space. Silently returning
+        # sentence-encoder vectors here would put two embedding spaces in one
+        # index, which produces a confident ranking out of noise and cannot be
+        # detected downstream — the index only catches it when the two models
+        # happen to disagree about how wide a vector is.
+        loaded = _scheduler.get("visual", visual.load)
+        if not visual.has_text_tower(loaded):
+            raise MissingDependency("visual queries", "a vision model with a text tower")
+        vectors = visual.encode_text(loaded, wanted)
+        return {
+            "model": loaded["name"],
+            "dim": int(vectors.shape[1]) if vectors.shape[0] else 1,
+            "vectors": [[round(float(value), 6) for value in row] for row in vectors],
+        }
 
     # Memoised in the backend rather than here, so that the capability report
     # and the stage-name report share this session instead of building their
     # own. Answering "can you embed text?" used to cost a model load.
     return text_embedding.embed(
-        text_embedding.resolve(), [str(text) for text in texts], str(params.get("role", "passage"))
+        text_embedding.resolve(), wanted, str(params.get("role", "passage"))
+    )
+
+
+def handle_analyze_video(params: dict[str, Any], session: Session) -> dict[str, Any]:
+    """How much the picture moves and where it is black, on the proxy."""
+    return motion_backend.analyze(
+        _require(params, "path"),
+        sample_fps=float(params.get("sample_fps", 5)),
+        static_threshold=float(params.get("static_threshold", 0.5)),
+        min_static_ms=int(params.get("min_static_ms", 3000)),
+        black_luma=float(params.get("black_luma", 24)),
+        min_black_ms=int(params.get("min_black_ms", 500)),
     )
 
 
@@ -243,6 +320,7 @@ HANDLERS = {
     "prepare": handle_prepare,
     "detect_shots": handle_detect_shots,
     "analyze_audio": handle_analyze_audio,
+    "analyze_video": handle_analyze_video,
     "transcribe": handle_transcribe,
     "embed_frames": handle_embed_frames,
     "ocr": handle_ocr,

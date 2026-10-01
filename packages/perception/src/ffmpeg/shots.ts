@@ -12,6 +12,20 @@ import type { ModelIdentity, ShotDetector } from '../types.js';
  * are the scaffolding for event segmentation, so a machine that can run ffmpeg
  * can compile a usable IR.
  */
+/**
+ * Turns the pipeline's sensitivity into ffmpeg's own `scene` scale.
+ *
+ * The same constant as the Python worker's `FFMPEG_SCALE`, and missing from
+ * this side until now: the sensitivity reached ffmpeg unscaled, so 0.3 meant a
+ * raw cutoff of 0.3 — above most real cuts. The worker's docstring records that
+ * exact bug and its fix (thirteen hard cuts came back as one shot per file), and
+ * the fix had only ever been made there, while this detector is the default.
+ * Measured on a three-segment clip: unscaled found one of the two splices, and
+ * 0.1 finds both. The false-boundary rate at 0.1 on unedited footage is the
+ * worker's measured 0.23 per minute.
+ */
+export const FFMPEG_SCENE_SCALE = 1 / 3;
+
 export interface FfmpegShotOptions {
   runner?: CommandRunner;
   binary?: string;
@@ -31,6 +45,9 @@ export class FfmpegShotDetector implements ShotDetector {
     this.identity = {
       backend: 'ffmpeg-scene',
       model: 'scene-select',
+      // 2: the sensitivity is scaled. Part of the cache key, so shots found
+      // with the unscaled cutoff are never served again.
+      modelVersion: '2',
       locality: 'local',
       mediaLeavesDevice: false,
     };
@@ -80,7 +97,7 @@ export function sceneArgs(input: string, threshold: number): string[] {
     '-i',
     input,
     '-filter:v',
-    `select='gt(scene,${threshold})',showinfo`,
+    `select='gt(scene,${threshold * FFMPEG_SCENE_SCALE})',showinfo`,
     '-an',
     '-f',
     'null',

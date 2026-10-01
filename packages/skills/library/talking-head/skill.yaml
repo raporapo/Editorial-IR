@@ -13,6 +13,12 @@ defaults:
   pad_out_ms: 400
   snap_to_silence: true
   snap_window_ms: 900
+  # Pauses inside an explanation come out as jump cuts, which is how this kind
+  # of video is cut by hand. A pause of 0.7 s or more goes, less 120 ms at each
+  # side for the tail of the last word and the breath before the next.
+  remove_silences: true
+  min_removed_silence_ms: 700
+  silence_handle_ms: 120
 
 scoring:
   weights:

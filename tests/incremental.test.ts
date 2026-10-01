@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { compileProject } from '@editorial-ir/core';
 import { HeuristicDecisionBackend } from '@editorial-ir/decision';
-import { HeuristicContextModel, type ContextModel } from '@editorial-ir/perception';
+import {
+  HashingTextEmbedding,
+  HeuristicContextModel,
+  type ContextModel,
+  type TextEmbeddingModel,
+} from '@editorial-ir/perception';
 import type { DescribeParams, DescribeResult } from '@editorial-ir/contracts';
 import { exampleSuite, makeExampleProject } from './support/project.js';
 
@@ -266,5 +271,50 @@ describe('compiling an unchanged project again', () => {
     const second = await compile();
     const visual = second.report.unavailable.find((entry) => entry.stage === 'visual');
     expect(visual?.reason).toMatch(/before frame vectors were kept/);
+  }, 60_000);
+});
+
+describe('embedding it again', () => {
+  /** A semantic encoder, as far as the pipeline can tell, that counts what it is sent. */
+  class CountingEncoder implements TextEmbeddingModel {
+    readonly identity;
+    readonly dim: number;
+    texts = 0;
+    private readonly inner = new HashingTextEmbedding();
+
+    constructor() {
+      this.identity = { ...this.inner.identity, backend: 'counting-encoder' };
+      this.dim = this.inner.dim;
+    }
+
+    async embed(texts: string[]): Promise<number[][]> {
+      this.texts += texts.length;
+      return this.inner.embed(texts);
+    }
+  }
+
+  it('sends nothing to the encoder when only the target duration changed', async () => {
+    // Every other model stage was cached and this one was not: each compile
+    // re-embedded every aspect of every event, which on a hosted endpoint is
+    // the whole project's text, sent and paid for again.
+    const store = await makeExampleProject();
+    const text = new CountingEncoder();
+    const suite = { ...exampleSuite(), text };
+    const decision = new HeuristicDecisionBackend();
+    const first = await compileProject({ store, suite, decision });
+    const sent = text.texts;
+    expect(sent).toBeGreaterThan(50);
+
+    const projectContext = store.readContext();
+    store.writeContext({
+      ...projectContext,
+      editing_goal: { ...projectContext.editing_goal, target_duration_ms: 40_000 },
+    });
+    const second = await compileProject({ store, suite, decision });
+    expect(text.texts).toBe(sent);
+    // The same vectors; only the run that produced them is this compile's own.
+    const strip = (records: typeof first.embeddings.records) =>
+      records.map(({ model_run_id: _run, ...rest }) => rest);
+    expect(strip(second.embeddings.records)).toEqual(strip(first.embeddings.records));
   }, 60_000);
 });

@@ -1,4 +1,5 @@
 import {
+  PIPELINE_VERSION,
   compareText,
   embeddingRefFor,
   type EmbeddingKind,
@@ -9,6 +10,8 @@ import {
 import { aspectText, populatedAspects } from '@editorial-ir/index';
 import type { TextEmbeddingModel } from '@editorial-ir/perception';
 import type { ModelRunRecorder } from './model-runs.js';
+import type { PerceptionCache } from './cache.js';
+import { hashObject } from './fingerprint.js';
 
 /**
  * Building the searchable representation of every event.
@@ -35,6 +38,17 @@ export interface EmbedOptions {
   runs?: ModelRunRecorder;
   /** The run that produced the frame vectors, for the records made from them. */
   visualRunId?: string;
+  /**
+   * Caches vectors on the text and the encoder.
+   *
+   * Every other model stage was cached and this one was not: each compile
+   * re-embedded every aspect of every event, so changing the target duration
+   * and re-analysing sent the whole project's text to a hosted embedding
+   * endpoint again, at full price, for vectors that could not have changed.
+   * A lexical encoder is not cached — it is a hash, cheaper to recompute than
+   * to look up.
+   */
+  cache?: PerceptionCache;
   onProgress?: (done: number, total: number) => void;
 }
 
@@ -86,7 +100,11 @@ export async function buildEmbeddings(
   // One call for everything: an embedding backend charges and waits per request,
   // not per string, and a per-event loop over six aspects is six hundred
   // requests for a hundred-event project.
-  const vectors = jobs.length > 0 ? await encoder.embed(jobs.map((job) => job.text)) : [];
+  const vectors = await embedCached(
+    encoder,
+    jobs.map((job) => job.text),
+    encoder.lexical ? undefined : options.cache,
+  );
   options.onProgress?.(jobs.length, jobs.length);
 
   for (const [index, job] of jobs.entries()) {
@@ -104,6 +122,43 @@ export async function buildEmbeddings(
 
   records.sort((a, b) => compareText(a.owner_id, b.owner_id) || compareText(a.kind, b.kind));
   return { records, kinds: [...new Set(records.map((r) => r.kind))].sort() };
+}
+
+/** Vectors for these texts, asking the encoder only about the ones never seen before. */
+async function embedCached(
+  encoder: TextEmbeddingModel,
+  texts: readonly string[],
+  cache: PerceptionCache | undefined,
+): Promise<(number[] | undefined)[]> {
+  if (texts.length === 0) return [];
+  if (!cache) return encoder.embed([...texts]);
+
+  const keyFor = (text: string) => ({
+    operation: 'embed_text',
+    mediaSha256: hashObject({ text }),
+    backend: encoder.identity.backend,
+    ...(encoder.identity.model === undefined ? {} : { model: encoder.identity.model }),
+    ...(encoder.identity.modelVersion === undefined
+      ? {}
+      : { modelVersion: encoder.identity.modelVersion }),
+    parameters: { role: 'passage' },
+    pipelineVersion: PIPELINE_VERSION,
+  });
+
+  const out: (number[] | undefined)[] = texts.map((text) => cache.get<number[]>(keyFor(text)));
+  const missing = [...new Set(texts.filter((_, i) => out[i] === undefined))];
+  if (missing.length === 0) return out;
+
+  // Still one request for everything that is new, for the reason above.
+  const fresh = await encoder.embed(missing);
+  const byText = new Map<string, number[]>();
+  for (const [i, text] of missing.entries()) {
+    const vector = fresh[i];
+    if (!vector || vector.length === 0) continue;
+    byText.set(text, vector);
+    cache.set(keyFor(text), vector);
+  }
+  return texts.map((text, i) => out[i] ?? byText.get(text));
 }
 
 /** Mean of the frame vectors inside an event, normalised. */

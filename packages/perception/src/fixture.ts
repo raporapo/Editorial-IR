@@ -3,6 +3,7 @@ import { basename } from 'node:path';
 import { z } from 'zod';
 import {
   AnalyzeAudioResult,
+  AnalyzeVideoResult,
   DescribeResult,
   DetectShotsResult,
   EditorialError,
@@ -23,6 +24,7 @@ import type {
   PerceptionSuite,
   ShotDetector,
   SpeechModel,
+  VideoModel,
   VisualEmbeddingModel,
 } from './types.js';
 import { HashingTextEmbedding } from './text-embedding/hashing.js';
@@ -48,6 +50,7 @@ const AssetFixture = z
     detect_shots: DetectShotsResult.optional(),
     embed_frames: EmbedFramesResult.optional(),
     analyze_audio: AnalyzeAudioResult.optional(),
+    analyze_video: AnalyzeVideoResult.optional(),
     ocr: OcrResult.optional(),
   })
   .loose();
@@ -90,6 +93,7 @@ export class FixturePerception
     ShotDetector,
     VisualEmbeddingModel,
     AudioModel,
+    VideoModel,
     OcrModel,
     ContextModel
 {
@@ -166,6 +170,10 @@ export class FixturePerception
     );
   }
 
+  async analyzeVideo(params: { path: string }) {
+    return this.require(params.path, 'analyze_video', this.assetFixture(params.path).analyze_video);
+  }
+
   async ocr(params: { path: string }) {
     return this.require(params.path, 'ocr', this.assetFixture(params.path).ocr);
   }
@@ -204,6 +212,7 @@ export function createFixtureSuite(fixture: PerceptionFixture): PerceptionSuite 
     ...(has('detect_shots') ? { shots: replay } : {}),
     ...(has('embed_frames') ? { visual: replay } : {}),
     ...(has('analyze_audio') ? { audio: replay } : {}),
+    ...(has('analyze_video') ? { video: replay } : {}),
     ...(has('ocr') ? { ocr: replay } : {}),
     ...(Object.keys(fixture.describe).length > 0 ? { context: replay } : {}),
   };

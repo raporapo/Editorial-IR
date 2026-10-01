@@ -57,10 +57,14 @@ constraints:
 
 rules:
   - id: drop-unusable-picture
-    description: Material nobody could watch is not worth ranking.
+    description: >-
+      Material nobody could watch is not worth ranking. A sound file has no
+      picture to be unusable, and a score for one is about nothing.
     priority: 90
     when:
       visual_quality: '<0.15'
+      not:
+        material: audio_only
     action:
       drop: true
 
@@ -104,10 +108,16 @@ rules:
       minimum_duration_sec: 2.5
       avoid_aggressive_cutting: true
 
+  # Not for an edited programme, whose sound with no words in it is its music
+  # bed: measured on the probe's edited programme, this rule muted every clip of
+  # the cut and the exported programme was silent. Not for a sound file either,
+  # which as b-roll would be a clip with neither picture nor sound.
   - id: use-quiet-picture-as-b-roll
     when:
       b_roll_candidate_probability: '>0.7'
       has_speech: false
+      not:
+        material: [edited, audio_only]
     action:
       as_b_roll: true
       maximum_duration_sec: 4.0

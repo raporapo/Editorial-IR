@@ -233,6 +233,15 @@ describe('the agent command', () => {
   }, 60_000);
 });
 
+/** An IR read back from disk, as far as the comparisons below look into it. */
+interface StoredIr {
+  project: { perception?: string } & Record<string, unknown>;
+  model_runs: Record<string, unknown>[];
+  editorial: ({ current: Record<string, unknown> } & Record<string, unknown>)[];
+  stats: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 describe('re-analysing a project', () => {
   it('uses the perception it was analysed with the first time', async () => {
     // `oea annotate` ends by telling you to run `oea analyze`, and following
@@ -259,6 +268,57 @@ describe('re-analysing a project', () => {
 
     const project = JSON.parse(readFileSync(join(root, '.oea', 'project.json'), 'utf8'));
     expect(project.perception).toMatch(/^fixture:/);
+  }, 60_000);
+
+  it('compiles an unchanged project to the same IR the second time', async () => {
+    // The IR carries the project record, and the perception this command stores
+    // used to be written only after the compile had read that record. The first
+    // IR of every project had no `perception` and every later one had it, so two
+    // analyses of the same footage with the same models were different IRs.
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+    const read = (): StoredIr =>
+      JSON.parse(readFileSync(join(root, '.oea', 'ir.json'), 'utf8')) as StoredIr;
+    // The values tests/compile.test.ts documents as belonging to one run.
+    const stable = (ir: StoredIr) =>
+      JSON.stringify({
+        ...ir,
+        generated_at: null,
+        project: { ...ir.project, updated_at: null },
+        model_runs: ir.model_runs.map((r) => ({
+          ...r,
+          id: null,
+          created_at: null,
+          latency_ms: null,
+        })),
+        editorial: ir.editorial.map((e) => ({
+          ...e,
+          current: { ...e.current, model_run_id: null },
+        })),
+        stats: { ...ir.stats, compile_ms: null },
+      });
+
+    const first = read();
+    expect(first.project.perception).toMatch(/^fixture:/);
+    output = [];
+    expect(await main(['analyze', '--project', root])).toBe(0);
+    expect(stable(read())).toBe(stable(first));
+  }, 60_000);
+
+  it('names the perception that made the IR, not the one before it', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'oea-cli-')), 'demo');
+    await main(['demo', root]);
+    // The same recording at another path: a different perception by name, and
+    // nothing else changed.
+    const again = join(root, 'again.fixture.json');
+    writeFileSync(again, readFileSync(join(root, 'perception.fixture.json')));
+
+    output = [];
+    expect(await main(['analyze', '--project', root, '--perception', `fixture:${again}`])).toBe(0);
+    const ir = JSON.parse(readFileSync(join(root, '.oea', 'ir.json'), 'utf8'));
+    const project = JSON.parse(readFileSync(join(root, '.oea', 'project.json'), 'utf8'));
+    expect(ir.project.perception).toBe(`fixture:${again}`);
+    expect(ir.project).toEqual(project);
   }, 60_000);
 
   it('folds a correction in without losing the analysis', async () => {

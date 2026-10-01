@@ -67,20 +67,146 @@ export const Iso8601 = z
  * Returns the instant as `Iso8601`, or nothing at all. Nothing is the right
  * answer for a container whose date cannot be understood: ordering by file name
  * is arbitrary, and ordering by a misread date is wrong.
+ *
+ * Only an instant: a time of day with a zone. A time with no zone was read as
+ * UTC, which for a camera set to Tokyo time is nine hours out — and it was then
+ * compared, as though both were UTC, with a phone's clip that did carry one. A
+ * value with no time of day was read as midnight: an MP3's `date` of `2026`
+ * became 2026-01-01T00:00:00Z, and a podcast sorted to New Year. Both are now
+ * nothing here; {@link parseCaptureTime} says what they are instead.
  */
 export function toIso8601(value: string | undefined): string | undefined {
+  return parseCaptureTime(value)?.instant;
+}
+
+/**
+ * A capture time as precisely as the file stated it, and no more precisely.
+ *
+ * - `instant`: a time of day with a zone or an offset. `instant` holds it in
+ *   UTC, and `local` the wall clock too when an offset was written.
+ * - `local`: a time of day with no zone — EXIF without `OffsetTimeOriginal`, an
+ *   AVI, a Broadcast WAV. `local` holds the wall clock where it was taken; no
+ *   offset is invented for it.
+ * - `date`: a year, a month or a day, and no time of day. Not a capture time,
+ *   and never an order.
+ */
+export interface ParsedCaptureTime {
+  precision: 'instant' | 'local' | 'date';
+  /** The instant, `2026-05-17T09:00:00.000Z`, for `instant`. */
+  instant?: string;
+  /** The wall clock, `2026-05-17T18:00:00.000`, with no zone. */
+  local?: string;
+  /** Minutes east of UTC, when the value wrote an offset rather than `Z`. */
+  offsetMinutes?: number;
+  /** `2026`, `2026-05` or `2026-05-17`, for `date`. */
+  date?: string;
+}
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/**
+ * Parses the forms of capture time that media files actually carry.
+ *
+ * - `2026-05-17T09:00:00.000000Z` (QuickTime and Matroska via ffprobe)
+ * - `2026-05-17T18:00:00+0900` (`com.apple.quicktime.creationdate`)
+ * - `2026:05:17 18:00:00` (EXIF), with `.123` and `+09:00` appended by the
+ *   reader when `SubSecTimeOriginal` and `OffsetTimeOriginal` are there
+ * - `2026-05-17 09:00:00` (AVI, Broadcast WAV), `2026-05-17T09:00` (ID3v2.4)
+ * - `Sun, 17 May 2026 09:00:00 +0900` (a PNG's `Creation Time`)
+ * - `2026`, `2026-05`, `2026-05-17` (ID3, Vorbis comments)
+ *
+ * With a regular expression rather than `Date.parse`, which accepts whatever
+ * the JavaScript engine of the day chooses to — `new Date('2026Z')` is one of
+ * the things it chose to accept.
+ *
+ * A clock that was never set writes an epoch: 1904-01-01 is QuickTime's zero
+ * and 1970-01-01 Unix's, and a camera fresh from its box stamps one of those.
+ * Taken as capture times they put a whole card of footage before everything
+ * else, so a year before 1971 is no capture time at all.
+ */
+export function parseCaptureTime(value: string | undefined): ParsedCaptureTime | undefined {
   if (value === undefined) return undefined;
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return undefined;
-  // Some containers write `2026-05-17 09:00:00`, and some cameras use colons in
-  // the date, which is what EXIF specifies: `2026:05:17 09:00:00`.
-  const candidate = /^\d{4}:\d{2}:\d{2}[ T]/.test(trimmed)
-    ? `${trimmed.slice(0, 10).replace(/:/g, '-')}T${trimmed.slice(11)}`
-    : trimmed.replace(' ', 'T');
-  const parsed = new Date(
-    candidate.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(candidate) ? candidate : `${candidate}Z`,
-  );
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+  const text = value.trim();
+  if (text.length === 0) return undefined;
+
+  const dateOnly = /^(\d{4})(?:[-:/](\d{2})(?:[-:/](\d{2}))?)?$/.exec(text);
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly;
+    if (!validDate(Number(year), Number(month ?? 1), Number(day ?? 1))) return undefined;
+    return { precision: 'date', date: [year, month, day].filter(Boolean).join('-') };
+  }
+
+  const numeric =
+    /^(\d{4})[-:/](\d{2})[-:/](\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d+))?)?\s*(Z|UTC|GMT|[+-]\d{2}(?::?\d{2})?)?$/i.exec(
+      text,
+    );
+  if (numeric) {
+    const [, y, mo, d, h, mi, s, fraction, zone] = numeric;
+    return fromParts(
+      [Number(y), Number(mo), Number(d), Number(h), Number(mi), Number(s ?? 0)],
+      fraction,
+      zone,
+    );
+  }
+
+  const written =
+    /^(?:[a-z]{3},?\s+)?(\d{1,2})\s+([a-z]{3})[a-z]*\s+(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?\s*(Z|UTC|GMT|[+-]\d{2}(?::?\d{2})?)?$/i.exec(
+      text,
+    );
+  if (written) {
+    const [, d, monthName, y, h, mi, s, zone] = written;
+    const month = MONTHS.indexOf(monthName!.toLowerCase()) + 1;
+    if (month === 0) return undefined;
+    return fromParts(
+      [Number(y), month, Number(d), Number(h), Number(mi), Number(s ?? 0)],
+      undefined,
+      zone,
+    );
+  }
+  return undefined;
+}
+
+function validDate(year: number, month: number, day: number): boolean {
+  if (year < 1971 || month < 1 || month > 12 || day < 1) return false;
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  return probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day;
+}
+
+function fromParts(
+  [year, month, day, hour, minute, second]: readonly [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ],
+  fraction: string | undefined,
+  zone: string | undefined,
+): ParsedCaptureTime | undefined {
+  if (!validDate(year, month, day)) return undefined;
+  if (hour > 23 || minute > 59 || second > 59) return undefined;
+  const millis = fraction ? Number(fraction.slice(0, 3).padEnd(3, '0')) : 0;
+  const wall = Date.UTC(year, month - 1, day, hour, minute, second, millis);
+  const local = new Date(wall).toISOString().slice(0, -1);
+  if (zone === undefined) return { precision: 'local', local };
+  const upper = zone.toUpperCase();
+  if (upper === 'Z' || upper === 'UTC' || upper === 'GMT') {
+    return { precision: 'instant', instant: new Date(wall).toISOString() };
+  }
+  const sign = zone.startsWith('-') ? -1 : 1;
+  const digits = zone.slice(1).replace(':', '');
+  // `+ 0` so that `-00:00` is not a negative zero in the JSON.
+  const offsetMinutes = sign * (Number(digits.slice(0, 2)) * 60 + Number(digits.slice(2) || 0)) + 0;
+  // UTC-12 to UTC+14 are the offsets there are; anything past them is a
+  // misread field, not a place.
+  if (offsetMinutes < -12 * 60 || offsetMinutes > 14 * 60) return undefined;
+  return {
+    precision: 'instant',
+    instant: new Date(wall - offsetMinutes * 60_000).toISOString(),
+    local,
+    offsetMinutes,
+  };
 }
 
 /**
@@ -265,4 +391,117 @@ export function parseTimecode(input: string): number {
   }
   const millis = frac ? Number(frac.padEnd(3, '0')) : 0;
   return ((h * 60 + min) * 60 + sec) * 1000 + millis;
+}
+
+/* -------------------------------------------------------------------------- */
+/* SMPTE timecode                                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Whether a rational frame rate is one of the NTSC family: a whole rate slowed
+ * by 1000/1001, such as 24000/1001, 30000/1001 or 60000/1001.
+ *
+ * Asked of the numbers rather than of "has a denominator": 2500/101 is the
+ * measured average of a phone clip that dropped frames, not an NTSC rate, and
+ * reading every rate with a denominator as NTSC wrote it into a sequence as
+ * 25 fps slowed by 1000/1001 — a rate no camera has ever recorded.
+ */
+export function isNtscRate(num: number, den: number): boolean {
+  return den === 1001 && num % 1000 === 0 && num > 0;
+}
+
+/**
+ * Whether drop-frame counting is defined at this rate.
+ *
+ * Only for 30000/1001 and 60000/1001. Drop-frame exists to keep a 29.97 clock's
+ * labels in step with the wall clock; 23.976 has no drop-frame form, and a
+ * timecode with a `;` at 24000/1001 is a mistake, not a convention.
+ */
+export function supportsDropFrame(num: number, den: number): boolean {
+  return den === 1001 && (num === 30_000 || num === 60_000);
+}
+
+/** The labels a timecode counts in: the whole frames per second it writes. */
+export function timecodeBase(num: number, den: number): number {
+  return Math.max(1, Math.round(num / den));
+}
+
+/** Frame numbers dropped each minute at a drop-frame rate: 2 at 29.97, 4 at 59.94. */
+function droppedPerMinute(base: number): number {
+  return Math.round(base / 15);
+}
+
+/**
+ * Frames to a SMPTE timecode, `HH:MM:SS:FF`, or `HH:MM:SS;FF` when drop-frame.
+ *
+ * Drop-frame drops frame *labels*, never frames: at 29.97 the labels :00 and
+ * :01 are skipped at the start of every minute except each tenth, which is what
+ * keeps 01:00:00;00 an hour of wall-clock time. Counting 29.97 footage without
+ * it drifts 3.6 seconds an hour, and an edit list that disagrees with the
+ * media's own timecode by that much conforms the wrong frames.
+ *
+ * Wraps at 24 hours, as a timecode does.
+ */
+export function framesToSmpte(
+  frames: number,
+  num: number,
+  den: number,
+  dropFrame: boolean = supportsDropFrame(num, den),
+): string {
+  const base = timecodeBase(num, den);
+  const drop = dropFrame && supportsDropFrame(num, den);
+  let label = Math.max(0, Math.round(frames));
+
+  if (drop) {
+    const dropped = droppedPerMinute(base);
+    const perMinute = base * 60 - dropped;
+    const perTenMinutes = base * 600 - dropped * 9;
+    const tens = Math.floor(label / perTenMinutes);
+    const rest = label % perTenMinutes;
+    label +=
+      dropped * 9 * tens +
+      (rest > dropped ? dropped * Math.floor((rest - dropped) / perMinute) : 0);
+  }
+
+  const ff = label % base;
+  const totalSeconds = Math.floor(label / base);
+  const ss = totalSeconds % 60;
+  const mm = Math.floor(totalSeconds / 60) % 60;
+  const hh = Math.floor(totalSeconds / 3600) % 24;
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${two(hh)}:${two(mm)}:${two(ss)}${drop ? ';' : ':'}${two(ff)}`;
+}
+
+/**
+ * A SMPTE timecode to a frame count at a rational rate.
+ *
+ * Drop-frame is read from the timecode itself — a `;`, `.` or `,` before the
+ * frames, which is how ffprobe reports a 29.97 camera's clock (`01:00:00;00`) —
+ * and honoured only where drop-frame is defined. `dropFrame` overrides the
+ * separator for a label that is known to count one way: a record start typed
+ * as `01:00:00:00` for a drop-frame list means the label the list will print
+ * as `01:00:00;00`, and reading it as non-drop put the first event at
+ * 01:00:03;18. Returns undefined for anything that is not a timecode, so a tag
+ * holding something else is ignored rather than read as midnight.
+ */
+export function smpteToFrames(
+  timecode: string,
+  num: number,
+  den: number,
+  dropFrame?: boolean,
+): number | undefined {
+  const match = /^(\d{1,2})[:;.](\d{2})[:;.](\d{2})([:;.,])(\d{2,3})$/.exec(timecode.trim());
+  if (!match) return undefined;
+  const [, h, m, s, separator, f] = match;
+  const base = timecodeBase(num, den);
+  const hh = Number(h);
+  const mm = Number(m);
+  const ss = Number(s);
+  const ff = Number(f);
+  if (mm > 59 || ss > 59 || ff >= base) return undefined;
+  const drop = (dropFrame ?? separator !== ':') && supportsDropFrame(num, den);
+  const labels = ((hh * 60 + mm) * 60 + ss) * base + ff;
+  if (!drop) return labels;
+  const minutes = hh * 60 + mm;
+  return labels - droppedPerMinute(base) * (minutes - Math.floor(minutes / 10));
 }

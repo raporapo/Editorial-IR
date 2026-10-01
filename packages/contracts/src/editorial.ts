@@ -109,6 +109,17 @@ export const EditorialAssessment = obj({
 }).meta({ id: 'EditorialAssessment', title: 'EditorialAssessment' });
 export type EditorialAssessment = z.infer<typeof EditorialAssessment>;
 
+/**
+ * Above this, an event is treated as depending on the one before it.
+ *
+ * The planner drops such an event when its predecessor is not in the cut, the
+ * reviewer warns about it, and the graph records the dependency as a relation.
+ * All three read the same flag and each had written `0.6` down separately — the
+ * arrangement where one of them gets tuned and the other two quietly disagree
+ * with it.
+ */
+export const REQUIRES_CONTEXT_THRESHOLD = 0.6;
+
 /** Neutral metric values, used when no backend has run yet. */
 export const NEUTRAL_METRICS: Record<EditorialMetric, number> = {
   story_importance: 0.5,

@@ -14,6 +14,18 @@
     },
     "frame_timestamps_ms": {
       "$ref": "#/$defs/__schema3"
+    },
+    "audio_stream_count": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "audio_stream_index": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "audio_stream_reason": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "failed": {
+      "$ref": "#/$defs/__schema7"
     }
   },
   "additionalProperties": false,
@@ -48,6 +60,70 @@
       "minimum": 0,
       "maximum": 9007199254740991,
       "description": "Integer milliseconds. Media time is always integer ms, never float seconds."
+    },
+    "__schema4": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema5": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "__schema6": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "__schema7": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "derivative": {
+                "$ref": "#/$defs/PreparedDerivative"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "derivative",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "PreparedDerivative": {
+      "type": "string",
+      "enum": [
+        "proxy",
+        "audio",
+        "frames"
+      ]
     }
   }
 }

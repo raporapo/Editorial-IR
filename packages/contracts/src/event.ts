@@ -85,6 +85,25 @@ export const EventObservations = obj({
   motion: UnitScore.optional(),
   /** Mean technical quality in [0,1], from sharpness and exposure. */
   technical_quality: UnitScore.optional(),
+  /**
+   * Text burned into the picture as subtitles, one line per subtitle rather than
+   * one per sampled frame.
+   *
+   * Kept apart from `ocr` because it is a different thing that happens to be
+   * read the same way. In an edited video a subtitle sits in the bottom band for
+   * three seconds across two cuts, and read frame by frame it arrived as the same
+   * sentence six times among the shop signs — which the search index then
+   * treated as the most prominent thing on screen.
+   */
+  subtitles: z.array(z.string()).optional(),
+  /**
+   * Fraction of the event that was both static and silent, in [0,1].
+   *
+   * An observation, not a verdict: a still, silent establishing shot can be the
+   * best moment in the film. It is what lets the analysis decline to pay a model
+   * to describe a lens cap, and what lets a skill rule decide for itself.
+   */
+  inactive_ratio: UnitScore.optional(),
 }).meta({ id: 'EventObservations' });
 export type EventObservations = z.infer<typeof EventObservations>;
 
@@ -133,9 +152,29 @@ export const SemanticEvent = obj({
   affect: ProvenancedAffect,
   observed: EventObservations,
   knowledge: EventKnowledge,
-  /** How the boundaries of this event were decided. */
+  /**
+   * How the boundaries of this event were decided.
+   *
+   * - `asset`: the whole file is the event — a still, a clip the user already
+   *   trimmed, or a recording the user asked to keep whole.
+   * - `title_card`: it opens on a title card or a cut to black in an edited
+   *   video, which introduces what follows it and so begins an event and a
+   *   chapter rather than ending the one before.
+   * - `similarity`, `speech`, `silence`: an unbroken take longer than any event
+   *   may be, divided where the picture changed, where the talking paused, or
+   *   where the sound stopped.
+   */
   segmentation: obj({
-    method: z.enum(['shot', 'speech', 'silence', 'similarity', 'user', 'asset', 'fixed']),
+    method: z.enum([
+      'shot',
+      'speech',
+      'silence',
+      'similarity',
+      'user',
+      'asset',
+      'fixed',
+      'title_card',
+    ]),
     boundary_confidence: Confidence,
   }),
   /** Ids of embeddings held in the sidecar vector store. */

@@ -1,7 +1,10 @@
 import {
+  EMPTY_OBSERVATIONS,
   IR_VERSION,
   PIPELINE_VERSION,
   analysisQuality,
+  seqId,
+  type AnalysisSavings,
   type EditorialIR,
   type EmbeddingSet,
   type MediaAsset,
@@ -31,11 +34,22 @@ import { buildSemanticEvents } from './context-builder.js';
 import { buildEmbeddings, attachEmbeddingRefs } from './embed.js';
 import { assessEvents } from './assess-stage.js';
 import { buildChapters, type ChapterOptions } from './chapters.js';
-import { buildEventGraph } from './graph.js';
+import { buildEventGraph, hasDistinctiveContent } from './graph.js';
+import { classifyMaterials } from './materials.js';
 import { continuityOverrides } from './annotations.js';
 import { ModelRunRecorder } from './model-runs.js';
 import { CostBudget, type EscalationPolicy } from './budget.js';
 import { hashObject } from './fingerprint.js';
+import { ACTIVITY_MASK_VERSION, inactiveSpans, totalInactiveMs } from './activity.js';
+import {
+  SYNC_VERSION,
+  audioCompanions,
+  declaredSyncs,
+  recordersCovered,
+  sameMoments,
+  videoOffsets,
+  withCompanionSpeech,
+} from './sync.js';
 
 /**
  * Compiling raw media and user background into an Editorial IR.
@@ -71,6 +85,13 @@ export interface CompileOptions {
   standInReason?: StandInReason;
   /** Re-run perception even when nothing that affects it changed. */
   forceObservations?: boolean;
+  /**
+   * Leave still, silent footage to the rules and read it once. On by default;
+   * `oea analyze --no-skip-inactive` turns it off, for a run that has to ask the
+   * models about every second whatever it costs, or to compare with one that
+   * did not.
+   */
+  skipInactive?: boolean;
   frameFps?: number;
   onProgress?: (stage: string, message: string, done: number, total: number) => void;
   now?: () => string;
@@ -89,9 +110,24 @@ export interface CompileReport {
   standIns: StandIn[];
   /** Assets a stage could not read, and why. */
   failures: { stage: string; assetId: string; reason: string }[];
+  /** What in `background.recorders` could not be applied, and why. */
+  recorderNotes: string[];
   totalCostUsd: number;
   /** True when anything in this compile sent media off the machine. */
   mediaLeftDevice: boolean;
+  /** Model work not done because the footage was still and silent. Absent when none was. */
+  savings?: AnalysisSavings;
+  /**
+   * Why there are savings or not. "None found" and "never looked" read the same
+   * in an IR with no savings record, and they are different answers: one says
+   * the footage was busy, the other that nothing measured the picture.
+   *
+   * - `found`: still, silent spans were found and the models were spared them.
+   * - `none_found`: it was measured, and nothing was both still and silent.
+   * - `not_measured`: no video file had its picture analysed, so nothing could be.
+   * - `off`: switched off for this run.
+   */
+  inactive: 'found' | 'none_found' | 'not_measured' | 'off';
   elapsedMs: number;
 }
 
@@ -124,7 +160,29 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   const placements = placeAssets(assets);
 
   // ---- perception ----------------------------------------------------------
-  const expectedFingerprint = observationsFingerprint(assets, options.suite);
+  const skipInactive = options.skipInactive !== false;
+  // Screen recordings the file name or the user already names, before anything
+  // is read: their text is never thinned, so which they are is part of what the
+  // stored observations depend on.
+  const screenRecordings = new Set(
+    classifyMaterials(
+      assets,
+      {
+        ...EMPTY_OBSERVATIONS,
+        project_id: '',
+        fingerprint: '',
+        pipeline_version: '',
+        generated_at: '',
+      },
+      context,
+    )
+      .filter((profile) => profile.kind === 'screen_recording')
+      .map((profile) => profile.asset_id),
+  );
+  const expectedFingerprint = observationsFingerprint(assets, options.suite, {
+    skipInactive,
+    screenRecordings: assets.filter((a) => screenRecordings.has(a.id)).map((a) => a.sha256),
+  });
   const stored = store.readObservations();
   const reusable =
     !options.forceObservations &&
@@ -143,6 +201,9 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   let derived = new Map<string, PrepareResult>();
   let unavailable: UnavailableStage[] = [];
   let failures: { stage: string; assetId: string; reason: string }[] = [];
+  // Only a fresh observation pass skips OCR reads; a reused one skipped them
+  // when it was made, and counting them again would claim a saving twice.
+  let framesNotAnalysed = 0;
 
   if (reusable && stored) {
     observations = stored;
@@ -181,6 +242,8 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       context,
       runs,
       scheduler: new ModelScheduler(),
+      skipInactive,
+      screenRecordings,
       ...(options.frameFps === undefined ? {} : { frameFps: options.frameFps }),
       ...(options.onProgress ? { onProgress: options.onProgress } : {}),
     });
@@ -211,19 +274,53 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     derived = observed.derived;
     unavailable = observed.unavailable;
     failures = observed.failures;
+    framesNotAnalysed = observed.framesNotAnalysed;
   }
+
+  // ---- what kind of material ----------------------------------------------
+  // Decided from the observations whether they were made now or reused, for the
+  // same reason as the mask: a reused analysis must get exactly the kinds a
+  // fresh one would. The user's word in context.yaml wins over every rule.
+  //
+  // Before the mask, because the mask asks. It was decided after, so a silent
+  // screen recording was held to the stillness of camera footage, and typing
+  // never reached it.
+  const materials = classifyMaterials(assets, observations, context);
+
+  // ---- a recorder's sound under a camera's picture -------------------------
+  // From the syncs the observation found: which recorder is the sound of which
+  // video. Its transcript is the better witness for the video's events, and a
+  // recorder that is mostly the sound of videos gets no events of its own —
+  // what it heard is already in theirs.
+  const paired = declaredSyncs(observations.syncs, context.background.recorders ?? [], assets);
+  const companions = audioCompanions(paired.syncs, assets);
+  const recorderOnly = recordersCovered(companions, assets);
+  const heard = withCompanionSpeech(observations, companions, assets);
+  const eventAssets =
+    recorderOnly.size === 0 ? assets : assets.filter((asset) => !recorderOnly.has(asset.id));
+
+  // ---- still and silent ----------------------------------------------------
+  // Recomputed from the observations on every compile rather than stored, so a
+  // reused analysis gets exactly the mask a fresh one would, and a change to the
+  // rule never needs a re-analysis. Read only after segmentation has cut the
+  // events: it decides where not to spend, never where anything begins or ends.
+  // Measured whether or not the saving is on: `--no-skip-inactive` decides
+  // which models are asked, never what the events say about themselves or how
+  // they are judged, so the cut is the same either way.
+  const inactive = inactiveSpans(heard, assets, { materials, companions });
 
   // ---- segmentation --------------------------------------------------------
   options.onProgress?.('segment', 'finding events', 0, 1);
   const drafts = segmentAssets(
-    assets,
-    observations,
+    eventAssets,
+    heard,
     annotations,
     options.segmentation ?? {},
     frameVectors.size > 0 ? frameSimilarityFrom(frameVectors) : undefined,
     // A boundary the user asked for is written in capture time; segmentation
     // works in each asset's own time. Without the placements it cannot convert.
     placements,
+    materials,
   );
 
   // ---- meaning -------------------------------------------------------------
@@ -236,7 +333,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   const built = await buildSemanticEvents(drafts, {
     assets,
     placements,
-    observations,
+    observations: heard,
     context,
     annotations,
     runs,
@@ -247,6 +344,8 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     derived,
     now,
     cache: store.cache,
+    inactive,
+    skipQuiet: skipInactive,
     ...(options.frameFps === undefined ? {} : { frameFps: options.frameFps }),
     ...(options.onProgress
       ? { onProgress: (stage, done, total) => options.onProgress?.(stage, '', done, total) }
@@ -278,6 +377,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     embedded = await buildEmbeddings(built.events, context, options.suite.text, {
       frameVectors,
       runs,
+      cache: store.cache,
       // The frame vectors came from the vision model, not from the text
       // encoder, and the records made out of them should say so.
       ...(runs.forStage('visual') === undefined ? {} : { visualRunId: runs.forStage('visual') }),
@@ -306,7 +406,41 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   vectorIndex.add(embedded.records);
   // Redundancy is a question about the whole set, which is why the index has to
   // exist before the decision layer runs.
-  const similarities = vectorIndex.maxSimilarities('event');
+  //
+  // Calibrated against this corpus when the vectors came from a model, raw when
+  // they came from the lexical vectoriser. The rules turn this into redundancy
+  // with `(similarity - 0.6) / 0.4`, a constant whose scale is n-gram overlap —
+  // which is a real, known scale for the lexical path and means nothing at all
+  // for a model. Measured on a 62-minute project embedded with
+  // multilingual-e5-large: the *least* similar pair of events scored 0.747,
+  // giving redundancy 0.368, and the median pair 0.813, giving 0.533 — past the
+  // 0.5 line that skill rules read as "redundant". More than half the footage
+  // was marked as repeating itself, on material where nothing repeated, and
+  // that decides which clips get dropped.
+  //
+  // The lexical path keeps the constant deliberately: its similarity *is* shared
+  // n-grams, the constant was written for that, and there is no defect there to
+  // fix. Changing a documented worked example needs a bug behind it.
+  const similarities = embeddingUsed.lexical
+    ? vectorIndex.maxSimilarities('event')
+    : vectorIndex.calibratedMaxSimilarities('event').maxima;
+  // An event nothing could be read from has nothing to compare. Its vector is
+  // the embedding of a fallback sentence every such event shares, so every one
+  // of them scored 1.0 against the others and was judged fully redundant: an
+  // edited programme with no transcript and a folder of clips both planned no
+  // clips at all offline. Unknown is the honest answer, and the rules have a
+  // prior for it.
+  //
+  // Except where the footage was measured still and silent throughout. Two
+  // such stretches do show the same nothing, and saying otherwise put a frozen
+  // minute and a black one into the cut of a camera left running, ahead of the
+  // stretch where somebody came back and spoke.
+  const measuredNothing = new Set(built.savings.quietEvents);
+  for (const event of built.events) {
+    if (!hasDistinctiveContent(event) && !measuredNothing.has(event.id)) {
+      similarities.delete(event.id);
+    }
+  }
 
   // ---- judgement -----------------------------------------------------------
   const assessed = await assessEvents(built.events, {
@@ -318,6 +452,9 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     budget,
     cache: store.cache,
     similarities,
+    // Spared the judge only when the saving is on. Which events are quiet is
+    // the same either way (`measuredNothing` above reads it).
+    quietEvents: skipInactive ? built.savings.quietEvents : [],
     ...(options.onProgress
       ? { onProgress: (stage, done, total) => options.onProgress?.(stage, '', done, total) }
       : {}),
@@ -341,16 +478,33 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       reason: `${failure.reason} — the rule-based judgement stands`,
     });
   }
+  if (assessed.budgetStoppedAt !== undefined) {
+    failures.push({
+      stage: 'judge',
+      assetId: assessed.budgetStoppedAt,
+      reason: `the cost limit of $${budget.limit} was reached; ${assessed.budgetStopped} event(s) from here on were judged by the rules`,
+    });
+  }
 
   // ---- structure -----------------------------------------------------------
-  const { chapters, assignments } = buildChapters(built.events, options.chapters ?? {});
+  const { chapters, assignments } = buildChapters(built.events, options.chapters ?? {}, {
+    // Real capture times, so a folder of clips shot minutes apart is one
+    // outing and two recordings hours apart are two.
+    assets,
+    materials,
+  });
   const eventsWithChapters: SemanticEvent[] = built.events.map((event) => {
     const chapterId = assignments.get(event.id);
     return chapterId ? { ...event, chapter_id: chapterId } : event;
   });
 
-  const relations = buildEventGraph(eventsWithChapters, {
+  const graphRelations = buildEventGraph(eventsWithChapters, {
     continuityOverrides: continuityOverrides(annotations),
+    // Built after judgement, which is what makes this available — and what lets
+    // the graph carry the dependency the planner already acts on.
+    requiresPreviousContext: (eventId) =>
+      assessed.editorial.find((entry) => entry.event_id === eventId)?.current.flags
+        .requires_previous_context,
     similarity: (a, b) => {
       const vectorA = vectorIndex.get(a, 'event');
       const vectorB = vectorIndex.get(b, 'event');
@@ -362,6 +516,29 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       return dot;
     },
   });
+
+  // Two cameras of one moment, from the sound they share. Added after the
+  // graph's own links, and only where it has not already joined the pair.
+  const linked = new Set(
+    graphRelations
+      .filter((relation) => relation.relation_type === 'duplicate_of')
+      .map((relation) => `${relation.source_event_id}|${relation.target_event_id}`),
+  );
+  const moments = sameMoments(
+    eventsWithChapters,
+    videoOffsets(paired.syncs, companions, assets),
+  ).filter(
+    (relation) =>
+      !linked.has(`${relation.source_event_id}|${relation.target_event_id}`) &&
+      !linked.has(`${relation.target_event_id}|${relation.source_event_id}`),
+  );
+  const relations = [
+    ...graphRelations,
+    ...moments.map((relation, index) => ({
+      id: seqId('rel', graphRelations.length + index + 1, 5),
+      ...relation,
+    })),
+  ];
 
   const events = attachEmbeddingRefs(eventsWithChapters, embedded.records);
 
@@ -437,17 +614,36 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
   // error list stops after a handful of identical failures — and so does the
   // loop, so a run where every description came from the template reported
   // three failures and looked like a run where three did.
+  //
+  // A share of the events the model was meant to describe, not of all of them.
+  // The still, silent ones the rules took were never the model's to fail, and
+  // counted in they hid it: 3 of 3 calls failed, 17 more never tried, and 53
+  // quiet events made that 20 of 73 — `standard`.
   if (
     baseContextModel.identity.standIn === undefined &&
-    built.events.length > 0 &&
-    built.describedByFallback * 2 >= built.events.length
+    built.describeAsked > 0 &&
+    built.describedByFallback * 2 >= built.describeAsked
   ) {
     standIns.push({
       stage: 'description',
       used: 'the observation summary',
       instead_of: baseContextModel.identity.model ?? 'the configured model',
       reason: 'failed_during_run',
-      remedy: `${built.describedByFallback} of ${built.events.length} events fell back; check the model endpoint`,
+      remedy:
+        built.budgetStopped * 2 >= built.describeAsked
+          ? `${built.describedByFallback} of ${built.describeAsked} events fell back; the cost limit of $${budget.limit} was reached — raise --budget`
+          : `${built.describedByFallback} of ${built.describeAsked} events fell back; check the model endpoint`,
+    });
+  }
+  // The same line for judgement stopped by the budget. A judge that failed
+  // is counted by its fallback wrapper above; one that was not asked is not.
+  if (assessed.judgeAsked > 0 && assessed.budgetStopped * 2 >= assessed.judgeAsked) {
+    standIns.push({
+      stage: 'judgement',
+      used: 'the rules',
+      instead_of: options.decision.identity.model ?? 'the configured model',
+      reason: 'failed_during_run',
+      remedy: `${assessed.budgetStopped} of ${assessed.judgeAsked} events were judged by the rules; the cost limit of $${budget.limit} was reached — raise --budget`,
     });
   }
   noteStandIn(
@@ -466,7 +662,45 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     observationsFingerprint: expectedFingerprint,
     decisionBackend: options.decision.identity.backend,
     decisionModel: options.decision.identity.model,
+    skipInactive,
   });
+
+  // What the still, silent footage saved. Absent rather than zero when there
+  // was none, so an IR of footage with no such stretch is unchanged by all this.
+  const inactiveMs = totalInactiveMs(inactive);
+  const savings: AnalysisSavings | undefined =
+    skipInactive && inactiveMs > 0
+      ? {
+          inactive_ms: inactiveMs,
+          describe_calls_skipped: built.savings.describeCallsSkipped,
+          judge_calls_skipped: assessed.judgeCallsSkipped,
+          frames_not_sent: built.savings.framesNotSent,
+          frames_not_analysed: framesNotAnalysed,
+          estimated_tokens_avoided:
+            built.savings.estimatedTokensAvoided + assessed.estimatedTokensAvoided,
+          escalations_avoided: built.savings.escalationsAvoided + assessed.escalationsAvoided,
+          escalations_redirected:
+            built.savings.escalationsRedirected + assessed.escalationsRedirected,
+          estimated_cost_avoided_usd:
+            Math.round(
+              (built.savings.estimatedCostAvoidedUsd + assessed.estimatedCostAvoidedUsd) *
+                1_000_000,
+            ) / 1_000_000,
+        }
+      : undefined;
+  // Measured means a video file had its picture analysed. Sound alone can find
+  // a silent stretch of a podcast, so a project of sound files is measured too.
+  const videos = assets.filter((asset) => asset.kind === 'video');
+  const pictureMeasured =
+    videos.length === 0 ||
+    videos.some((asset) => observations.motion_profiles.some((p) => p.asset_id === asset.id));
+  const inactiveState: CompileReport['inactive'] = !skipInactive
+    ? 'off'
+    : inactiveMs > 0
+      ? 'found'
+      : pictureMeasured
+        ? 'none_found'
+        : 'not_measured';
 
   const ir: EditorialIR = {
     ir_version: IR_VERSION,
@@ -477,6 +711,8 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     context,
     assets,
     placements,
+    materials,
+    audio_companions: companions,
     chapters,
     events,
     editorial: assessed.editorial,
@@ -484,7 +720,7 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
     annotations,
     conflicts: built.conflicts,
     model_runs: runs.all(),
-    quality: analysisQuality(standIns),
+    quality: { ...analysisQuality(standIns), ...(savings ? { savings } : {}) },
     stats: {
       asset_count: assets.length,
       total_media_duration_ms: assets.reduce((sum, a) => sum + a.duration_ms, 0),
@@ -517,8 +753,11 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
       unavailable,
       standIns,
       failures,
+      recorderNotes: paired.notes,
       totalCostUsd: runs.totalCostUsd(),
       mediaLeftDevice: runs.anyMediaLeftDevice(),
+      ...(savings ? { savings } : {}),
+      inactive: inactiveState,
       elapsedMs: Date.now() - startedAt,
     },
   };
@@ -531,6 +770,12 @@ export async function compileProject(options: CompileOptions): Promise<CompileRe
 export function observationsFingerprint(
   assets: readonly MediaAsset[],
   suite: PerceptionSuite,
+  mask: {
+    /** False when `--no-skip-inactive` reads every OCR frame. */
+    skipInactive?: boolean;
+    /** The media hashes of files whose text is never thinned. */
+    screenRecordings?: readonly string[];
+  } = {},
 ): string {
   const identityOf = (
     model: { identity: { backend: string; model?: string; modelVersion?: string } } | undefined,
@@ -547,6 +792,23 @@ export function observationsFingerprint(
     visual: identityOf(suite.visual),
     audio: identityOf(suite.audio),
     ocr: identityOf(suite.ocr),
+    // Only when there is one, so a suite without it fingerprints as it always did.
+    ...(suite.video ? { video: identityOf(suite.video) } : {}),
+    // And with it, whatever decided which OCR reads were thinned, because that
+    // is baked into the observations stored under this fingerprint: the rules,
+    // whether they were on, and which files were screen recordings. Without a
+    // picture analysis nothing is ever still, and nothing is thinned.
+    ...(suite.video
+      ? {
+          mask: mask.skipInactive === false ? 'off' : ACTIVITY_MASK_VERSION,
+          ...(mask.screenRecordings && mask.screenRecordings.length > 0
+            ? { screens: [...mask.screenRecordings].sort() }
+            : {}),
+        }
+      : {}),
+    // Recordings lined up by their sound are stored with the observations, so
+    // a change to how they are lined up has to miss them.
+    ...(suite.preparer ? { sync: SYNC_VERSION } : {}),
   });
 }
 
@@ -561,6 +823,8 @@ export function irFingerprint(parts: {
   observationsFingerprint: string;
   decisionBackend: string;
   decisionModel?: string;
+  /** Only when off, so every IR compiled with the mask on keeps its fingerprint. */
+  skipInactive?: boolean;
 }): string {
   return hashObject({
     ir_version: IR_VERSION,
@@ -568,6 +832,10 @@ export function irFingerprint(parts: {
     context: { background: parts.context.background, goal: parts.context.editing_goal },
     annotations: [...parts.annotations].map((a) => ({ ...a, created_at: undefined })),
     decision: [parts.decisionBackend, parts.decisionModel ?? ''],
+    // The rules describe and judge the quiet events only when it is on, so the
+    // IR differs — even with no picture analysis, where a silent stretch of a
+    // sound file is quiet by itself.
+    ...(parts.skipInactive === false ? { mask: 'off' } : {}),
   });
 }
 

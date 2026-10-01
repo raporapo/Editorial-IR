@@ -1,11 +1,13 @@
 import { relative } from 'node:path';
 import { SkillRegistry } from '@editorial-ir/skills';
-import { planEdit, reviewPlan, validatePlan } from '@editorial-ir/agent';
+import { buildCaptions, planEdit, reviewPlan, validatePlan } from '@editorial-ir/agent';
 import {
   formatTimecode,
   operationTimelineDuration,
   planDurationMs,
   summariseReport,
+  type EditPlan,
+  type SkillManifest,
 } from '@editorial-ir/contracts';
 import { openProject } from '../project.js';
 import { requireIr } from '../ir.js';
@@ -34,6 +36,29 @@ export interface PlanArgs {
   require?: string[];
   /** Events to leave out, whatever they score. */
   drop?: string[];
+  /** Add captions worked out from the transcript. */
+  captions?: boolean;
+}
+
+/**
+ * The skill a stored plan was made with, when it can still be found.
+ *
+ * `oea plan` validates against the skill it planned with, and `oea review` and
+ * `oea apply` validated the same plan without it — so the speech share a
+ * talking-head cut promised, and the "this skill's limit cannot fill the
+ * target" explanation, were checked once and never again. The plan records the
+ * skill's name and version; a built-in, or one in `skillsDir`, with both the
+ * same is the skill it was made with. Anything else validates as before,
+ * without one, rather than against a different skill of the same name.
+ */
+export function skillOfPlan(plan: EditPlan, skillsDir?: string): SkillManifest | undefined {
+  try {
+    const registry = SkillRegistry.withBuiltIns(skillsDir ? [skillsDir] : []);
+    const skill = registry.resolve(plan.skill.name);
+    return skill.version === plan.skill.version ? skill : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function runPlan(args: PlanArgs): number {
@@ -42,7 +67,7 @@ export function runPlan(args: PlanArgs): number {
   const registry = SkillRegistry.withBuiltIns(args.skillsDir ? [args.skillsDir] : []);
   const skill = registry.resolve(args.skill ?? 'base-editor');
 
-  const plan = planEdit({
+  const planned = planEdit({
     ir,
     skill,
     ...(args.duration === undefined ? {} : { targetDurationMs: Math.round(args.duration * 1000) }),
@@ -57,6 +82,22 @@ export function runPlan(args: PlanArgs): number {
         }
       : {}),
   });
+
+  // Captions are worked out after the cut is final, from the clips it actually
+  // plays, and stored in the plan so every adapter shows the same words.
+  const captionNotes: string[] = [];
+  const plan = args.captions
+    ? {
+        ...planned,
+        tracks: {
+          ...planned.tracks,
+          text: [
+            ...planned.tracks.text.filter((text) => text.kind !== 'caption'),
+            ...buildCaptions(planned, ir, store.readObservations(), { notes: captionNotes }),
+          ],
+        },
+      }
+    : planned;
 
   const report = validatePlan(plan, {
     ir,
@@ -88,7 +129,13 @@ export function runPlan(args: PlanArgs): number {
   detail('target', formatTimecode(plan.sequence.target_duration_ms, false));
   detail('off by', `${Math.round(plan.stats.duration_error_ms / 100) / 10}s`);
   detail('kept', `${plan.stats.events_selected} of ${plan.stats.events_available} events`);
+  const jumpCuts = plan.tracks.video.filter((operation) => operation.continues_previous).length;
+  if (jumpCuts > 0) detail('jump cuts', `${jumpCuts}, where pauses were taken out`);
   detail('compression', `${Math.round(plan.stats.compression_ratio * 1000) / 10}% of the material`);
+  if (args.captions) {
+    detail('captions', String(plan.tracks.text.filter((text) => text.kind === 'caption').length));
+    for (const line_ of captionNotes) note(`  ${line_}`);
+  }
   detail('saved as', relative(process.cwd(), `${store.paths.plansDir}/${plan.id}.json`));
 
   if (!args.quiet) {
@@ -100,10 +147,18 @@ export function runPlan(args: PlanArgs): number {
         formatTimecode(operation.timeline_start_ms, false),
         `${String(Math.round(operationTimelineDuration(operation) / 100) / 10).padStart(5)}s`,
         colour.cyan((operation.role ?? '').padEnd(10)),
-        truncate(event?.title?.value ?? event?.description.value ?? '', 48),
+        // The pieces of one take are one moment; naming it once reads as one.
+        operation.continues_previous
+          ? colour.grey('  …after a pause')
+          : truncate(event?.title?.value ?? event?.description.value ?? '', 48),
       ];
     });
     table(rows);
+
+    if (plan.markers.length > 0) {
+      heading('chapters');
+      table(plan.markers.map((marker) => [formatTimecode(marker.timeline_ms, false), marker.name]));
+    }
   }
 
   const warnings = report.issues.filter((i) => i.severity === 'warning');

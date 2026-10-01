@@ -107,6 +107,11 @@ anything.
 | `split`      | a timecode       | this is really two moments                 |
 | `merge`      |                  | this and the next one are one moment       |
 
+`merge` on a whole recording — `oea annotate asset_001 merge` — keeps that
+recording as one event. What kind of material a file is (`edited`, `clip`, …) is
+corrected in `context.yaml`, under `background.materials`; see
+[Editorial IR](editorial-ir.md#what-kind-of-material).
+
 ### The four that matter most
 
 These are the corrections the design exists to accept, because they are the ones

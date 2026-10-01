@@ -80,6 +80,31 @@ split would need a global criterion none of them support. The boundary scorer
 renormalises over the signals that exist, so a machine with no transcriber gets a
 meaningful answer from shot changes and silence rather than a diluted one.
 
+A shot longer than an event may be (45 seconds) is divided before merging, where
+it shows a change: first where the picture, after holding still, changes as much
+as a new slide does (not where something in it merely stirs) or its text
+changes, then at pauses of a second and a half between utterances, then
+at silences, and into the fewest equal parts that fit where nothing marks a
+change. A screen recording of six slides is six events, and a ten-minute take is
+no longer one ten-minute event.
+
+Which rules apply depends on what the file is. Each asset is classified after
+observation — `raw`, `edited`, `clip`, `screen_recording`, `audio_only`, `still`
+— from its cut rate, its shot lengths, its stillness, its black and its text, and
+the user can overrule it in `context.yaml`. Raw footage is segmented exactly as
+described above. An edited video begins an event at every title card, and where
+nothing tells its cuts apart the merging joins the smallest pair first, so a
+sixty-second edit does not become one 34-second event and nine single shots. A
+clip and a still are one event each. See [Editorial IR](editorial-ir.md#what-kind-of-material).
+
+### Chapters follow the day, not the files
+
+A chapter starts at a title card, at a change of place or subject, or where the
+files' own capture times are half an hour or more apart. A new file alone does
+not start one, because every clip in a folder is a new file and a chapter per
+clip is no chapter. Without capture times, long recordings still start a chapter
+each and clips and stills stay together unless something else changes.
+
 ### Understanding and judgement are separate layers
 
 "What happened here?" and "what is this worth to an edit?" are different

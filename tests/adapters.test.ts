@@ -16,6 +16,7 @@ import {
   buildOtioTimeline,
   createAdapter,
   escapeXml,
+  layOnGrid,
   listAdapters,
   msToFrames,
   negotiate,
@@ -25,6 +26,7 @@ import {
 import { operationTimelineDuration, type EditPlan } from '@editorial-ir/contracts';
 import { exampleSuite, makeExampleProject } from './support/project.js';
 import { childText, findAll, parseXml } from './support/xml.js';
+import { makePlan } from './support/plan.js';
 
 const registry = SkillRegistry.withBuiltIns();
 
@@ -52,9 +54,19 @@ async function prepared() {
 }
 
 describe('the adapter registry', () => {
-  it('ships the three adapters, each declaring what it can do', () => {
+  it('ships every adapter, each declaring what it can do', () => {
     const adapters = listAdapters();
-    expect(adapters.map((a) => a.id).sort()).toEqual(['aviutl2', 'otio', 'premiere']);
+    expect(adapters.map((a) => a.id).sort()).toEqual([
+      'aviutl2',
+      'edl',
+      'fcpxml',
+      'otio',
+      'premiere',
+      'preview',
+      'srt',
+      'vtt',
+      'youtube-chapters',
+    ]);
     for (const capabilities of adapters) {
       expect(capabilities.output_extensions.length).toBeGreaterThan(0);
       expect(capabilities.notes.length).toBeGreaterThan(0);
@@ -103,6 +115,7 @@ describe('capability negotiation', () => {
       audio: [],
       text: [],
     },
+    markers: [],
     intent: { tone: [] },
     rationale: [],
     model_runs: [],
@@ -124,12 +137,13 @@ describe('capability negotiation', () => {
     expect(adjusted.tracks.video[0]!.transition_in!.type).toBe('cross_dissolve');
     expect(downgrades).toHaveLength(0);
 
-    const premiere = negotiate(
-      basePlan({ transition_in: { type: 'fade_in', duration_ms: 500 } }),
-      new PremiereAdapter().capabilities,
+    // AviUtl2 has no dip to white.
+    const aviutl = negotiate(
+      basePlan({ transition_in: { type: 'dip_to_white', duration_ms: 500 } }),
+      new AviUtl2Adapter().capabilities,
     );
-    expect(premiere.plan.tracks.video[0]!.transition_in!.type).toBe('hard_cut');
-    expect(premiere.downgrades[0]!.action).toContain('became a cut');
+    expect(aviutl.plan.tracks.video[0]!.transition_in!.type).toBe('hard_cut');
+    expect(aviutl.downgrades[0]!.action).toContain('became a cut');
   });
 
   it('resets speed the target cannot change', () => {
@@ -208,13 +222,90 @@ describe('the OpenTimelineIO adapter', () => {
       const operation = plan.tracks.video[index]!;
       const next = plan.tracks.video[index + 1];
       const start = msToFrames(operation.timeline_start_ms, 30000, 1001);
-      const wanted = msToFrames(operationTimelineDuration(operation), 30000, 1001);
-      const expected = next
-        ? Math.min(wanted, msToFrames(next.timeline_start_ms, 30000, 1001) - start)
-        : wanted;
+      // Where the plan ends it, placed on the grid as its start is.
+      const wanted =
+        msToFrames(
+          operation.timeline_start_ms + operationTimelineDuration(operation),
+          30000,
+          1001,
+        ) - start;
+      const nextStart = next ? msToFrames(next.timeline_start_ms, 30000, 1001) : undefined;
+      // A clip the plan butts against the next ends where the next begins; one
+      // followed by a gap ends where the plan ends it.
+      const touches =
+        next !== undefined &&
+        next.timeline_start_ms <=
+          operation.timeline_start_ms + operationTimelineDuration(operation);
+      const expected =
+        nextStart === undefined
+          ? wanted
+          : touches
+            ? nextStart - start
+            : Math.min(wanted, nextStart - start);
       expect(clip.source_range.duration.value).toBe(expected);
-      expect(Math.abs(clip.source_range.duration.value - wanted)).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(
+          clip.source_range.duration.value -
+            msToFrames(operationTimelineDuration(operation), 30000, 1001),
+        ),
+      ).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('shows at every frame the source frame the plan puts there, at every rate', async () => {
+    // The source in point was rounded on its own while the clip's start on the
+    // timeline was rounded separately, so the picture ran up to a frame out of
+    // step with the plan and a clip's source out overshot by up to 1.3 frames:
+    // on this cut at 30 fps, op_0023 read to frame 7222 of a range that ends at
+    // 7220.7. Placed from where the clip really starts, every frame shown is the
+    // one nearest to what the plan plays at that moment, and both ends are
+    // within a frame.
+    const { plan } = await prepared();
+    for (const [num, den] of [
+      [24000, 1001],
+      [25, 1],
+      [30, 1],
+      [30000, 1001],
+      [60000, 1001],
+    ] as const) {
+      const atRate = {
+        ...plan,
+        sequence: { ...plan.sequence, frame_rate_num: num, frame_rate_den: den },
+      };
+      const grid = layOnGrid(atRate);
+      const perMs = num / den / 1000;
+      for (const span of grid.tracks.get(0)!) {
+        const operation = span.operation;
+        for (let frame = 0; frame < span.length; frame++) {
+          const planned =
+            operation.source_in_ms * perMs +
+            (span.start + frame - operation.timeline_start_ms * perMs);
+          expect(Math.abs(span.in + frame - planned)).toBeLessThanOrEqual(0.5 + 1e-9);
+        }
+        expect(Math.abs(span.in - operation.source_in_ms * perMs)).toBeLessThanOrEqual(1 + 1e-9);
+        expect(Math.abs(span.out - operation.source_out_ms * perMs)).toBeLessThanOrEqual(1 + 1e-9);
+      }
+    }
+  });
+
+  it('never shows the first frame of the next shot when a clip ends on a cut', () => {
+    // op_0002 ends at 6000 ms, frame 180 at 30 fps: the edit's own cut, where cut
+    // snapping put it. It starts at 1010 ms on the timeline, a third of a frame
+    // past frame 30. Rounding its source in (149.6 → 150) and its length
+    // (61 − 30 = 31) each on their own read frames 150 to 180 — the last of them
+    // the first frame of the next shot, a one-frame flash.
+    const plan = makePlan([
+      { source_asset_id: 'asset_001', source_in_ms: 0, source_out_ms: 1010, timeline_start_ms: 0 },
+      {
+        source_asset_id: 'asset_001',
+        source_in_ms: 4987,
+        source_out_ms: 6000,
+        timeline_start_ms: 1010,
+      },
+    ]);
+    const span = layOnGrid(plan).span('op_0002');
+    expect(span.out).toBe(180);
+    expect(span.in).toBe(149);
   });
 });
 
@@ -293,7 +384,7 @@ describe('the AviUtl2 adapter', () => {
     const { plan, request } = await prepared();
     const job = buildAviUtlJob(plan, request) as Record<string, any>;
     expect(job.clips[0].start_frame).toBe(1);
-    expect(job.job_version).toBe('0.1.0');
+    expect(job.job_version).toBe('0.2.0');
   });
 
   it('keeps an NTSC rate exact in the exo, as the JSON job beside it does', async () => {
@@ -347,7 +438,11 @@ describe('the AviUtl2 adapter', () => {
     expect(exo).toContain('_name=標準描画');
     // Exchanged on Windows, so CRLF.
     expect(exo).toContain('\r\n');
-    expect(exo.match(/^\[\d+\]$/gm) ?? []).toHaveLength(plan.tracks.video.length);
+    // One picture object per clip, and one sound object per clip that is heard.
+    const heard = plan.tracks.video.filter((operation) => operation.use_source_audio).length;
+    expect(exo.match(/^_name=動画ファイル$/gm) ?? []).toHaveLength(plan.tracks.video.length);
+    expect(exo.match(/^_name=音声ファイル$/gm) ?? []).toHaveLength(heard);
+    expect(exo.match(/^\[\d+\]$/gm) ?? []).toHaveLength(plan.tracks.video.length + heard);
   });
 });
 
@@ -395,7 +490,9 @@ describe('the sound', () => {
     expect(clips).toHaveLength(wanting);
   }, 60_000);
 
-  it('says so rather than silently dropping a bed it cannot write', async () => {
+  it('lays an external bed rather than dropping it', async () => {
+    // A plan that asked for music exported without it: OTIO and Premiere both
+    // warned and skipped the bed.
     const { plan, request } = await prepared();
     const withBed: EditPlan = {
       ...plan,
@@ -416,8 +513,22 @@ describe('the sound', () => {
     } as unknown as EditPlan;
 
     const warnings: string[] = [];
-    buildFcpXml(withBed, request, warnings);
-    expect(warnings.some((warning) => warning.includes('external audio bed'))).toBe(true);
+    const root = parseXml(buildFcpXml(withBed, request, warnings));
+    const bed = findAll(root, 'clipitem').filter((clip) =>
+      clip.attributes.id!.startsWith('clipitem-b'),
+    );
+    // Stereo source: one clipitem per channel, each at -18 dB as a linear level.
+    expect(bed).toHaveLength(2);
+    expect(findAll(bed[0]!, 'value')[0]!.text).toBe('0.125893');
+    expect(warnings.join(' ')).not.toContain('external audio bed');
+
+    const timeline = buildOtioTimeline(withBed, request) as unknown as {
+      tracks: { children: { kind: string; metadata: Record<string, Record<string, unknown>> }[] };
+    };
+    const beds = timeline.tracks.children.filter(
+      (track) => track.kind === 'Audio' && track.metadata['editorial-ir']?.bed === true,
+    );
+    expect(beds).toHaveLength(1);
   }, 60_000);
 
   it('gives every clip one length, not two that disagree', async () => {
@@ -555,12 +666,14 @@ describe('would it actually import', () => {
   }, 60_000);
 });
 
-describe('one plan, three editors', () => {
-  it('feeds all three adapters from the same EditPlan', async () => {
+const EDITORS = ['otio', 'premiere', 'aviutl2', 'edl', 'fcpxml'];
+
+describe('one plan, every editor', () => {
+  it('feeds every editing application from the same EditPlan', async () => {
     const { ir, plan, request } = await prepared();
     expect(validatePlan(plan, { ir }).ok).toBe(true);
 
-    for (const id of ['otio', 'premiere', 'aviutl2']) {
+    for (const id of EDITORS) {
       const adapter = createAdapter(id);
       const result = await adapter.apply({ ...request, name: id });
       expect(result.adapter).toBe(id);
@@ -574,7 +687,7 @@ describe('one plan, three editors', () => {
   it('never lets an adapter change what is in the cut', async () => {
     const { plan, request } = await prepared();
     const before = JSON.stringify(plan);
-    for (const id of ['otio', 'premiere', 'aviutl2']) {
+    for (const id of EDITORS) {
       await createAdapter(id).apply({ ...request, name: id });
     }
     // An adapter translates; it does not plan.

@@ -29,7 +29,10 @@ SYSTEM_PROMPT = (
     "Use it, and never contradict it. "
     "If the frames and the background disagree, describe the frames "
     "and leave the background alone. "
-    "Answer in the language of the transcript."
+    "Answer in the language of the transcript. "
+    "Describe only what the frames, transcript, on-screen text and sound tags given here show. "
+    "Never name a person, animal, object or place that is not in them; "
+    "without frames, say only what the words and sounds establish."
 )
 
 RESPONSE_SCHEMA = {
@@ -210,6 +213,10 @@ def build_prompt(params: dict[str, Any]) -> str:
         sections.append(f"Previous event: {params['previous_summary']}")
     if params.get("transcript"):
         sections.append("Speech:\n" + "\n".join(params["transcript"]))
+    if params.get("subtitles"):
+        sections.append(
+            "Subtitles burned into the picture (what was said):\n" + "\n".join(params["subtitles"])
+        )
     if params.get("ocr"):
         sections.append("Text on screen:\n" + "\n".join(params["ocr"]))
     if params.get("visual_labels"):

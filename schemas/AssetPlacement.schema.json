@@ -14,6 +14,15 @@
     },
     "ordered_by": {
       "$ref": "#/$defs/__schema1"
+    },
+    "clock": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "beside": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "sync": {
+      "$ref": "#/$defs/__schema4"
     }
   },
   "required": [
@@ -44,8 +53,64 @@
       "enum": [
         "creation_time",
         "file_name",
-        "explicit"
+        "explicit",
+        "audio_sync"
       ]
+    },
+    "__schema2": {
+      "type": "string",
+      "enum": [
+        "utc",
+        "local"
+      ]
+    },
+    "__schema3": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "$ref": "#/$defs/assetId"
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "after",
+            "before"
+          ]
+        }
+      },
+      "required": [
+        "asset_id",
+        "side"
+      ],
+      "additionalProperties": false
+    },
+    "__schema4": {
+      "type": "object",
+      "properties": {
+        "reference_asset_id": {
+          "$ref": "#/$defs/assetId"
+        },
+        "offset_ms": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "confidence": {
+          "$ref": "#/$defs/Confidence"
+        }
+      },
+      "required": [
+        "reference_asset_id",
+        "offset_ms",
+        "confidence"
+      ],
+      "additionalProperties": false
+    },
+    "Confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence in [0,1]. 1 means certain, 0 means no support at all."
     }
   }
 }

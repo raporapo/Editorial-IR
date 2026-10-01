@@ -15,14 +15,31 @@ export const AdapterCapabilities = obj({
   name: z.string().min(1),
   /**
    * `file` writes a project or interchange file. `live` drives a running
-   * application. A `file` adapter is always available; a `live` one may not be.
+   * application. A `file` adapter that only writes text is always available; one
+   * that runs a program to make its file (the preview needs ffmpeg) says whether
+   * it can through `available()`, like a `live` one.
    */
   mode: z.enum(['file', 'live']),
   /** Extensions this adapter can write, e.g. `['.otio']`. */
   output_extensions: z.array(z.string()).default([]),
 
+  /** Authored text: titles and lower thirds. */
   text: z.boolean().default(false),
+  /**
+   * Captions that follow speech (`TextOperation.kind === 'caption'`).
+   *
+   * Separate from `text` because the two go to different places: a subtitle
+   * file carries captions and nothing else, and an interchange format that can
+   * hold a title may have no notion of a caption track at all.
+   */
   captions: z.boolean().default(false),
+  /**
+   * Chapter and note markers on the timeline (`EditPlan.markers`).
+   *
+   * Declared so that a target which cannot hold them reports dropping them,
+   * rather than an edit arriving without the chapters the plan was built around.
+   */
+  markers: z.boolean().default(false),
   basic_transition: z.boolean().default(false),
   transition_types: z.array(TransitionType).default([]),
   keyframes: z.boolean().default(false),
@@ -35,7 +52,7 @@ export const AdapterCapabilities = obj({
   max_video_tracks: z.int().min(1).default(1),
   /** Whether the adapter can read the resulting timeline back for review. */
   reads_back_timeline: z.boolean().default(false),
-  /** Whether the adapter can render preview frames. */
+  /** Whether the adapter renders the cut itself into something playable. */
   renders_preview: z.boolean().default(false),
   notes: z.array(z.string()).default([]),
 }).meta({ id: 'AdapterCapabilities', title: 'AdapterCapabilities' });
@@ -52,7 +69,12 @@ export type CapabilityDowngrade = z.infer<typeof CapabilityDowngrade>;
 
 export const AdapterArtifact = obj({
   path: z.string(),
-  kind: z.enum(['project', 'interchange', 'script', 'report', 'preview']),
+  /**
+   * `subtitles` is a caption file (SRT, WebVTT); `chapters` is a chapter list
+   * for a video description. Both are sidecars: text beside the media, not a
+   * timeline.
+   */
+  kind: z.enum(['project', 'interchange', 'script', 'report', 'preview', 'subtitles', 'chapters']),
   description: z.string().default(''),
   byte_size: z.int().min(0).optional(),
 }).meta({ id: 'AdapterArtifact' });

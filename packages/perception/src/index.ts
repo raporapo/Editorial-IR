@@ -13,17 +13,49 @@ export * from './wav.js';
 export * from './scheduler.js';
 export * from './suite.js';
 export * from './fixture.js';
-export { FfprobeMediaProbe, toProbeResult, parseRational } from './ffmpeg/probe.js';
+export {
+  FfprobeMediaProbe,
+  toProbeResult,
+  parseRational,
+  pictureStream,
+  isStillFormat,
+  frameRates,
+  captureTag,
+  startTimecode,
+  smpteTimecode,
+  tagValue,
+  PROBE_VERSION,
+  MAX_NOMINAL_FPS,
+  VFR_TOLERANCE,
+  type FfprobeOutput,
+  type FfprobeStream,
+} from './ffmpeg/probe.js';
 export {
   FfmpegMediaPreparer,
   AUDIO_SAMPLE_RATE,
+  PROXY_FALLBACK_FPS,
   proxyArgs,
   audioArgs,
   frameArgs,
   frameTimestampMs,
   frameFileName,
+  frameTimestampsIn,
+  framesDirName,
+  proxyFileName,
+  proxyFrameRate,
+  audioFileName,
+  measureSpeech,
+  speechOf,
+  chooseAudioStream,
+  type StreamSpeech,
 } from './ffmpeg/prepare.js';
-export { FfmpegShotDetector, sceneArgs, parseShowinfoTimes, buildShots } from './ffmpeg/shots.js';
+export {
+  FfmpegShotDetector,
+  FFMPEG_SCENE_SCALE,
+  sceneArgs,
+  parseShowinfoTimes,
+  buildShots,
+} from './ffmpeg/shots.js';
 export {
   WavAudioAnalyzer,
   analyseHops,
@@ -33,6 +65,14 @@ export {
   percentile,
   runsOf,
 } from './ffmpeg/audio.js';
+export {
+  FfmpegVideoAnalyzer,
+  analyseSamples,
+  cellMaxDifference,
+  motionArgs,
+  MOTION_WIDTH,
+  MOTION_HEIGHT,
+} from './ffmpeg/video.js';
 export {
   HashingTextEmbedding,
   normalizeText,
@@ -48,9 +88,19 @@ export {
   keywordsOf,
 } from './context/heuristic.js';
 export {
+  DESCRIBE_PROMPT_VERSION,
   OpenAiCompatibleContextModel,
   buildPrompt,
   toDataUrl,
 } from './context/openai-compatible.js';
+export {
+  LanguageRoutedSpeechModel,
+  OpenAiCompatibleSpeechModel,
+  joinWords,
+  languagesFor,
+  primaryLanguage,
+  toUtterances,
+  type OpenAiCompatibleSpeechOptions,
+} from './speech/openai-compatible.js';
 export { PythonWorkerClient, type PythonWorkerOptions } from './worker/client.js';
 export * from './worker/models.js';

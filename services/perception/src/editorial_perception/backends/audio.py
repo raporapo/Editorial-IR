@@ -106,7 +106,12 @@ def percentile(values: list[float], q: float) -> float:
     if not values:
         return -100.0
     ordered = sorted(values)
-    index = min(len(ordered) - 1, max(0, round((len(ordered) - 1) * q)))
+    # Half up, as `Math.round` does in the TypeScript analyser. `round()` rounds
+    # half to even, and a half-way index is not rare: counted over every length
+    # up to 200 000 hops, the 10th and 90th percentiles of a recording with
+    # 20k+6 hops — one length in twenty — took a different hop in each runtime,
+    # so the two computed different silence thresholds from the same WAV.
+    index = min(len(ordered) - 1, max(0, math.floor((len(ordered) - 1) * q + 0.5)))
     return ordered[index]
 
 

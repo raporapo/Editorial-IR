@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 
-from editorial_perception.backends.vlm import _affect, _entities, _unit
+from editorial_perception.backends.vlm import _affect, _entities, _unit, build_prompt
 from editorial_perception.protocol import Session
 
 
@@ -71,3 +71,13 @@ def test_the_protocol_still_writes_ordinary_numbers():
     sink = _Sink()
     Session(out=sink, err=_Sink()).reply_ok("req_1", "describe", {"confidence": 0.5})
     assert json.loads(sink.lines[0])["result"]["confidence"] == 0.5
+
+
+def test_subtitles_are_handed_over_as_what_was_said():
+    # Burned-in subtitles on an edited video with a music bed are the only words
+    # there are. The TypeScript prompt says the same, in the same place.
+    prompt = build_prompt({"subtitles": ["Then the rain started"], "ocr": ["NOODLES"]})
+    assert "Subtitles burned into the picture (what was said):\nThen the rain started" in prompt
+    assert "Text on screen:\nNOODLES" in prompt
+    assert prompt.index("Subtitles") < prompt.index("Text on screen")
+    assert "Subtitles" not in build_prompt({"ocr": ["NOODLES"]})

@@ -4,6 +4,7 @@ import { FfprobeMediaProbe } from './ffmpeg/probe.js';
 import { FfmpegMediaPreparer } from './ffmpeg/prepare.js';
 import { FfmpegShotDetector } from './ffmpeg/shots.js';
 import { WavAudioAnalyzer } from './ffmpeg/audio.js';
+import { FfmpegVideoAnalyzer } from './ffmpeg/video.js';
 import { HashingTextEmbedding } from './text-embedding/hashing.js';
 import { HeuristicContextModel } from './context/heuristic.js';
 
@@ -30,11 +31,16 @@ export function createLocalSuite(options: LocalSuiteOptions = {}): PerceptionSui
   const ffmpeg = options.ffmpegBinary ?? 'ffmpeg';
   const ffprobe = options.ffprobeBinary ?? 'ffprobe';
 
+  const probe = new FfprobeMediaProbe({ runner, binary: ffprobe });
   return {
-    probe: new FfprobeMediaProbe({ runner, binary: ffprobe }),
-    preparer: new FfmpegMediaPreparer({ runner, binary: ffmpeg }),
+    probe,
+    // The preparer reads the file's streams itself, with the same probe, rather
+    // than trusting an asset that may have been registered before they were
+    // listed.
+    preparer: new FfmpegMediaPreparer({ runner, binary: ffmpeg, probe }),
     shots: new FfmpegShotDetector({ runner, binary: ffmpeg }),
     audio: new WavAudioAnalyzer(),
+    video: new FfmpegVideoAnalyzer({ runner, binary: ffmpeg }),
     context: new HeuristicContextModel(),
     text: new HashingTextEmbedding(options.embeddingDim ? { dim: options.embeddingDim } : {}),
     // Speech, visual embeddings and OCR are absent by design: they need models,

@@ -14,6 +14,37 @@ from typing import Any
 from ..errors import MissingDependency, ModelError
 
 
+def describe() -> str:
+    """The reader's identity, which is its version and not the word "ocr".
+
+    This stage reported the literal string `ocr` as its model, and that string
+    went into the perception cache key and into the ModelRun record of a
+    document meant to be shared. Two consequences, both silent: upgrading
+    rapidocr changed the on-screen text it reads and served the old result from
+    cache anyway, and the provenance record named a model that does not exist.
+
+    The weights ship inside the wheel — `ch_PP-OCRv4_det`, `ch_PP-OCRv4_rec` and
+    `ch_ppocr_mobile_v2.0_cls`, all PaddleOCR-derived — so the package version is
+    exactly the right granularity: it is what changes when they do.
+    """
+    try:
+        from importlib.metadata import PackageNotFoundError, version  # noqa: PLC0415
+    except ImportError:  # pragma: no cover - importlib.metadata is stdlib on 3.11
+        return "rapidocr"
+    try:
+        return f"rapidocr-{version('rapidocr-onnxruntime')}"
+    except PackageNotFoundError:
+        # Importable but not installed as a distribution, which happens in a
+        # vendored checkout. The name without a version still beats "ocr".
+        return "rapidocr"
+
+
+def available() -> bool:
+    import importlib.util  # noqa: PLC0415
+
+    return importlib.util.find_spec("rapidocr_onnxruntime") is not None
+
+
 def load():
     try:
         from rapidocr_onnxruntime import RapidOCR  # noqa: PLC0415
@@ -48,11 +79,13 @@ def read_frames(
 
 
 def _read(engine, path: str, timestamps_ms: list[int], work: Path, progress) -> dict[str, Any]:
-    from ..media import extract_frame, image_size  # noqa: PLC0415
+    from ..media import extract_frame, image_size, moment_frame_name  # noqa: PLC0415
 
     observations: list[dict[str, Any]] = []
     for index, timestamp in enumerate(timestamps_ms):
-        frame_path = work / f"{timestamp:08d}.jpg"
+        # Named by the moment, never by prepare's index scheme; see
+        # `moment_frame_name` for the frame that was read from the wrong second.
+        frame_path = work / moment_frame_name(timestamp)
         if not frame_path.exists():
             try:
                 extract_frame(path, timestamp, str(frame_path))
@@ -90,7 +123,7 @@ def _read(engine, path: str, timestamps_ms: list[int], work: Path, progress) -> 
         if progress:
             progress(min(1.0, (index + 1) / max(1, len(timestamps_ms))))
 
-    return {"model": "rapidocr", "observations": observations}
+    return {"model": describe(), "observations": observations}
 
 
 def _normalise_box(box, size: tuple[int, int] | None) -> list[float] | None:

@@ -8,7 +8,7 @@ import {
   type SemanticEvent,
   type Shot,
 } from '@editorial-ir/contracts';
-import { NodeCommandRunner, frameFileName } from '@editorial-ir/perception';
+import { NodeCommandRunner, frameFileName, framesDirName } from '@editorial-ir/perception';
 import { projectPaths } from './paths.js';
 
 /**
@@ -153,7 +153,9 @@ export function framePath(
   fps: number,
 ): string {
   const index = Math.max(1, Math.round((sourceMs * fps) / 1000) + 1);
-  return join(workDir, asset.sha256.slice(0, 12), 'frames', frameFileName(index));
+  // The directory is named for its rate, as prepare names it, so frames sampled
+  // at another rate are never read as these.
+  return join(workDir, asset.sha256.slice(0, 12), framesDirName(fps), frameFileName(index));
 }
 
 export interface ContactSheetOptions {

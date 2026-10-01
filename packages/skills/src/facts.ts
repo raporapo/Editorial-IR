@@ -31,6 +31,15 @@ export interface EventFacts {
   silence_ratio: number;
   shot_count: number;
   motion: number;
+  /** Share of the event that was still and silent; 0 when none was, or none was measured. */
+  inactive_ratio: number;
+  /**
+   * The kind of material the event comes from, when it was classified:
+   * `raw`, `edited`, `clip`, `screen_recording`, `audio_only` or `still`.
+   */
+  material?: string;
+  /** True when the picture carries burned-in subtitles. */
+  has_subtitles: boolean;
 
   /** True when this event's place differs from the previous event's. */
   new_location: boolean;
@@ -47,7 +56,7 @@ export interface EventFacts {
   chapter_position: 'first' | 'middle' | 'last';
   project_position: 'first' | 'middle' | 'last';
 
-  /** Description, speech and on-screen text, for `mentions`. */
+  /** Description, speech, subtitles and on-screen text, for `mentions`. */
   text: string;
   people: string[];
   places: string[];
@@ -57,6 +66,8 @@ export interface EventFacts {
 export function deriveFacts(ir: EditorialIR): Map<string, EventFacts> {
   const ordered = eventsInOrder(ir);
   const facts = new Map<string, EventFacts>();
+
+  const materialOf = new Map(ir.materials.map((m) => [m.asset_id, m.kind]));
 
   const chapterMembers = new Map<string, string[]>();
   for (const event of ordered) {
@@ -88,13 +99,22 @@ export function deriveFacts(ir: EditorialIR): Map<string, EventFacts> {
       silence_ratio: event.observed.silence_ratio,
       shot_count: event.observed.shot_count,
       motion: event.observed.motion ?? 0,
+      // Absent means none: the analysis leaves the field out when nothing in the
+      // event was still and silent, and a rule written "< 0.2" must match that.
+      inactive_ratio: event.observed.inactive_ratio ?? 0,
+      ...materialFact(event, materialOf),
+      has_subtitles: (event.observed.subtitles?.length ?? 0) > 0,
 
       new_location: isNewLocation(event, previous),
       new_person: isNewPerson(event, previous),
       has_speech: event.observed.speech.length > 0,
       has_music: event.observed.audio.some((a) => a.type === 'music'),
       has_laughter: event.observed.audio.some((a) => a.type === 'laughter'),
-      has_text_on_screen: event.observed.ocr.length > 0,
+      // Subtitles are text on the screen as much as a sign is, and counted as
+      // such before they were told apart from it; without them, tech-youtube's
+      // drop-silence rule dropped a subtitled demonstration as dead air.
+      has_text_on_screen:
+        event.observed.ocr.length > 0 || (event.observed.subtitles?.length ?? 0) > 0,
 
       is_user_essential: event.knowledge.essential,
       is_user_excluded: event.knowledge.excluded,
@@ -112,6 +132,16 @@ export function deriveFacts(ir: EditorialIR): Map<string, EventFacts> {
   }
 
   return facts;
+}
+
+/** The kind of the material an event is cut from, when that asset was classified. */
+function materialFact(
+  event: SemanticEvent,
+  materialOf: ReadonlyMap<string, string>,
+): { material?: string } {
+  const assetId = event.source_ranges[0]?.asset_id;
+  const kind = assetId === undefined ? undefined : materialOf.get(assetId);
+  return kind === undefined ? {} : { material: kind };
 }
 
 function isNewLocation(event: SemanticEvent, previous: SemanticEvent | undefined): boolean {
@@ -145,6 +175,7 @@ function searchText(event: SemanticEvent): string {
       event.description.value,
       event.title?.value ?? '',
       ...event.observed.speech.map((s) => s.text),
+      ...(event.observed.subtitles ?? []),
       ...event.observed.ocr,
       ...event.entities.value.topics,
     ].join(' '),

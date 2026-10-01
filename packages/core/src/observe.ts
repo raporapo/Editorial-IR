@@ -2,25 +2,39 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { isAbsolute, resolve } from 'node:path';
 import {
+  AnalyzeVideoParams,
+  SCENE_SENSITIVITY,
   compareText,
+  hasAudioStream,
   EMPTY_OBSERVATIONS,
   PIPELINE_VERSION,
   seqId,
   type AudioEvent,
   type AudioProfile,
+  type AudioSync,
   type FrameFeature,
   type MediaAsset,
+  type MotionProfile,
   type ObservationTimeline,
   type OcrObservation,
   type PrepareResult,
   type ProjectContext,
   type Shot,
   type Utterance,
+  type VideoEvent,
 } from '@editorial-ir/contracts';
-import { ModelScheduler, frameFileName, type PerceptionSuite } from '@editorial-ir/perception';
+import {
+  ModelScheduler,
+  computeHopStatistics,
+  frameFileName,
+  type PerceptionSuite,
+} from '@editorial-ir/perception';
+import { vocabularyFor } from './label-vocabulary.js';
 import type { PerceptionCache } from './cache.js';
 import type { ModelRunRecorder } from './model-runs.js';
 import type { CacheKeyParts } from './fingerprint.js';
+import { inactiveSpans, thinTimestamps, type InactiveSpan } from './activity.js';
+import { MAX_SYNC_PAIRS, SYNC_HOP_MS, SYNC_VERSION, measureSync, syncPairs } from './sync.js';
 
 /**
  * Running perception over every asset.
@@ -46,6 +60,14 @@ export interface ObserveOptions {
   frameFps?: number;
   /** Hop for the loudness envelope. */
   audioHopMs?: number;
+  /** False reads every OCR frame, still and silent or not: `oea analyze --no-skip-inactive`. */
+  skipInactive?: boolean;
+  /**
+   * Assets known to be screen recordings before any text is read — by name or
+   * by the user's word. Their text is never thinned: on a screen the text is the
+   * content, and a keystroke never moves the picture enough to count.
+   */
+  screenRecordings?: ReadonlySet<string>;
   onProgress?: (stage: string, message: string, done: number, total: number) => void;
 }
 
@@ -84,6 +106,16 @@ export interface ObserveResult {
    * forty of an hour of work.
    */
   failures: { stage: string; assetId: string; reason: string }[];
+  /**
+   * Where the footage was both still and silent, as far as this run measured.
+   *
+   * Recomputed from the observations by the compiler rather than trusted from
+   * here, so a reused analysis gets the same mask; returned because the OCR
+   * stage below already needed it.
+   */
+  inactive: InactiveSpan[];
+  /** OCR timestamps not read because they fell inside an already-sampled still, silent span. */
+  framesNotAnalysed: number;
 }
 
 export async function observeAssets(
@@ -118,37 +150,99 @@ export async function observeAssets(
   const ocr: OcrObservation[] = [];
   const frameFeatures: FrameFeature[] = [];
   const audioProfiles: AudioProfile[] = [];
+  const videoEvents: VideoEvent[] = [];
+  const motionProfiles: MotionProfile[] = [];
 
   const frameVectors = new Map<string, number[]>();
-  const counters = { utt: 0, shot: 0, aev: 0, ocr: 0, frm: 0 };
+  const counters = { utt: 0, shot: 0, aev: 0, ocr: 0, frm: 0, vev: 0 };
   const frameFps = options.frameFps ?? 1;
 
   // ---- prepare -------------------------------------------------------------
+  // A still is its own proxy and its own only frame, at 0 ms. Nothing is made
+  // from it, so nothing is asked of the preparer; recording it here is what lets
+  // every stage below find a still's picture the way it finds a video's.
+  for (const asset of ordered) {
+    if (asset.kind !== 'image') continue;
+    derived.set(asset.id, {
+      proxy_path: absolutePath(asset, options.projectRoot),
+      frame_timestamps_ms: [0],
+    });
+  }
+  // Assets whose prepare threw outright. Its failure is recorded; the stages
+  // that read prepared audio must not then fall back to the original file.
+  const unprepared = new Set<string>();
   if (options.suite.preparer) {
     const preparer = options.suite.preparer;
     const runId = options.runs.fromIdentity('ingest', preparer.identity);
     void runId;
     let done = 0;
     for (const asset of ordered) {
+      if (asset.kind === 'image') continue;
       options.onProgress?.('prepare', asset.file_name, done++, ordered.length);
       await attempt('prepare', asset.id, async () => {
         const workDir = join(options.workDir, asset.sha256.slice(0, 12));
         mkdirSync(workDir, { recursive: true });
-        derived.set(
-          asset.id,
-          await preparer.prepare({
-            path: absolutePath(asset, options.projectRoot),
-            work_dir: workDir,
-            proxy_height: asset.kind === 'video' ? 480 : 0,
-            extract_audio: asset.kind !== 'image',
-            frame_fps: asset.kind === 'video' ? frameFps : 0,
-          }),
-        );
+        const prepared = await preparer.prepare({
+          path: absolutePath(asset, options.projectRoot),
+          work_dir: workDir,
+          proxy_height: asset.kind === 'video' ? 480 : 0,
+          // Only when there is sound to extract. A drone clip with no audio
+          // track failed here, and the failure took its frames down with it.
+          extract_audio: hasAudioStream(asset),
+          frame_fps: asset.kind === 'video' ? frameFps : 0,
+        });
+        derived.set(asset.id, prepared);
+        // Each derivative fails on its own now, and each failure is still one:
+        // recorded, so this analysis is not stored as complete and the next run
+        // tries again.
+        for (const failure of prepared.failed ?? []) {
+          failures.push({
+            stage: 'prepare',
+            assetId: asset.id,
+            reason: `${failure.derivative}: ${failure.reason}`,
+          });
+        }
       });
+      if (!derived.has(asset.id)) unprepared.add(asset.id);
     }
   } else {
     unavailable.push({ stage: 'prepare', reason: 'no model is configured for it' });
   }
+
+  /**
+   * What the speech and audio stages read for an asset, or nothing.
+   *
+   * Nothing, not a failure, for a file with no sound: it has no transcript to
+   * miss. Nothing, too, when extraction was tried and failed — that failure is
+   * already recorded, and the fallback below would hand an .mp4 to a reader of
+   * WAV files, which is how one silent drone clip produced three failures. The
+   * original itself only when no preparer made files at all: a real transcriber
+   * reads it, and a replayed fixture is keyed by its name.
+   */
+  const audioSource = (
+    asset: MediaAsset,
+  ): { path: string; streamIndex?: number; reason?: string } | undefined => {
+    if (!hasAudioStream(asset)) return undefined;
+    const prepared = derived.get(asset.id);
+    if (prepared?.audio_path) {
+      // Named only when there was a choice to make. A single-stream file's key
+      // is the key it always had, so its cached transcript is still found.
+      const chosen = (prepared.audio_stream_count ?? 0) > 1;
+      return {
+        path: prepared.audio_path,
+        ...(chosen && prepared.audio_stream_index !== undefined
+          ? { streamIndex: prepared.audio_stream_index }
+          : {}),
+        ...(chosen && prepared.audio_stream_reason !== undefined
+          ? { reason: prepared.audio_stream_reason }
+          : {}),
+      };
+    }
+    if (prepared?.audio_stream_count === 0) return undefined;
+    if (unprepared.has(asset.id)) return undefined;
+    if (prepared?.failed?.some((failure) => failure.derivative === 'audio')) return undefined;
+    return { path: absolutePath(asset, options.projectRoot) };
+  };
 
   // ---- speech --------------------------------------------------------------
   if (options.suite.speech) {
@@ -157,22 +251,21 @@ export async function observeAssets(
     await scheduler.withModel('speech', async () => {
       let done = 0;
       for (const asset of ordered) {
-        if (asset.kind === 'image') continue;
-        // Extracted audio when there is some; otherwise the media itself, which
-        // every real transcriber can read and which is what a replayed fixture
-        // is keyed by.
-        const audioPath =
-          derived.get(asset.id)?.audio_path ?? absolutePath(asset, options.projectRoot);
+        const source = audioSource(asset);
+        if (!source) continue;
         options.onProgress?.('transcribe', asset.file_name, done++, ordered.length);
 
         const params = {
-          audio_path: audioPath,
+          audio_path: source.path,
           ...(options.context?.editing_goal.language
             ? { language: options.context.editing_goal.language }
             : {}),
           vocabulary: options.context?.background.vocabulary ?? [],
           word_timestamps: true,
           diarize: false,
+          // In the key, because the path is not: a transcript of one stream
+          // must never be served for another.
+          ...(source.streamIndex === undefined ? {} : { audio_stream_index: source.streamIndex }),
         };
         let result: Awaited<ReturnType<typeof speech.transcribe>> | undefined;
         await attempt('speech', asset.id, async () => {
@@ -215,7 +308,7 @@ export async function observeAssets(
       options.onProgress?.('shots', asset.file_name, done++, ordered.length);
 
       const source = derived.get(asset.id)?.proxy_path ?? absolutePath(asset, options.projectRoot);
-      const params = { path: source, threshold: 0.3, min_shot_ms: 800 };
+      const params = { path: source, threshold: SCENE_SENSITIVITY, min_shot_ms: 800 };
       let result: Awaited<ReturnType<typeof detector.detectShots>> | undefined;
       await attempt('shots', asset.id, async () => {
         result = await cached(
@@ -249,16 +342,16 @@ export async function observeAssets(
     const runId = options.runs.fromIdentity('audio', audio.identity);
     let done = 0;
     for (const asset of ordered) {
-      if (asset.kind === 'image') continue;
-      const audioPath =
-        derived.get(asset.id)?.audio_path ?? absolutePath(asset, options.projectRoot);
+      const source = audioSource(asset);
+      if (!source) continue;
       options.onProgress?.('audio', asset.file_name, done++, ordered.length);
 
       const params = {
-        audio_path: audioPath,
+        audio_path: source.path,
         hop_ms: options.audioHopMs ?? 100,
         silence_threshold_db: -40,
         classify_events: true,
+        ...(source.streamIndex === undefined ? {} : { audio_stream_index: source.streamIndex }),
       };
       let result: Awaited<ReturnType<typeof audio.analyzeAudio>> | undefined;
       await attempt('audio', asset.id, async () => {
@@ -271,12 +364,18 @@ export async function observeAssets(
       if (!result) continue;
 
       for (const event of result.events) {
-        if (event.end_ms <= event.start_ms) continue;
+        // Held to the file like shots and picture events are. The sound is
+        // measured in whole hops of the decoded stream, which runs a few
+        // milliseconds past what the container says (encoder priming), so the
+        // last hop of every probe file ended 100 ms after the file did: a
+        // silence from 30.2 s to 40.1 s in a 40-second podcast.
+        const end = Math.min(event.end_ms, asset.duration_ms || event.end_ms);
+        if (end <= event.start_ms) continue;
         audioEvents.push({
           id: seqId('aev', ++counters.aev, 5),
           asset_id: asset.id,
           start_ms: event.start_ms,
-          end_ms: event.end_ms,
+          end_ms: end,
           event_type: event.event_type,
           ...(event.raw_label === undefined ? {} : { raw_label: event.raw_label }),
           confidence: event.confidence,
@@ -289,6 +388,8 @@ export async function observeAssets(
         hop_ms: result.hop_ms,
         rms_db: result.rms_db,
         ...(result.speech_prob === undefined ? {} : { speech_prob: result.speech_prob }),
+        ...(source.streamIndex === undefined ? {} : { stream_index: source.streamIndex }),
+        ...(source.reason === undefined ? {} : { stream_reason: source.reason }),
         model_run_id: runId,
       });
     }
@@ -296,22 +397,111 @@ export async function observeAssets(
     unavailable.push({ stage: 'audio', reason: 'no model is configured for it' });
   }
 
+  // ---- picture envelope ----------------------------------------------------
+  // How much the picture moves, and where it is black. Cheap by construction —
+  // a 64x36 greyscale decode — and run before the stages that cost something,
+  // because its one job is to tell them where there is nothing to look at.
+  if (options.suite.video) {
+    const video = options.suite.video;
+    const runId = options.runs.fromIdentity('motion', video.identity);
+    let done = 0;
+    for (const asset of ordered) {
+      if (asset.kind !== 'video') continue;
+      options.onProgress?.('motion', asset.file_name, done++, ordered.length);
+
+      const params = AnalyzeVideoParams.parse({
+        path: derived.get(asset.id)?.proxy_path ?? absolutePath(asset, options.projectRoot),
+      });
+      let result: Awaited<ReturnType<typeof video.analyzeVideo>> | undefined;
+      await attempt('video', asset.id, async () => {
+        result = await cached(
+          options.cache,
+          keyFor('analyze_video', asset, video.identity, params),
+          () => video.analyzeVideo(params),
+        );
+      });
+      if (!result) continue;
+
+      for (const event of result.events) {
+        const end = Math.min(event.end_ms, asset.duration_ms || event.end_ms);
+        if (end <= event.start_ms) continue;
+        videoEvents.push({
+          id: seqId('vev', ++counters.vev, 5),
+          asset_id: asset.id,
+          start_ms: event.start_ms,
+          end_ms: end,
+          event_type: event.event_type,
+          confidence: event.confidence,
+          model_run_id: runId,
+        });
+      }
+      if (result.motion.length > 0) {
+        motionProfiles.push({
+          asset_id: asset.id,
+          hop_ms: result.hop_ms,
+          motion: result.motion,
+          luma: result.luma,
+          model_run_id: runId,
+        });
+      }
+    }
+  } else {
+    unavailable.push({ stage: 'video', reason: 'no model is configured for it' });
+  }
+
+  // Still and silent, from everything measured so far. Only the OCR stage below
+  // reads it: the visual stage must not, because segmentation reads one frame
+  // vector per shot and thinning those would move event boundaries — the one
+  // thing this mask is never allowed to do.
+  const inactive = inactiveSpans(
+    {
+      ...EMPTY_OBSERVATIONS,
+      project_id: '',
+      fingerprint: '',
+      pipeline_version: PIPELINE_VERSION,
+      generated_at: '',
+      utterances,
+      audio_events: audioEvents,
+      audio_profiles: audioProfiles,
+      video_events: videoEvents,
+      motion_profiles: motionProfiles,
+    },
+    // No asset at all when switched off, and never a screen recording.
+    options.skipInactive === false
+      ? []
+      : ordered.filter((asset) => !options.screenRecordings?.has(asset.id)),
+  );
+  let framesNotAnalysed = 0;
+
   // ---- visual --------------------------------------------------------------
   if (options.suite.visual) {
     const visual = options.suite.visual;
     const runId = options.runs.fromIdentity('visual', visual.identity);
+    // Computed once per run, not per asset: it is the same list every time, and
+    // it is part of the cache key, so recomputing it has to be deterministic.
+    const vocabulary = vocabularyFor(visual, options.context);
     await scheduler.withModel('visual', async () => {
       let done = 0;
       for (const asset of ordered) {
         const prepared = derived.get(asset.id);
-        const timestamps = frameTimestamps(prepared, shots, asset.id);
+        const timestamps = frameTimestamps(prepared, shots, asset);
         if (timestamps.length === 0) continue;
         options.onProgress?.('visual', asset.file_name, done++, ordered.length);
 
         const params = {
           path: prepared?.proxy_path ?? absolutePath(asset, options.projectRoot),
           timestamps_ms: timestamps,
-          label_vocabulary: [],
+          // This was `[]`, which made the zero-shot path and its calibration
+          // unreachable and left `visual_labels` empty in every IR ever
+          // produced. The words are the user's own; see `labelVocabulary`.
+          label_vocabulary: vocabulary,
+          // Never beside the media: the worker's fallback was to write a
+          // `_frames` folder into whatever directory the footage lives in. And
+          // never prepare's frames directory either, where files are named by
+          // index: a frame asked for at 1000 ms was looked for as
+          // `00001000.jpg`, which in a twenty-minute file is prepare's frame
+          // 1000 — the picture at 999 s — found already there, and embedded.
+          frames_dir: join(options.workDir, asset.sha256.slice(0, 12), 'visual-frames'),
         };
         let result: Awaited<ReturnType<typeof visual.embedFrames>> | undefined;
         await attempt('visual', asset.id, async () => {
@@ -352,7 +542,13 @@ export async function observeAssets(
       let done = 0;
       for (const asset of ordered) {
         const prepared = derived.get(asset.id);
-        const timestamps = representativeFrames(shots, asset.id);
+        // Where the text is likely to have changed, thinned where nothing
+        // changes; see `ocrTimestamps`. Segmentation reads OCR only where scene
+        // text changes between two reads, and places that change where the
+        // picture changed, so a read added at the end of a still stretch moves
+        // no boundary the stretch had not already marked.
+        const { kept: timestamps, dropped } = ocrTimestamps(shots, videoEvents, inactive, asset);
+        framesNotAnalysed += dropped;
         if (timestamps.length === 0) continue;
         options.onProgress?.('ocr', asset.file_name, done++, ordered.length);
 
@@ -375,13 +571,14 @@ export async function observeAssets(
         });
         if (!result) continue;
 
+        const still = stillSpansOf(videoEvents, asset.id);
         for (const observation of result.observations) {
           if (observation.text.trim().length === 0) continue;
           ocr.push({
             id: seqId('ocr', ++counters.ocr, 5),
             asset_id: asset.id,
             start_ms: observation.start_ms,
-            end_ms: Math.max(observation.end_ms, observation.start_ms + 1),
+            end_ms: readUntil(observation, still),
             text: observation.text,
             confidence: observation.confidence,
             ...(observation.bbox === undefined ? {} : { bbox: observation.bbox }),
@@ -394,6 +591,12 @@ export async function observeAssets(
     unavailable.push({ stage: 'ocr', reason: 'no model is configured for it' });
   }
 
+  // ---- which recordings heard the same moment ------------------------------
+  // After the audio stage because it reads the same prepared sound, and cheap:
+  // a loudness envelope per file and one FFT per pair. A recorder's sound under
+  // a camera's picture, and two cameras of one moment, both start here.
+  const syncs = await findSyncs(ordered, derived, options, unavailable);
+
   return {
     observations: {
       ...EMPTY_OBSERVATIONS,
@@ -401,18 +604,105 @@ export async function observeAssets(
       fingerprint: '',
       pipeline_version: PIPELINE_VERSION,
       generated_at: new Date().toISOString(),
+      syncs,
       utterances,
       shots,
       audio_events: audioEvents,
       ocr,
       frame_features: frameFeatures,
       audio_profiles: audioProfiles,
+      video_events: videoEvents,
+      motion_profiles: motionProfiles,
     },
     derived,
     frameVectors,
     unavailable,
     failures,
+    inactive,
+    framesNotAnalysed,
   };
+}
+
+/**
+ * Every pair of recordings that heard the same moment, and by how much apart.
+ *
+ * Only files whose sound was prepared in this run can be compared; on a reused
+ * analysis the syncs come back with the observations. A pair that does not
+ * match is cached too — as no match — so an unrelated recorder is not
+ * correlated against every clip again on the next run.
+ */
+async function findSyncs(
+  ordered: readonly MediaAsset[],
+  derived: ReadonlyMap<string, PrepareResult>,
+  options: ObserveOptions,
+  unavailable: UnavailableStage[],
+): Promise<AudioSync[]> {
+  const byId = new Map(ordered.map((asset) => [asset.id, asset]));
+  const wavOf = (id: string): string | undefined => {
+    const path = derived.get(id)?.audio_path;
+    return path && existsSync(path) ? path : undefined;
+  };
+  const { pairs, skipped } = syncPairs(
+    ordered
+      .filter((asset) => wavOf(asset.id) !== undefined)
+      .map((asset) => ({
+        asset_id: asset.id,
+        kind: asset.kind,
+        duration_ms: asset.duration_ms,
+        ...(asset.creation_time === undefined ? {} : { creation_time: asset.creation_time }),
+        hasAudio: hasAudioStream(asset),
+      })),
+  );
+  if (skipped > 0) {
+    unavailable.push({
+      stage: 'sync',
+      reason: `${skipped} pair(s) of recordings were not compared: more than ${MAX_SYNC_PAIRS} in one project`,
+    });
+  }
+
+  const envelopes = new Map<string, number[]>();
+  const envelopeOf = (id: string): number[] => {
+    let rms = envelopes.get(id);
+    if (!rms) {
+      rms = computeHopStatistics(wavOf(id)!, SYNC_HOP_MS).rmsDb;
+      envelopes.set(id, rms);
+    }
+    return rms;
+  };
+
+  const found: AudioSync[] = [];
+  let done = 0;
+  for (const [assetId, referenceId] of pairs) {
+    const asset = byId.get(assetId)!;
+    const reference = byId.get(referenceId)!;
+    options.onProgress?.('sync', asset.file_name, done++, pairs.length);
+    const key: CacheKeyParts = {
+      operation: 'audio_sync',
+      mediaSha256: `${asset.sha256}+${reference.sha256}`,
+      backend: 'onset-xcorr',
+      modelVersion: SYNC_VERSION,
+      parameters: {
+        hop_ms: SYNC_HOP_MS,
+        asset_stream: derived.get(assetId)?.audio_stream_index ?? 0,
+        reference_stream: derived.get(referenceId)?.audio_stream_index ?? 0,
+      },
+      pipelineVersion: PIPELINE_VERSION,
+    };
+    const measured = await cached(options.cache, key, async () => {
+      const result = measureSync(envelopeOf(assetId), envelopeOf(referenceId));
+      return result ?? null;
+    });
+    if (!measured) continue;
+    found.push({
+      asset_id: assetId,
+      reference_asset_id: referenceId,
+      offset_ms: measured.offset_ms,
+      score: measured.score,
+      confidence: measured.confidence,
+      method: 'onset_xcorr',
+    });
+  }
+  return found;
 }
 
 /**
@@ -481,13 +771,232 @@ export function framePathFor(
 function frameTimestamps(
   prepared: PrepareResult | undefined,
   shots: readonly Shot[],
-  assetId: string,
+  asset: Pick<MediaAsset, 'id' | 'kind'>,
 ): number[] {
   // Prefer one frame per shot: it is the frame that represents a decision the
   // camera operator made, rather than an arbitrary sample.
-  const perShot = representativeFrames(shots, assetId);
+  const perShot = pictureTimestamps(shots, asset);
   if (perShot.length > 0) return perShot;
   return prepared?.frame_timestamps_ms ?? [];
+}
+
+/**
+ * The moments of an asset worth looking at: one per shot, or for a still, the
+ * still. Photos were registered and then never looked at — no frame, no OCR —
+ * so a sign reading "Kyoto station" in a picture of it was invisible to search
+ * and to every description.
+ */
+function pictureTimestamps(
+  shots: readonly Shot[],
+  asset: Pick<MediaAsset, 'id' | 'kind'>,
+): number[] {
+  if (asset.kind === 'image') return [0];
+  return representativeFrames(shots, asset.id);
+}
+
+/**
+ * A shot longer than this gets reads beside its representative frame.
+ *
+ * One read per shot is enough when the shot is a camera's: its text — a sign, a
+ * menu — stays put. It is not enough when the shot is a screen or a programme:
+ * a 60 s screen recording of six slides was one shot, read once, and five of
+ * the six slides were never read; burned-in subtitles were sampled by shot
+ * count, so a long take with a dozen lines under it had one of them read.
+ */
+export const OCR_LONG_SHOT_MS = 10_000;
+
+/**
+ * How often a long shot is read where the picture moves.
+ *
+ * A subtitle line is on screen for a few seconds, and a slide for longer; five
+ * seconds catches every line that is up for five seconds or more, and most of
+ * the shorter ones. What it costs, measured on the worker (RapidOCR on four CPU
+ * cores, ffmpeg seeking the frame): 0.54-0.68 s a read on a 1080p slide of text,
+ * 0.21-0.39 s on a 720p frame with one subtitle line, plus 0.09-0.20 s to seek
+ * and decode the frame; about 1 s a read end to end in `oea analyze` on the
+ * screen recording. About a tenth to a fifth of real time over a long moving
+ * shot, paid once, since reads are cached.
+ */
+export const OCR_PERIOD_MS = 5_000;
+
+/**
+ * A read is taken this long before a still stretch ends: the last moment the
+ * picture is known to have been settled, at the resolution the motion analysis
+ * samples at (0.2 s) and with the same half second of slack the inactive mask
+ * keeps at its edges.
+ */
+export const OCR_BEFORE_CHANGE_MS = 500;
+
+/**
+ * Inside a still stretch, one read per this much, counted back from its end.
+ *
+ * The motion analysis calls a stretch still only when no cell of a 64x36
+ * thumbnail moves by half a grey level between samples, and on-screen text
+ * cannot change under that: measured, a subtitle line replaced by another of
+ * the same length on a still background moved it by 3.2-4.7, and each change
+ * ended the still stretch. So the read at the end of a stretch sees what the
+ * whole of it showed, and reading it every five seconds as well would read
+ * each slide twice. This is the safety net for what might creep in under the
+ * threshold — a very slow fade — and it is also the most that a still, silent
+ * span may be thinned to: it was one read per span, however long.
+ */
+export const OCR_QUIET_READ_EVERY_MS = 10_000;
+
+/**
+ * At most this many reads per asset beyond one per shot.
+ *
+ * At about a second a read, 120 is two minutes of worker time for one file —
+ * ten minutes of a single moving shot at one read per five seconds. A longer
+ * one is read as widely spaced as that allows, the moments the picture changed
+ * first.
+ */
+export const MAX_EXTRA_OCR_READS = 120;
+
+/**
+ * The moments of one asset to read on-screen text at.
+ *
+ * - One per shot, as before: the frame that represents it. Where the footage is
+ *   both still and silent these are thinned to one per
+ *   `OCR_QUIET_READ_EVERY_MS` (it was one per span, however long).
+ * - One at the end of every still stretch the motion analysis found, just
+ *   before the picture changed: a screen recording is still between slides, so
+ *   each slide is read once, in the state it settled into. Through a long still
+ *   stretch, one more every `OCR_QUIET_READ_EVERY_MS` back from its end.
+ * - Through a shot longer than `OCR_LONG_SHOT_MS`, one every `OCR_PERIOD_MS`
+ *   where the picture moves, for text that changes under a moving picture —
+ *   subtitles over a long take.
+ *
+ * A read added for coverage is not taken within half its interval of another
+ * read. Repeats that remain are expected and cost nothing downstream: the
+ * on-screen text stage collapses a line read twice.
+ *
+ * `dropped` counts only what the still-and-silent mask removed, which is what
+ * `frames_not_analysed` reports.
+ */
+export function ocrTimestamps(
+  shots: readonly Shot[],
+  videoEvents: readonly Pick<VideoEvent, 'asset_id' | 'start_ms' | 'end_ms' | 'event_type'>[],
+  inactive: readonly InactiveSpan[],
+  asset: Pick<MediaAsset, 'id' | 'kind' | 'duration_ms'>,
+): { kept: number[]; dropped: number } {
+  if (asset.kind === 'image') return { kept: [0], dropped: 0 };
+  if (asset.kind === 'audio') return { kept: [], dropped: 0 };
+
+  const perShot = thinTimestamps(
+    representativeFrames(shots, asset.id),
+    quietWindows(inactive, asset.id),
+    asset.id,
+  );
+  const last = asset.duration_ms > 0 ? asset.duration_ms - 1 : Infinity;
+  const still = stillSpansOf(videoEvents, asset.id);
+
+  const taken = new Set(perShot.kept);
+  const near = (t: number, within: number) =>
+    taken.has(t) || [...taken].some((other) => Math.abs(other - t) < within);
+
+  const changes: number[] = [];
+  const held: number[] = [];
+  for (const span of still) {
+    const end = Math.min(last, Math.max(span.start, span.end - OCR_BEFORE_CHANGE_MS));
+    if (!taken.has(end)) changes.push(end);
+    for (let t = end - OCR_QUIET_READ_EVERY_MS; t > span.start; t -= OCR_QUIET_READ_EVERY_MS) {
+      held.push(t);
+    }
+  }
+  for (const t of changes) taken.add(t);
+  const heldKept = unique(held).filter((t) => !near(t, OCR_QUIET_READ_EVERY_MS / 2));
+  for (const t of heldKept) taken.add(t);
+
+  const periodic: number[] = [];
+  for (const shot of shots) {
+    if (shot.asset_id !== asset.id || shot.end_ms - shot.start_ms <= OCR_LONG_SHOT_MS) continue;
+    for (let t = shot.start_ms + OCR_PERIOD_MS; t < shot.end_ms; t += OCR_PERIOD_MS) {
+      if (still.some((span) => t >= span.start && t < span.end)) continue;
+      if (near(t, OCR_PERIOD_MS / 2)) continue;
+      periodic.push(t);
+      taken.add(t);
+    }
+  }
+
+  // The cap, spent on what matters most first: a change of picture, then the
+  // net under a long still stretch, then the long moving shot.
+  let budget = MAX_EXTRA_OCR_READS;
+  const extra: number[] = [];
+  for (const group of [unique(changes), heldKept, unique(periodic)]) {
+    const chosen = spread(group, budget);
+    extra.push(...chosen);
+    budget -= chosen.length;
+  }
+  return { kept: unique([...perShot.kept, ...extra]), dropped: perShot.dropped };
+}
+
+/** Sorted, without repeats. */
+function unique(values: readonly number[]): number[] {
+  return [...new Set(values)].sort((a, b) => a - b);
+}
+
+/** At most `count` of `values`, evenly spaced through them, first and last kept. */
+function spread(values: readonly number[], count: number): number[] {
+  if (values.length <= count) return [...values];
+  if (count <= 0) return [];
+  if (count === 1) return [values[0]!];
+  return unique(
+    Array.from(
+      { length: count },
+      (_, i) => values[Math.round((i * (values.length - 1)) / (count - 1))]!,
+    ),
+  );
+}
+
+/**
+ * When text read at one moment stops being on screen.
+ *
+ * The worker says a second after the read, having no way to know; where the
+ * motion analysis saw the picture change sooner, the text went with it. A read
+ * half a second before a slide changed otherwise claimed the next slide's first
+ * half second, and every event after the first was described with the text of
+ * the slide before it.
+ */
+export function readUntil(
+  read: { start_ms: number; end_ms: number },
+  still: readonly { start: number; end: number }[],
+): number {
+  const end = Math.max(read.end_ms, read.start_ms + 1);
+  const span = still.find((s) => read.start_ms >= s.start && read.start_ms < s.end);
+  return span ? Math.max(read.start_ms + 1, Math.min(end, span.end)) : end;
+}
+
+/** One asset's still stretches, merged, in order. */
+function stillSpansOf(
+  videoEvents: readonly Pick<VideoEvent, 'asset_id' | 'start_ms' | 'end_ms' | 'event_type'>[],
+  assetId: string,
+): { start: number; end: number }[] {
+  const spans = videoEvents
+    .filter((e) => e.asset_id === assetId && e.event_type === 'static' && e.end_ms > e.start_ms)
+    .map((e) => ({ start: e.start_ms, end: e.end_ms }))
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+  const out: { start: number; end: number }[] = [];
+  for (const span of spans) {
+    const previous = out.at(-1);
+    if (previous && span.start <= previous.end) previous.end = Math.max(previous.end, span.end);
+    else out.push({ ...span });
+  }
+  return out;
+}
+
+/** One asset's still, silent spans, each cut into equal windows no longer than the read interval. */
+function quietWindows(spans: readonly InactiveSpan[], assetId: string): InactiveSpan[] {
+  return spans
+    .filter((span) => span.asset_id === assetId)
+    .flatMap((span) => {
+      const length = span.end_ms - span.start_ms;
+      const pieces = Math.max(1, Math.ceil(length / OCR_QUIET_READ_EVERY_MS));
+      return Array.from({ length: pieces }, (_, i) => ({
+        asset_id: assetId,
+        start_ms: span.start_ms + Math.round((i * length) / pieces),
+        end_ms: span.start_ms + Math.round(((i + 1) * length) / pieces),
+      }));
+    });
 }
 
 function representativeFrames(shots: readonly Shot[], assetId: string): number[] {

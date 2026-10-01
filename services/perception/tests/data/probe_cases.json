@@ -1,0 +1,380 @@
+{
+  "note": "ffprobe output measured on ffmpeg 6.1 (trimmed to the fields the probe reads), and what each runtime must make of it. Both the TypeScript and the Python probe are tested against this file.",
+  "cases": [
+    {
+      "name": "a MOV with a drop-frame timecode track",
+      "ffprobe": {
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "2.002000"
+        },
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 320,
+            "height": 240,
+            "r_frame_rate": "30000/1001",
+            "avg_frame_rate": "30000/1001",
+            "duration": "2.002000",
+            "nb_frames": "60",
+            "tags": {
+              "timecode": "01:00:00;00"
+            }
+          },
+          {
+            "index": 1,
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 1,
+            "r_frame_rate": "0/0",
+            "avg_frame_rate": "0/0",
+            "duration": "2.000000",
+            "nb_frames": "95"
+          },
+          {
+            "index": 2,
+            "codec_type": "data",
+            "r_frame_rate": "0/0",
+            "avg_frame_rate": "30000/1001",
+            "duration": "2.002000",
+            "nb_frames": "1",
+            "tags": {
+              "timecode": "01:00:00;00"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "duration_ms": 2002,
+        "start_timecode": "01:00:00;00"
+      }
+    },
+    {
+      "name": "an MKV, whose tags are in capitals",
+      "ffprobe": {
+        "format": {
+          "format_name": "matroska,webm",
+          "duration": "2.000000",
+          "tags": {
+            "TIMECODE": "03:00:00:00"
+          }
+        },
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 320,
+            "height": 240,
+            "r_frame_rate": "25/1",
+            "avg_frame_rate": "25/1",
+            "tags": {
+              "DURATION": "00:00:02.000000000"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "duration_ms": 2000,
+        "start_timecode": "03:00:00:00"
+      }
+    },
+    {
+      "name": "an MXF, which keeps its timecode on the container",
+      "ffprobe": {
+        "format": {
+          "format_name": "mxf",
+          "duration": "2.000000",
+          "tags": {
+            "company_name": "FFmpeg",
+            "timecode": "10:00:00:00"
+          }
+        },
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "mpeg2video",
+            "codec_type": "video",
+            "width": 320,
+            "height": 240,
+            "r_frame_rate": "25/1",
+            "avg_frame_rate": "25/1",
+            "duration": "2.000000"
+          },
+          {
+            "index": 1,
+            "codec_name": "pcm_s16le",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 1,
+            "r_frame_rate": "0/0",
+            "avg_frame_rate": "0/0",
+            "duration": "2.000000"
+          }
+        ]
+      },
+      "expected": {
+        "duration_ms": 2000,
+        "start_timecode": "10:00:00:00"
+      }
+    },
+    {
+      "name": "a DV tape capture",
+      "ffprobe": {
+        "format": {
+          "format_name": "dv",
+          "duration": "1.000000",
+          "tags": {
+            "timecode": "04:00:00:00"
+          }
+        },
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "dvvideo",
+            "codec_type": "video",
+            "width": 720,
+            "height": 576,
+            "r_frame_rate": "25/1",
+            "avg_frame_rate": "60000/1",
+            "duration": "1.000000"
+          },
+          {
+            "index": 1,
+            "codec_name": "pcm_s16le",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2,
+            "r_frame_rate": "0/0",
+            "avg_frame_rate": "0/0",
+            "duration": "1.000000"
+          }
+        ]
+      },
+      "expected": {
+        "duration_ms": 1000,
+        "start_timecode": "04:00:00:00"
+      }
+    },
+    {
+      "name": "a phone clip trimmed the next morning",
+      "ffprobe": {
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "3.000000",
+          "tags": {
+            "com.apple.quicktime.creationdate": "2026-05-17T18:00:00+0900",
+            "creation_time": "2026-05-18T00:00:00Z"
+          }
+        },
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 320,
+            "height": 240,
+            "r_frame_rate": "30/1",
+            "avg_frame_rate": "30/1",
+            "duration": "3.000000",
+            "nb_frames": "90",
+            "tags": {
+              "creation_time": "2026-05-18T00:00:00.000000Z"
+            }
+          },
+          {
+            "index": 1,
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "sample_rate": "44100",
+            "channels": 1,
+            "r_frame_rate": "0/0",
+            "avg_frame_rate": "0/0",
+            "duration": "3.000000",
+            "nb_frames": "131",
+            "tags": {
+              "creation_time": "2026-05-18T00:00:00.000000Z"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "duration_ms": 3000,
+        "creation_time": "2026-05-17T18:00:00+0900"
+      }
+    },
+    {
+      "name": "an MP3 dated with a year",
+      "ffprobe": {
+        "format": {
+          "format_name": "mp3",
+          "duration": "2.037551",
+          "tags": {
+            "date": "2026"
+          }
+        },
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "mp3",
+            "codec_type": "audio",
+            "sample_rate": "44100",
+            "channels": 1,
+            "r_frame_rate": "0/0",
+            "avg_frame_rate": "0/0",
+            "duration": "2.037551"
+          }
+        ]
+      },
+      "expected": {
+        "duration_ms": 2038,
+        "creation_time": "2026"
+      }
+    },
+    {
+      "name": "an Ogg Opus file whose length ends in half a millisecond",
+      "ffprobe": {
+        "format": {
+          "format_name": "ogg",
+          "duration": "2.006500"
+        },
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "opus",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 1,
+            "r_frame_rate": "0/0",
+            "avg_frame_rate": "0/0",
+            "duration": "2.006500"
+          }
+        ]
+      },
+      "expected": {
+        "duration_ms": 2007
+      }
+    },
+    {
+      "name": "a camera that wrote its reel name where the timecode goes",
+      "ffprobe": {
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "10.000000"
+        },
+        "streams": [
+          {
+            "index": 0,
+            "codec_type": "video",
+            "codec_name": "h264",
+            "width": 1920,
+            "height": 1080,
+            "r_frame_rate": "25/1",
+            "avg_frame_rate": "25/1",
+            "nb_frames": "250",
+            "tags": {
+              "timecode": "A001C003"
+            }
+          },
+          {
+            "index": 1,
+            "codec_type": "data",
+            "tags": {
+              "timecode": "14:03:22:11"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "duration_ms": 10000,
+        "start_timecode": "14:03:22:11"
+      }
+    },
+    {
+      "name": "a drop-frame timecode written with a full stop",
+      "ffprobe": {
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "10.000000"
+        },
+        "streams": [
+          {
+            "index": 0,
+            "codec_type": "video",
+            "codec_name": "h264",
+            "width": 1920,
+            "height": 1080,
+            "r_frame_rate": "25/1",
+            "avg_frame_rate": "25/1",
+            "nb_frames": "250",
+            "tags": {
+              "timecode": "1:00:00.00"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "duration_ms": 10000,
+        "start_timecode": "01:00:00;00"
+      }
+    },
+    {
+      "name": "an hour past the end of the day",
+      "ffprobe": {
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "10.000000"
+        },
+        "streams": [
+          {
+            "index": 0,
+            "codec_type": "video",
+            "codec_name": "h264",
+            "width": 1920,
+            "height": 1080,
+            "r_frame_rate": "25/1",
+            "avg_frame_rate": "25/1",
+            "nb_frames": "250",
+            "tags": {
+              "timecode": "25:00:00:00"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "duration_ms": 10000
+      }
+    },
+    {
+      "name": "a zone-less time, as an AVI camcorder writes it",
+      "ffprobe": {
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "10.000000",
+          "tags": {
+            "creation_time": "2026-05-17 18:00:00"
+          }
+        },
+        "streams": [
+          {
+            "index": 0,
+            "codec_type": "video",
+            "codec_name": "h264",
+            "width": 1920,
+            "height": 1080,
+            "r_frame_rate": "25/1",
+            "avg_frame_rate": "25/1",
+            "nb_frames": "250"
+          }
+        ]
+      },
+      "expected": {
+        "duration_ms": 10000,
+        "creation_time": "2026-05-17 18:00:00"
+      }
+    }
+  ]
+}

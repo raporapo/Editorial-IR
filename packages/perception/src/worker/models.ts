@@ -1,6 +1,8 @@
 import type {
   AnalyzeAudioParams,
   AnalyzeAudioResult,
+  AnalyzeVideoParams,
+  AnalyzeVideoResult,
   DescribeParams,
   DescribeResult,
   DetectShotsParams,
@@ -25,9 +27,11 @@ import type {
   ShotDetector,
   SpeechModel,
   TextEmbeddingModel,
+  VideoModel,
   VisualEmbeddingModel,
 } from '../types.js';
 import type { PythonWorkerClient } from './client.js';
+import { PROBE_VERSION } from '../ffmpeg/probe.js';
 
 /**
  * Model implementations that delegate to the Python worker.
@@ -51,7 +55,10 @@ function identity(model: string, extra: Partial<ModelIdentity> = {}): ModelIdent
 const LONG_TIMEOUT_MS = 30 * 60_000;
 
 export class WorkerMediaProbe implements MediaProbe {
-  readonly identity = identity('ffprobe');
+  // The same version as the TypeScript probe, because it is the same mapping:
+  // the rate became the nominal one and every audio stream is listed, and a
+  // probe cached before that would otherwise be served for good.
+  readonly identity = identity('ffprobe', { modelVersion: PROBE_VERSION });
   constructor(private readonly client: PythonWorkerClient) {}
   async probe(path: string): Promise<ProbeResult> {
     return this.client.request('probe', { path }, { timeoutMs: 120_000 });
@@ -94,18 +101,44 @@ export class WorkerVisualEmbeddingModel implements VisualEmbeddingModel {
   readonly identity: ModelIdentity;
   /** Learned from the first response; the worker owns the real value. */
   dim = 0;
+  /**
+   * Set only when the worker says it has a text tower, which is what makes the
+   * frame vectors searchable rather than merely stored.
+   */
+  readonly embedQuery?: (texts: string[]) => Promise<number[][]>;
+  readonly queryLanguage?: string;
+
   constructor(
     private readonly client: PythonWorkerClient,
     model = 'visual-embedding',
+    options: { canEmbedQuery?: boolean; queryLanguage?: string } = {},
   ) {
     this.identity = identity(model);
+    if (options.canEmbedQuery === true) {
+      this.embedQuery = (texts) => this.query(texts);
+      this.queryLanguage = options.queryLanguage ?? 'en';
+    }
   }
+
   async embedFrames(params: EmbedFramesParams): Promise<EmbedFramesResult> {
     const result = await this.client.request('embed_frames', params, {
       timeoutMs: LONG_TIMEOUT_MS,
     });
     this.dim = result.dim;
     return result;
+  }
+
+  private async query(texts: string[]): Promise<number[][]> {
+    // `space: 'visual'` rather than a second op: it is the same question — turn
+    // these strings into vectors — asked of a different model, and the worker
+    // refuses outright when it has no tower rather than answering in the
+    // sentence encoder's space, which would be two spaces in one index.
+    const result = await this.client.request(
+      'embed_text',
+      { texts, role: 'query', space: 'visual' },
+      { timeoutMs: LONG_TIMEOUT_MS },
+    );
+    return result.vectors;
   }
 }
 
@@ -117,9 +150,30 @@ export class WorkerAudioModel implements AudioModel {
   }
 }
 
+export class WorkerVideoModel implements VideoModel {
+  readonly identity: ModelIdentity;
+  constructor(
+    private readonly client: PythonWorkerClient,
+    model = 'cell-max-64x36',
+  ) {
+    this.identity = identity(model);
+  }
+  async analyzeVideo(params: AnalyzeVideoParams): Promise<AnalyzeVideoResult> {
+    return this.client.request('analyze_video', params, { timeoutMs: LONG_TIMEOUT_MS });
+  }
+}
+
 export class WorkerOcrModel implements OcrModel {
-  readonly identity = identity('ocr');
-  constructor(private readonly client: PythonWorkerClient) {}
+  readonly identity: ModelIdentity;
+  constructor(
+    private readonly client: PythonWorkerClient,
+    // The reader's version, which only the worker knows. This was the literal
+    // string 'ocr', and the perception cache keys on it — so upgrading rapidocr
+    // changed the text it reads and served the old text from cache anyway.
+    model = 'ocr',
+  ) {
+    this.identity = identity(model);
+  }
   async ocr(params: OcrParams): Promise<OcrResult> {
     return this.client.request('ocr', params, { timeoutMs: LONG_TIMEOUT_MS });
   }

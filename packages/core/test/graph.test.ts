@@ -87,6 +87,29 @@ describe('buildEventGraph', () => {
     expect(relations.some((relation) => relation.relation_type === 'duplicate_of')).toBe(false);
   });
 
+  it('does not take the index’s word that two empty events are the same take', () => {
+    // The index embeds the fallback description, which every event with nothing
+    // in it shares, and scores them 1.0. An edited programme with no transcript
+    // and a folder of clips both planned no clips at all offline because of it.
+    const empty = [0, 1, 2].map((i) =>
+      makeEvent({ id: `evt_000${i + 1}`, description: 'no speech or on-screen text' }, i),
+    );
+    const relations = buildEventGraph(empty, { similarity: () => 1 });
+    expect(relations.filter((r) => r.relation_type !== 'continuation')).toEqual([]);
+  });
+
+  it('calls two steps that share a word the same topic, not the same take', () => {
+    // A model embedding scored these 0.918 in the screen-recording probe, and
+    // the planner kept only one of them.
+    const steps = [
+      makeEvent({ id: 'evt_0001', speech: ['First install the package and create a project'] }, 0),
+      makeEvent({ id: 'evt_0002', speech: ['then import the file and run it on the project'] }, 1),
+    ];
+    const relations = buildEventGraph(steps, { similarity: () => 0.918 });
+    expect(relations.some((r) => r.relation_type === 'duplicate_of')).toBe(false);
+    expect(relations.some((r) => r.relation_type === 'same_topic')).toBe(true);
+  });
+
   it('is deterministic', () => {
     expect(JSON.stringify(buildEventGraph(events))).toBe(JSON.stringify(buildEventGraph(events)));
   });
@@ -249,6 +272,61 @@ describe('duplicateGroups', () => {
 
   it('finds nothing when there are no duplicates', () => {
     expect(duplicateGroups([])).toEqual([]);
+  });
+});
+
+describe('the dependency an event has on the one before it', () => {
+  /**
+   * `setup_for`, `answers` and `reaction_to` are first-class relation types that
+   * **nothing produced**. A real IR contained only `continuation`,
+   * `duplicate_of`, `same_topic`, `same_location`, `same_person` and `callback`,
+   * so `dependenciesOf` — whose filter names three of them — could only ever
+   * return an empty array. Its test passed by hand-building relations the
+   * compiler cannot emit, which is what let it look implemented.
+   *
+   * The judgement itself was already being made and acted on: the planner drops
+   * an event whose predecessor is not in the cut, and the reviewer warns about
+   * one. What was missing was the edge saying *which* event it depends on.
+   */
+  it('becomes a relation when the assessment says the event needs one', () => {
+    const relations = buildEventGraph(events, {
+      requiresPreviousContext: (id) => (id === 'evt_0002' ? 0.8 : 0.1),
+    });
+    const setup = relations.filter((relation) => relation.relation_type === 'setup_for');
+    expect(setup).toHaveLength(1);
+    expect(setup[0]?.source_event_id).toBe('evt_0001');
+    expect(setup[0]?.target_event_id).toBe('evt_0002');
+  });
+
+  it('is then answerable by the function written to answer it', () => {
+    const relations = buildEventGraph(events, {
+      requiresPreviousContext: (id) => (id === 'evt_0002' ? 0.8 : 0.1),
+    });
+    expect(dependenciesOf(relations, 'evt_0002')).toEqual(['evt_0001']);
+  });
+
+  it('carries the strength the judgement gave it', () => {
+    const relations = buildEventGraph(events, {
+      requiresPreviousContext: (id) => (id === 'evt_0002' ? 0.77 : 0),
+    });
+    const setup = relations.find((relation) => relation.relation_type === 'setup_for');
+    expect(setup?.strength).toBeCloseTo(0.77, 4);
+  });
+
+  it('is not invented below the threshold the planner acts on', () => {
+    // The rules backend reaches 0.55 for a deictic opener alone, which is
+    // deliberately under the line; only a reaction that also opens deictically
+    // clears it. A graph that linked every 0.55 would contradict a planner that
+    // ignores them.
+    const relations = buildEventGraph(events, { requiresPreviousContext: () => 0.55 });
+    expect(relations.some((relation) => relation.relation_type === 'setup_for')).toBe(false);
+  });
+
+  it('is not produced at all when nothing has judged the events', () => {
+    // The graph is buildable before the decision layer runs, and then this kind
+    // of relation simply does not exist rather than being guessed at.
+    const relations = buildEventGraph(events);
+    expect(relations.some((relation) => relation.relation_type === 'setup_for')).toBe(false);
   });
 });
 

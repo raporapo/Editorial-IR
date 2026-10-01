@@ -7,8 +7,19 @@ import {
   type ProjectContext,
   type SemanticEvent,
 } from '@editorial-ir/contracts';
-import { assessEvent, type EditorialDecisionModel } from '@editorial-ir/decision';
-import { type CostBudget, selectForEscalation, type EscalationPolicy } from './budget.js';
+import {
+  HeuristicDecisionBackend,
+  assessEvent,
+  type EditorialDecisionModel,
+} from '@editorial-ir/decision';
+import {
+  TokenRate,
+  promptChars,
+  selectLeavingOut,
+  withinBudget,
+  type CostBudget,
+  type EscalationPolicy,
+} from './budget.js';
 import type { ModelRunRecorder } from './model-runs.js';
 import type { PerceptionCache } from './cache.js';
 import { hashObject } from './fingerprint.js';
@@ -43,6 +54,16 @@ export interface AssessOptions {
    * costs a full pass.
    */
   cache?: PerceptionCache;
+  /**
+   * Events that were still and silent throughout.
+   *
+   * The rules judge them instead of the base model, and they are never sent for
+   * a second opinion. The rules do not guess here: an event with nothing moving
+   * and nothing to hear scores low on every question a model would be asked,
+   * and says why. Recorded as its own run, so the IR never claims the model
+   * answered.
+   */
+  quietEvents?: readonly string[];
   onProgress?: (stage: string, done: number, total: number) => void;
   /** Told when a second opinion could not be had, so the substitution is visible. */
   onDegraded?: (message: string, failures: { eventId: string; reason: string }[]) => void;
@@ -55,6 +76,26 @@ export async function assessEvents(
   editorial: EventEditorial[];
   escalated: string[];
   failures: { eventId: string; reason: string }[];
+  /**
+   * Base-model judgements not asked for because the event was still and silent,
+   * where asking would have cost something: one the cache would have answered
+   * for free is not a saving.
+   */
+  judgeCallsSkipped: number;
+  /** An estimate: each skipped judgement priced by its own state, at this run's measured tokens per character. */
+  estimatedTokensAvoided: number;
+  /** Events the base model was meant to judge: all of them, less the quiet ones the rules took. */
+  judgeAsked: number;
+  /** Events judged by the rules because the cost limit had been reached. */
+  budgetStopped: number;
+  /** The first of them, for the report. */
+  budgetStoppedAt?: string;
+  /** Second opinions the quiet events would have taken, net of the ones given to other events instead. */
+  escalationsAvoided: number;
+  /** Second opinions given to other events because the quiet ones were not candidates. */
+  escalationsRedirected: number;
+  /** An estimate, from what each pass charges per event. */
+  estimatedCostAvoidedUsd: number;
 }> {
   const ordered = [...events].sort((a, b) => a.start_ms - b.start_ms);
   const totalMs = ordered.reduce((sum, e) => sum + (e.end_ms - e.start_ms), 0) || 1;
@@ -94,21 +135,109 @@ export async function assessEvents(
   // reader, and the escalation policy on the next pass, that a rule-based judge
   // at confidence 0.4 said what a hosted model said.
   const producedBy = new Map<string, string>();
+  // The base pass costs whatever the base model costs, and that was not being
+  // counted either — `addCost` appeared only in the escalation branch below.
+  // With `OEA_DECISION=local-system-one` the base judge is a real language model
+  // answering nineteen questions per event, and a run reported no tokens at all.
+  const baseCostPerEvent = options.baseModel.identity.costPerEventUsd ?? 0;
+  // Asking the rules instead of the rules saves nothing, so only a real model
+  // is spared. The run is recorded lazily, so a project with no quiet events
+  // carries no run for work that never happened.
+  const quiet = new Set(options.quietEvents ?? []);
+  const spareQuiet = quiet.size > 0 && options.baseModel.identity.standIn === undefined;
+  let rules: HeuristicDecisionBackend | undefined;
+  let rulesRun: string | undefined;
+  const judgeByRules = async (event: SemanticEvent): Promise<void> => {
+    rules ??= new HeuristicDecisionBackend();
+    rulesRun ??= options.runs.record({
+      stage: 'decision',
+      backend: rules.identity.backend,
+      ...(rules.identity.model === undefined ? {} : { model: rules.identity.model }),
+      locality: rules.identity.locality,
+      mediaLeavesDevice: rules.identity.mediaLeavesDevice,
+    });
+    drafts.set(event.id, await assessEvent(rules, states.get(event.id)!));
+    producedBy.set(event.id, rulesRun);
+  };
+  let judgeCallsSkipped = 0;
+  let judgeAsked = 0;
+  let budgetStopped = 0;
+  let firstUnpaid: string | undefined;
+  // What each paid call was charged, for the next call's expected price and
+  // for pricing the calls not made.
+  let charged = 0;
+  let paidCalls = 0;
+  const expectedCost = (): number =>
+    options.baseModel.identity.costPerEventUsd ?? (paidCalls > 0 ? charged / paidCalls : 0);
+  const baseRate = new TokenRate();
+  const skippedSizes: number[] = [];
   for (const [index, event] of ordered.entries()) {
     options.onProgress?.('assess', index, ordered.length);
-    drafts.set(
-      event.id,
-      await assessCached(options.baseModel, states.get(event.id)!, options.cache),
-    );
+    const state = states.get(event.id)!;
+    const size = promptChars({ ...state, event_id: undefined });
+    if (spareQuiet && quiet.has(event.id)) {
+      // The model's own answer, when the cache already holds it, costs nothing
+      // and is better than the rules': taking the rules instead would lower the
+      // quality of a re-run for no saving at all.
+      const known = options.cache?.peek<Awaited<ReturnType<typeof assessEvent>>>(
+        assessKey(options.baseModel, state),
+      );
+      if (known) {
+        drafts.set(event.id, known);
+        producedBy.set(event.id, baseRun);
+        continue;
+      }
+      await judgeByRules(event);
+      judgeCallsSkipped++;
+      skippedSizes.push(size);
+      continue;
+    }
+    judgeAsked++;
+    const key = assessKey(options.baseModel, state);
+    const hit = options.cache?.get<Awaited<ReturnType<typeof assessEvent>>>(key);
+    if (hit) {
+      // A cache hit is free. Counting it would make a re-run look as expensive
+      // as the first one, which is the opposite of what the cache is for.
+      drafts.set(event.id, hit);
+      producedBy.set(event.id, baseRun);
+      baseRate.observe(size, hit.inputTokens, hit.outputTokens);
+      continue;
+    }
+    // `--budget` binds here too. With a hosted judge it did not, although this
+    // is the pass that asks nineteen questions of every event.
+    if (
+      firstUnpaid !== undefined ||
+      (options.budget && !options.budget.canAfford(expectedCost()))
+    ) {
+      firstUnpaid ??= event.id;
+      budgetStopped++;
+      await judgeByRules(event);
+      continue;
+    }
+    const draft = await assessEvent(options.baseModel, state);
+    options.cache?.set(key, draft);
+    drafts.set(event.id, draft);
     producedBy.set(event.id, baseRun);
+    baseRate.observe(size, draft.inputTokens, draft.outputTokens);
+    const cost = draft.costUsd ?? baseCostPerEvent;
+    options.budget?.charge(cost);
+    charged += cost;
+    paidCalls++;
+    options.runs.addCost(baseRun, cost, draft.inputTokens, draft.outputTokens);
   }
 
   const escalated: string[] = [];
   const failures: { eventId: string; reason: string }[] = [];
+  let escalationsAvoided = 0;
+  let escalationsRedirected = 0;
+  let escalationCostAvoided = 0;
   if (options.escalationModel) {
     const model = options.escalationModel;
     const costPerEvent = model.identity.costPerEventUsd ?? 0.002;
-    const decision = selectForEscalation(
+    // Still, silent events are never sent for a second opinion — and what that
+    // saved is counted against the selection that would have been made with
+    // them in, rather than assumed.
+    const { decision, leftOutPicked, redirected } = selectLeavingOut(
       ordered.map((event) => {
         const draft = drafts.get(event.id)!;
         return {
@@ -123,8 +252,17 @@ export async function assessEvents(
           costUsd: costPerEvent,
         };
       }),
-      options.escalation ?? {},
+      quiet,
+      withinBudget(options.escalation ?? {}, options.budget),
     );
+    const wouldPay = (id: string): boolean =>
+      options.cache?.peek(assessKey(model, states.get(id)!)) === undefined;
+    escalationsRedirected = redirected.length;
+    escalationsAvoided = Math.max(
+      0,
+      leftOutPicked.filter(wouldPay).length - redirected.filter(wouldPay).length,
+    );
+    escalationCostAvoided = escalationsAvoided * costPerEvent;
 
     const escalationRun = options.runs.record({
       stage: 'decision',
@@ -151,6 +289,9 @@ export async function assessEvents(
         escalated.push(eventId);
         continue;
       }
+      // Selected within what the budget had left; this is the line that holds
+      // when a call cost more than it was expected to.
+      if (options.budget && !options.budget.canAfford(costPerEvent)) break;
 
       // A second opinion that cannot be had is worth less than the cut.
       //
@@ -234,7 +375,21 @@ export async function assessEvents(
     );
   }
 
-  return { editorial, escalated, failures };
+  return {
+    editorial,
+    escalated,
+    failures,
+    judgeCallsSkipped,
+    estimatedTokensAvoided: skippedSizes.reduce((sum, size) => sum + baseRate.estimate(size), 0),
+    judgeAsked,
+    budgetStopped,
+    ...(firstUnpaid === undefined ? {} : { budgetStoppedAt: firstUnpaid }),
+    escalationsAvoided,
+    escalationsRedirected,
+    estimatedCostAvoidedUsd:
+      judgeCallsSkipped * (paidCalls > 0 ? charged / paidCalls : baseCostPerEvent) +
+      escalationCostAvoided,
+  };
 }
 
 /** How many refusals before a second-opinion model is treated as gone. */
@@ -257,19 +412,6 @@ function assessKey(
   };
 }
 
-async function assessCached(
-  model: EditorialDecisionModel,
-  state: EventState,
-  cache: PerceptionCache | undefined,
-): Promise<Awaited<ReturnType<typeof assessEvent>>> {
-  const key = assessKey(model, state);
-  const hit = cache?.get<Awaited<ReturnType<typeof assessEvent>>>(key);
-  if (hit) return hit;
-  const draft = await assessEvent(model, state);
-  cache?.set(key, draft);
-  return draft;
-}
-
 /** Builds the structured state a decision backend sees. */
 export function buildEventState(
   event: SemanticEvent,
@@ -284,7 +426,11 @@ export function buildEventState(
     duration_ms: event.end_ms - event.start_ms,
     relative_position: Math.min(1, Math.max(0, relativePosition)),
     observed: {
-      speech: event.observed.speech.map((s) => s.text),
+      // Subtitles are what was said, read off the picture. They used to reach
+      // the judge as on-screen text; kept apart from it, they reached it as
+      // nothing at all, and a subtitled montage with a music bed was judged a
+      // stretch in which nobody said or showed anything — the rules' filler.
+      speech: [...event.observed.speech.map((s) => s.text), ...(event.observed.subtitles ?? [])],
       visual_labels: event.observed.visual_labels,
       ocr: event.observed.ocr,
       audio: [...new Set(event.observed.audio.map((a) => a.type))],

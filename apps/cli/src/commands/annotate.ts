@@ -199,7 +199,11 @@ const KINDS = [
   { name: 'role', takes: '<role>', about: `one of: ${NARRATIVE_ROLES.join(', ')}` },
   { name: 'continuity', takes: '<0..1>', about: 'how well two events run together' },
   { name: 'split', takes: '[timecode]', about: 'this is really two moments' },
-  { name: 'merge', takes: '', about: 'this and the next one are one moment' },
+  {
+    name: 'merge',
+    takes: '',
+    about: 'this and the next one are one moment; on asset_001, the whole recording is',
+  },
 ];
 
 function printUsage(): void {

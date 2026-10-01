@@ -1,15 +1,20 @@
 import {
+  chapterById,
   compareText,
   EDIT_PLAN_VERSION,
   EditorialError,
   assessmentFor,
   eventsInOrder,
+  hasAudioStream,
   newId,
   seqId,
   type EditPlan,
   type EditorialAssessment,
   type EditorialIR,
+  type MaterialKind,
+  type MediaAsset,
   type ObservationTimeline,
+  type PlanMarker,
   type PlanRationale,
   type SemanticEvent,
   type SequenceSpec,
@@ -17,9 +22,17 @@ import {
   type SkillManifest,
   type Transition,
   type VideoOperation,
+  REQUIRES_CONTEXT_THRESHOLD,
 } from '@editorial-ir/contracts';
+import { kindOf, silentSpans } from '@editorial-ir/core';
 import { SkillRuntime } from '@editorial-ir/skills';
-import { chooseTrim } from './trim.js';
+import {
+  chooseTrim,
+  pausesToRemove,
+  piecesAfterRemoving,
+  type TrimResult,
+  type TrimWindow,
+} from './trim.js';
 
 /**
  * Turning an Editorial IR and a Skill into an EditPlan.
@@ -81,6 +94,11 @@ interface Candidate {
   assessment: EditorialAssessment;
   directive: SkillDirective;
   value: number;
+  /**
+   * The clip's bounds, in time *on the timeline*. For a clip that has pauses
+   * taken out that is less than the source it spans, and it is what the target
+   * is made of, so it is what selection and allocation count.
+   */
   minMs: number;
   maxMs: number;
   /** What this clip should get if the budget allows, rather than its floor. */
@@ -88,6 +106,39 @@ interface Candidate {
   required: boolean;
   segment: number;
   index: number;
+  /** How this clip is cut, decided once from its material, the skill and the user. */
+  cut: CutPolicy;
+}
+
+/**
+ * Everything about how one event becomes clips that depends on what its file is.
+ *
+ * Decided once per candidate, before selection, because two of these change how
+ * long the clip can be — a photograph has no length of its own, and a clip with
+ * its pauses taken out is shorter than the source it spans — and selection has
+ * to budget with the length the clip will actually have.
+ */
+interface CutPolicy {
+  asset?: MediaAsset;
+  kind: MaterialKind;
+  /** A photograph, held on screen rather than trimmed. */
+  still: boolean;
+  /** Used whole: the skill, the material or the user said not to trim inside it. */
+  keepWhole: boolean;
+  /** Why it is whole, for the rationale. */
+  wholeBecause?: 'clip' | 'user' | 'skill';
+  /** Cut points move onto the source's own cuts. */
+  snapToCuts: boolean;
+  /** Skip the first moments of a wordless shot while a handheld camera settles. */
+  settle: boolean;
+  useSourceAudio: boolean;
+  audioStreamIndex?: number;
+  /** A separate recorder that is this video's sound, when the analysis found one. */
+  companion?: { asset: MediaAsset; offsetMs: number; streamIndex?: number };
+  /** Pauses come out of the speech as jump cuts. */
+  removeSilences: boolean;
+  /** How much the whole event would lose to pause removal, for sizing. */
+  removableMs: number;
 }
 
 export function planEdit(options: PlanOptions): EditPlan {
@@ -108,6 +159,7 @@ export function planEdit(options: PlanOptions): EditPlan {
   const runtime = new SkillRuntime(skill);
   const directives = runtime.evaluate(ir);
   const excludedAssets = new Set(ir.context.constraints.excluded_assets);
+  const assets = new Map(ir.assets.map((asset) => [asset.id, asset]));
   const ordered = eventsInOrder(ir);
   const rationale: PlanRationale[] = [];
 
@@ -153,9 +205,59 @@ export function planEdit(options: PlanOptions): EditPlan {
       continue;
     }
 
-    const available = event.end_ms - event.start_ms;
-    const minMs = Math.min(directive.min_duration_ms, available);
-    const maxMs = Math.max(minMs, Math.min(directive.max_duration_ms, available));
+    // The user's own bounds, which outrank the skill's.
+    //
+    // `constraints.min_clip_duration_ms` and `max_clip_duration_ms` sit in the
+    // document described as "everything the user knows that the media cannot
+    // contain", which no model may write to, and **nothing read them**. Verified:
+    // writing `min_clip_duration_ms: 8000` into a project's context.yaml and
+    // planning it returned clips of 2.7s, 2.0s, 2.5s, 9s and 3.8s — four of five
+    // under the stated floor, with nothing said by `plan` or by `oea review`.
+    const userFloor = ir.context.constraints.min_clip_duration_ms ?? 0;
+    const userCeiling = ir.context.constraints.max_clip_duration_ms ?? Infinity;
+    const cut = cutPolicy(event, directive, {
+      ir,
+      skill,
+      assets,
+      observations: options.observations,
+      userCeiling,
+    });
+    // How long this clip can be on the timeline. A photograph is as long as it
+    // is held; a clip with its pauses taken out is as long as what is left.
+    const available = cut.still
+      ? stillHold(skill, directive, userFloor, userCeiling)
+      : event.end_ms - event.start_ms - cut.removableMs;
+
+    // A moment too short to satisfy the floor is not used, rather than used at a
+    // length the user said not to. Clamping the floor to whatever the event
+    // happens to contain is the same as not having a floor, and the first
+    // attempt here did exactly that: on a project with a stated eight-second
+    // minimum it still returned two- and four-second clips, because it went on
+    // choosing short events. That is precisely what the constraint exists to
+    // stop, and there were forty-eight events long enough to choose instead.
+    //
+    // Excluded rather than dropped, for the same reason an excluded asset is:
+    // the user decided this, not the skill, and the rationale should say so.
+    if (userFloor > 0 && available < userFloor) {
+      rationale.push({
+        event_id: event.id,
+        decision: 'excluded',
+        reason: `shorter than the ${Math.round(userFloor / 1000)}s minimum the project asks for`,
+        skill_rule_ids: directive.matched_rule_ids,
+        tags: directive.tags,
+      });
+      continue;
+    }
+
+    // Whole means whole: the floor and the ceiling are the event. A photograph
+    // is held for exactly its hold, which is already inside every bound.
+    const fixed = cut.still || cut.keepWhole;
+    const minMs = fixed
+      ? available
+      : Math.min(Math.max(directive.min_duration_ms, userFloor), available);
+    const maxMs = fixed
+      ? available
+      : Math.max(minMs, Math.min(directive.max_duration_ms, userCeiling, available));
     const candidate: Candidate = {
       event,
       assessment,
@@ -169,6 +271,7 @@ export function planEdit(options: PlanOptions): EditPlan {
       required: directive.required,
       segment: 0,
       index,
+      cut,
     };
 
     if (directive.dropped) {
@@ -192,6 +295,37 @@ export function planEdit(options: PlanOptions): EditPlan {
     setAside,
     knownEventIds,
   });
+
+  // The mirror of the excluded-asset filter above, and it was missing entirely.
+  //
+  // `constraints.required_assets` — "assets that must appear at least once" —
+  // sits in the same object as `excluded_assets`, in the worked example's own
+  // context.yaml, and was read by nothing. Verified: setting it to `[asset_002]`
+  // produced a cut using asset_001 four times and asset_003 once, and
+  // `oea review` said "nothing to report".
+  //
+  // The validator now reports a required asset that never made the cut, and this
+  // is what lets the planner satisfy it — exactly the argument the exclusion
+  // comment above makes in reverse. Only the best candidate from each asset is
+  // promoted: "must appear at least once" is a floor, not an instruction to take
+  // everything from that recording.
+  for (const assetId of ir.context.constraints.required_assets) {
+    const fromAsset = candidates.filter((candidate) =>
+      candidate.event.source_ranges.some((range) => range.asset_id === assetId),
+    );
+    if (fromAsset.length === 0 || fromAsset.some((candidate) => candidate.required)) continue;
+    const best = fromAsset.reduce((a, b) => (b.value > a.value ? b : a));
+    best.required = true;
+    best.directive = { ...best.directive, required: true };
+    rationale.push({
+      event_id: best.event.id,
+      decision: 'locked',
+      reason: `${assetId} must appear at least once`,
+      score: best.value,
+      skill_rule_ids: best.directive.matched_rule_ids,
+      tags: best.directive.tags,
+    });
+  }
 
   if (candidates.length === 0) {
     // Say what did it, because the answer decides what the user should do next
@@ -251,72 +385,70 @@ export function planEdit(options: PlanOptions): EditPlan {
   const operations: VideoOperation[] = [];
   let timeline = 0;
 
+  let operationNumber = 0;
+
   for (const [position, candidate] of sequenceOrder.entries()) {
     const range = candidate.event.source_ranges[0];
     if (!range) continue;
 
-    const assetSpeech = candidate.event.observed.speech.map((s) => ({
-      start_ms: s.start_ms,
-      end_ms: s.end_ms,
-    }));
-    const silences = silencesFor(options.observations, range.asset_id);
-
-    const trim = chooseTrim({
-      range: { start_ms: range.source_in_ms, end_ms: range.source_out_ms },
-      speech: assetSpeech,
-      silences,
-      desiredMs: candidate.allocatedMs ?? candidate.minMs,
-      minMs: candidate.minMs,
-      maxMs: candidate.maxMs,
-      padInMs: skill.defaults.pad_in_ms,
-      padOutMs: skill.defaults.pad_out_ms,
-      snapToSilence: skill.defaults.snap_to_silence,
-      snapWindowMs: skill.defaults.snap_window_ms,
-      preserveReaction: candidate.directive.preserve_reaction,
+    const { trim, pieces, removedMs, removedCount } = clipsFor(candidate, range, {
+      skill,
+      observations: options.observations,
     });
 
     const previous = sequenceOrder[position - 1];
     const transition = transitionFor(candidate, previous, skill);
+    const { cut } = candidate;
+    const firstId = seqId('op', operationNumber + 1);
 
-    const operation: VideoOperation = {
-      operation_id: seqId('op', position + 1),
-      source_asset_id: range.asset_id,
-      event_id: candidate.event.id,
-      source_in_ms: trim.in_ms,
-      source_out_ms: trim.out_ms,
-      timeline_start_ms: timeline,
-      track: 0,
-      ...(candidate.directive.role ? { role: candidate.directive.role } : {}),
-      speed: 1,
-      ...(transition ? { transition_in: transition } : {}),
-      // A rule that asks for a clip to be *left* a particular way. The plan
-      // contract carries it, the validator checks it and both adapters write
-      // it; the planner was the one link that dropped it, so `transition_out`
-      // in a skill file did nothing at all.
-      ...(candidate.directive.transition_out
-        ? { transition_out: candidate.directive.transition_out }
-        : {}),
-      ...(candidate.directive.locked ? { constraints: { locked: true } } : {}),
-      use_source_audio: !candidate.directive.as_b_roll,
-      provenance: candidate.directive.locked ? 'user_provided' : 'agent_derived',
-    };
+    for (const [piece, span] of pieces.entries()) {
+      const first = piece === 0;
+      const last = piece === pieces.length - 1;
+      const operation: VideoOperation = {
+        operation_id: seqId('op', ++operationNumber),
+        source_asset_id: range.asset_id,
+        event_id: candidate.event.id,
+        source_in_ms: span.start_ms,
+        source_out_ms: span.end_ms,
+        timeline_start_ms: timeline,
+        track: 0,
+        ...(candidate.directive.role ? { role: candidate.directive.role } : {}),
+        speed: 1,
+        // Into the moment, not into each piece of it: between two pieces of one
+        // take the cut is always a hard one.
+        ...(first && transition ? { transition_in: transition } : {}),
+        // A rule that asks for a clip to be *left* a particular way. The plan
+        // contract carries it, the validator checks it and both adapters write
+        // it; the planner was the one link that dropped it, so `transition_out`
+        // in a skill file did nothing at all.
+        ...(last && candidate.directive.transition_out
+          ? { transition_out: candidate.directive.transition_out }
+          : {}),
+        ...(candidate.directive.locked ? { constraints: { locked: true } } : {}),
+        ...soundFor(cut, span),
+        ...(first ? {} : { continues_previous: true }),
+        provenance: candidate.directive.locked ? 'user_provided' : 'agent_derived',
+      };
 
-    operations.push(operation);
-    timeline += trim.out_ms - trim.in_ms;
+      operations.push(operation);
+      timeline += span.end_ms - span.start_ms;
 
-    rationale.push({
-      event_id: candidate.event.id,
-      operation_id: operation.operation_id,
-      decision: candidate.directive.locked
-        ? 'locked'
-        : trim.reason === 'whole_event'
-          ? 'selected'
-          : 'trimmed',
-      reason: selectionReason(candidate, trim.reason),
-      score: candidate.value,
-      skill_rule_ids: candidate.directive.matched_rule_ids,
-      tags: candidate.directive.tags,
-    });
+      rationale.push({
+        event_id: candidate.event.id,
+        operation_id: operation.operation_id,
+        decision: candidate.directive.locked
+          ? 'locked'
+          : (trim.reason === 'whole_event' || trim.reason === 'still') && removedMs === 0
+            ? 'selected'
+            : 'trimmed',
+        reason: first
+          ? selectionReason(candidate, trim.reason, removedCount, removedMs)
+          : `continues ${firstId} after a pause taken out`,
+        score: candidate.value,
+        skill_rule_ids: candidate.directive.matched_rule_ids,
+        tags: candidate.directive.tags,
+      });
+    }
   }
 
   const totalDuration = timeline;
@@ -335,6 +467,7 @@ export function planEdit(options: PlanOptions): EditPlan {
       audio: [{ type: 'source_audio', track: 0, gain_db: 0 }],
       text: [],
     },
+    markers: chapterMarkers(operations, ir),
     intent: {
       ...(skill.intent.opening ? { opening: skill.intent.opening } : {}),
       ...(skill.intent.middle ? { middle: skill.intent.middle } : {}),
@@ -351,7 +484,9 @@ export function planEdit(options: PlanOptions): EditPlan {
       total_duration_ms: totalDuration,
       duration_error_ms: totalDuration - targetDurationMs,
       compression_ratio: Math.min(1, totalDuration / availableMs),
-      events_selected: operations.length,
+      // Moments, not clips: a take with its pauses taken out is several clips
+      // and one moment, and "kept 38 of 62 events" is a statement about events.
+      events_selected: new Set(operations.map((operation) => operation.event_id)).size,
       events_available: candidates.length,
       mean_importance: mean(sequenceOrder.map((c) => c.assessment.metrics.story_importance)),
       mean_continuity: meanContinuity(sequenceOrder, ir),
@@ -772,6 +907,12 @@ function suppressDuplicates(
     groups.set(key, group);
   }
 
+  // One line per event, however many groups it was dropped from. Groups overlap
+  // — every relation opens one keyed by its source — and each pushed its own
+  // line, so the probe's folder of clips listed evt_0005 as dropped four times
+  // over, and `oea explain` read the same sentence back four times.
+  const alreadyDropped = new Set<string>();
+
   for (const group of groups.values()) {
     if (group.length < 2) continue;
     if (!group.some((c) => c.directive.prefer_higher_quality_only)) continue;
@@ -787,6 +928,8 @@ function suppressDuplicates(
       if (candidate === best || candidate.required) continue;
       candidate.directive = { ...candidate.directive, dropped: true };
       candidate.value = -Infinity;
+      if (alreadyDropped.has(candidate.event.id)) continue;
+      alreadyDropped.add(candidate.event.id);
       rationale.push({
         event_id: candidate.event.id,
         decision: 'dropped',
@@ -836,7 +979,7 @@ function enforceContextDependencies(
   for (const candidate of chronological) {
     if (candidate.required) continue;
     const needsContext = candidate.assessment.flags.requires_previous_context ?? 0;
-    if (needsContext < 0.6) continue;
+    if (needsContext < REQUIRES_CONTEXT_THRESHOLD) continue;
 
     const previous = previousOf.get(candidate.event.id);
     if (previous === undefined || chosen.has(previous)) continue;
@@ -1074,6 +1217,23 @@ function transitionFor(
   return skill.defaults.default_transition;
 }
 
+/**
+ * How big a clip is *on screen*, which is not always how it is stored.
+ *
+ * A phone shooting portrait writes a 1920x1080 frame and a 90-degree display
+ * matrix beside it, and every player honours the matrix. Reading `width` and
+ * `height` alone therefore reports a vertical recording as landscape.
+ */
+function displaySize(asset: { width?: number; height?: number; rotation?: number }): {
+  width: number;
+  height: number;
+} {
+  const width = asset.width ?? 0;
+  const height = asset.height ?? 0;
+  const turned = asset.rotation === 90 || asset.rotation === 270 || asset.rotation === -90;
+  return turned ? { width: height, height: width } : { width, height };
+}
+
 function buildSequenceSpec(
   ir: EditorialIR,
   targetDurationMs: number,
@@ -1082,34 +1242,494 @@ function buildSequenceSpec(
 ): SequenceSpec {
   // Match the material rather than imposing a format: a vertical project should
   // not silently become sixteen by nine.
-  const reference = [...ir.assets].sort(
-    (a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0),
-  )[0];
+  //
+  // Which it did. `rotation` has been probed and stored since ingest was
+  // written and was read by nothing, here or anywhere else, so the sequence took
+  // the *coded* dimensions — and a phone-shot portrait project came out
+  // 1920x1080, the exact outcome the line above says must not happen. Verified
+  // on a real file with a 90-degree display matrix: assets.json recorded
+  // `width 1920, height 1080, rotation 90` and the plan's sequence was
+  // 1920x1080.
+  //
+  // The sort key has to use the display size too. Ranking by coded area picks
+  // the same asset either way, but only because the two differ by a transpose;
+  // ranking by the number that is then *returned* is what keeps the two halves
+  // of this function from disagreeing.
+  //
+  // And only video decides. A photo is placed into a sequence, it does not
+  // define one: stills were ranked with everything else, so one 4032x3024 phone
+  // photo beside a 1280x720 clip made the sequence 4032x3024 — at 25 fps, the
+  // rate ffmpeg reports for every picture. An audio file has no picture to
+  // match, and its album art is not one. With no video at all, the defaults.
+  const reference = ir.assets
+    .filter((asset) => asset.kind === 'video' && (asset.width ?? 0) > 0)
+    .sort((a, b) => {
+      const left = displaySize(a);
+      const right = displaySize(b);
+      return right.width * right.height - left.width * left.height || compareText(a.id, b.id);
+    })[0];
+  const display = reference ? displaySize(reference) : undefined;
+  // The rate travels as one: a reference with no rational of its own must not
+  // pair its float with the default's numerator.
+  const rate =
+    reference?.fps_num && reference.fps_den
+      ? {
+          fps: reference.fps_num / reference.fps_den,
+          num: reference.fps_num,
+          den: reference.fps_den,
+        }
+      : { fps: 30, num: 30, den: 1 };
 
   return {
     name: `${ir.project.title} — ${Math.round(targetDurationMs / 1000)}s`,
     target_duration_ms: targetDurationMs,
     tolerance_ms: toleranceMs,
-    width: overrides?.width ?? reference?.width ?? 1920,
-    height: overrides?.height ?? reference?.height ?? 1080,
-    frame_rate: overrides?.frame_rate ?? reference?.fps ?? 30,
-    frame_rate_num: overrides?.frame_rate_num ?? reference?.fps_num ?? 30,
-    frame_rate_den: overrides?.frame_rate_den ?? reference?.fps_den ?? 1,
+    width: overrides?.width ?? (display?.width || undefined) ?? 1920,
+    height: overrides?.height ?? (display?.height || undefined) ?? 1080,
+    frame_rate: overrides?.frame_rate ?? rate.fps,
+    frame_rate_num: overrides?.frame_rate_num ?? rate.num,
+    frame_rate_den: overrides?.frame_rate_den ?? rate.den,
     sample_rate: overrides?.sample_rate ?? 48_000,
   };
 }
 
-function silencesFor(
+/**
+ * Word spans inside one clip's range, for the rule that a cut never goes through
+ * a word.
+ *
+ * Narrowed to the range because a long asset has thousands of words and the
+ * trimmer only ever asks about two moments. Returns nothing when the transcriber
+ * gave no word timings, which is what makes the rule degrade rather than fail:
+ * `chooseTrim` then behaves exactly as it did before.
+ */
+function wordsFor(
   observations: ObservationTimeline | undefined,
   assetId: string,
+  range: { source_in_ms: number; source_out_ms: number },
 ): { start_ms: number; end_ms: number }[] {
   if (!observations) return [];
+  const words: { start_ms: number; end_ms: number }[] = [];
+  for (const utterance of observations.utterances) {
+    if (utterance.asset_id !== assetId || utterance.words === undefined) continue;
+    if (utterance.end_ms < range.source_in_ms || utterance.start_ms > range.source_out_ms) continue;
+    for (const word of utterance.words) {
+      if (word.end_ms < range.source_in_ms || word.start_ms > range.source_out_ms) continue;
+      words.push({ start_ms: word.start_ms, end_ms: word.end_ms });
+    }
+  }
+  return words;
+}
+
+/**
+ * Where a clip may land on a quiet moment, by the one definition of silence.
+ *
+ * It read the per-recording silence events directly, and those are relative to
+ * the file: under a music bed they fire in every gap between the narration while
+ * the music plays on, so "the nearest quiet moment" was the middle of a bar. The
+ * mask already knew that (`QUIET_ENOUGH_DB`), and now both ask the same helper.
+ * A file with no sound has nothing to land on quietly, and nothing to cut
+ * through either, so it gets no silences rather than one that covers it whole.
+ */
+function silencesFor(
+  observations: ObservationTimeline | undefined,
+  asset: MediaAsset | undefined,
+): TrimWindow[] {
+  if (!observations || !asset || !hasAudioStream(asset)) return [];
+  return silentSpans(observations, asset);
+}
+
+/** The source's own cut points: every shot boundary of one asset, in asset time. */
+function cutsFor(observations: ObservationTimeline | undefined, assetId: string): number[] {
+  if (!observations) return [];
+  const cuts = new Set<number>();
+  for (const shot of observations.shots) {
+    if (shot.asset_id !== assetId) continue;
+    cuts.add(shot.start_ms);
+    cuts.add(shot.end_ms);
+  }
+  return [...cuts].sort((a, b) => a - b);
+}
+
+/** Where one asset is known to carry music, so a gap in the words is not a pause in the sound. */
+function musicFor(observations: ObservationTimeline | undefined, assetId: string): TrimWindow[] {
+  if (!observations) return [];
   return observations.audio_events
-    .filter((event) => event.asset_id === assetId && event.event_type === 'silence')
+    .filter((event) => event.asset_id === assetId && event.event_type === 'music')
     .map((event) => ({ start_ms: event.start_ms, end_ms: event.end_ms }));
 }
 
-function selectionReason(candidate: Selected, trim: string): string {
+/**
+ * Whether anyone is heard speaking in a stretch of one asset.
+ *
+ * The transcript first; without one, the audio analyser's own speech detection,
+ * which is all an offline run of a podcast has.
+ */
+function spokenIn(
+  event: SemanticEvent,
+  observations: ObservationTimeline | undefined,
+  range: { asset_id: string; source_in_ms: number; source_out_ms: number },
+): boolean {
+  if (event.observed.speech.length > 0) return true;
+  return (
+    observations?.audio_events.some(
+      (audio) =>
+        audio.asset_id === range.asset_id &&
+        audio.event_type === 'speech' &&
+        audio.start_ms < range.source_out_ms &&
+        audio.end_ms > range.source_in_ms,
+    ) ?? false
+  );
+}
+
+/**
+ * Whether the user asked for a whole recording to be one moment.
+ *
+ * The same test segmentation applies (`keepsWhole` in core's segment.ts): an
+ * asset-level `merge` annotation with no anchor. Segmentation makes the file one
+ * event; this makes the plan use that event whole, because "this recording is
+ * one moment" said about a clip the user trimmed means "do not trim it again".
+ */
+function userKeepsWhole(ir: EditorialIR, assetId: string): boolean {
+  return ir.annotations.some(
+    (annotation) =>
+      annotation.type === 'boundary' &&
+      annotation.action === 'merge_with_next' &&
+      annotation.anchor.length === 0 &&
+      annotation.target.kind === 'asset' &&
+      annotation.target.asset_id === assetId,
+  );
+}
+
+/**
+ * How long a photograph stays on screen: the skill's `still_duration_ms`,
+ * inside whatever bounds the rules and the user put on this moment.
+ */
+function stillHold(
+  skill: SkillManifest,
+  directive: SkillDirective,
+  userFloor: number,
+  userCeiling: number,
+): number {
+  const floor = Math.max(directive.min_duration_ms, userFloor);
+  const ceiling = Math.min(directive.max_duration_ms, userCeiling);
+  return Math.max(1, Math.min(Math.max(skill.defaults.still_duration_ms, floor), ceiling));
+}
+
+/**
+ * Decides, for one event, everything about how it is cut that follows from what
+ * its file is. See {@link CutPolicy}.
+ */
+function cutPolicy(
+  event: SemanticEvent,
+  directive: SkillDirective,
+  context: {
+    ir: EditorialIR;
+    skill: SkillManifest;
+    assets: ReadonlyMap<string, MediaAsset>;
+    observations: ObservationTimeline | undefined;
+    userCeiling: number;
+  },
+): CutPolicy {
+  const { ir, skill, observations } = context;
+  const range = event.source_ranges[0];
+  const asset = range ? context.assets.get(range.asset_id) : undefined;
+  const kind: MaterialKind = asset ? kindOf(ir.materials, asset) : 'raw';
+  const still = asset?.kind === 'image';
+  const soundOnly = asset?.kind === 'audio';
+
+  // A photograph has no sound. A video with no audio track has none either, and
+  // an export that links the sound of a drone clip writes audio clips for a
+  // stream that does not exist — which the probe's silent video did, in every
+  // adapter. A sound file is its sound: as b-roll it would be a clip with
+  // neither picture nor sound. Unknown assets keep the old answer.
+  // A recorder lined up with this video is its sound, whether or not the camera
+  // recorded any: a camera with its microphone off and a lavalier on the speaker
+  // is a common pairing, which context.yaml states (there is nothing to measure).
+  const companionEntry =
+    asset && !still ? ir.audio_companions.find((c) => c.asset_id === asset.id) : undefined;
+  const companionAsset = companionEntry
+    ? context.assets.get(companionEntry.audio_asset_id)
+    : undefined;
+  const sound = asset === undefined ? true : hasAudioStream(asset) || companionAsset !== undefined;
+  const useSourceAudio = still || !sound ? false : soundOnly ? true : !directive.as_b_roll;
+
+  // The stream the analysis listened to, when there was a choice. Absent means
+  // the first, which is what every adapter links by default.
+  const streams = asset?.audio_streams?.length ?? 0;
+  const audioStreamIndex =
+    streams > 1 && asset
+      ? observations?.audio_profiles.find((profile) => profile.asset_id === asset.id)?.stream_index
+      : undefined;
+
+  const userWhole = asset !== undefined && userKeepsWhole(ir, asset.id);
+  // The user's own ceiling outranks a skill that wants a clip whole, but not a
+  // user who asked for this recording whole: the specific outranks the general.
+  const fitsUser = event.end_ms - event.start_ms <= context.userCeiling;
+  const keepWhole = !still && (userWhole || (directive.keep_whole && fitsUser));
+  const wholeBecause = !keepWhole
+    ? undefined
+    : userWhole
+      ? ('user' as const)
+      : kind === 'clip'
+        ? ('clip' as const)
+        : ('skill' as const);
+
+  const policy = skill.defaults.snap_to_cuts;
+  const snapToCuts =
+    !still && !soundOnly && (policy === 'always' || (policy === 'auto' && kind === 'edited'));
+
+  const removeSilences =
+    directive.remove_silences &&
+    !keepWhole &&
+    !still &&
+    useSourceAudio &&
+    range !== undefined &&
+    spokenIn(event, observations, range);
+  const removableMs =
+    removeSilences && range && asset
+      ? total(
+          pausesToRemove({
+            window: { start_ms: range.source_in_ms, end_ms: range.source_out_ms },
+            silences: silencesFor(observations, asset),
+            words: wordsFor(observations, range.asset_id, range),
+            music: musicFor(observations, range.asset_id),
+            minPauseMs: skill.defaults.min_removed_silence_ms,
+            handleMs: skill.defaults.silence_handle_ms,
+          }),
+        )
+      : 0;
+
+  return {
+    ...(asset ? { asset } : {}),
+    kind,
+    still,
+    keepWhole,
+    ...(wholeBecause ? { wholeBecause } : {}),
+    snapToCuts,
+    // Only a camera settles. An edited programme, a clip the user trimmed, a
+    // screen recording and a sound file start where their event starts.
+    settle: kind === 'raw',
+    useSourceAudio,
+    ...(audioStreamIndex === undefined ? {} : { audioStreamIndex }),
+    ...(companionEntry && companionAsset
+      ? {
+          companion: {
+            asset: companionAsset,
+            offsetMs: companionEntry.offset_ms,
+            ...((companionAsset.audio_streams?.length ?? 0) > 1
+              ? {
+                  streamIndex: observations?.audio_profiles.find(
+                    (profile) => profile.asset_id === companionAsset.id,
+                  )?.stream_index,
+                }
+              : {}),
+          },
+        }
+      : {}),
+    removeSilences: removeSilences && removableMs > 0,
+    removableMs,
+  };
+}
+
+/** The clips one selected moment becomes, and how its edges were chosen. */
+interface Clips {
+  trim: { in_ms: number; out_ms: number; reason: TrimResult['reason'] | 'still' };
+  pieces: TrimWindow[];
+  /** Pause time taken out, between the pieces and at the edges. */
+  removedMs: number;
+  removedCount: number;
+}
+
+/**
+ * Where a clip's sound comes from: the recorder that heard it, where the
+ * recorder covers the whole clip; otherwise the clip's own file, if it has one.
+ *
+ * Whole clip or not at all. A clip that starts on the recorder and runs off its
+ * end would switch microphones mid-sentence, which sounds like a fault; the
+ * camera's own sound for the whole clip is the honest second choice.
+ */
+function soundFor(
+  cut: CutPolicy,
+  span: { start_ms: number; end_ms: number },
+): Pick<VideoOperation, 'use_source_audio' | 'audio_stream_index' | 'audio_source'> {
+  if (!cut.useSourceAudio) return { use_source_audio: false };
+  const companion = cut.companion;
+  if (companion) {
+    const start = span.start_ms - companion.offsetMs;
+    const end = span.end_ms - companion.offsetMs;
+    if (start >= 0 && end <= companion.asset.duration_ms) {
+      return {
+        use_source_audio: true,
+        audio_source: {
+          asset_id: companion.asset.id,
+          source_in_ms: start,
+          ...(companion.streamIndex === undefined
+            ? {}
+            : { audio_stream_index: companion.streamIndex }),
+        },
+      };
+    }
+  }
+  const own = cut.asset === undefined || hasAudioStream(cut.asset);
+  if (!own) return { use_source_audio: false };
+  return {
+    use_source_audio: true,
+    ...(cut.audioStreamIndex === undefined ? {} : { audio_stream_index: cut.audioStreamIndex }),
+  };
+}
+
+function clipsFor(
+  candidate: Selected,
+  range: { asset_id: string; source_in_ms: number; source_out_ms: number },
+  context: { skill: SkillManifest; observations: ObservationTimeline | undefined },
+): Clips {
+  const { cut } = candidate;
+  const { skill, observations } = context;
+  const allocated = candidate.allocatedMs ?? candidate.minMs;
+
+  // A photograph is the same at every instant, so any range of it is valid, and
+  // the one that says what it is — from its start, for as long as it is held —
+  // is the one to write. Trimming it would ask for a settle skip from a camera
+  // that never moved.
+  if (cut.still) {
+    return {
+      trim: { in_ms: 0, out_ms: allocated, reason: 'still' },
+      pieces: [{ start_ms: 0, end_ms: allocated }],
+      removedMs: 0,
+      removedCount: 0,
+    };
+  }
+
+  const silences = silencesFor(observations, cut.asset);
+  // The event's denormalised speech carries no word timings, so these come
+  // from the observation timeline — the same place the silences do.
+  const words = wordsFor(observations, range.asset_id, range);
+  const request = {
+    range: { start_ms: range.source_in_ms, end_ms: range.source_out_ms },
+    speech: candidate.event.observed.speech.map((s) => ({
+      start_ms: s.start_ms,
+      end_ms: s.end_ms,
+    })),
+    silences,
+    words,
+    ...(cut.snapToCuts ? { cuts: cutsFor(observations, range.asset_id) } : {}),
+    settle: cut.settle,
+    padInMs: skill.defaults.pad_in_ms,
+    padOutMs: skill.defaults.pad_out_ms,
+    snapToSilence: skill.defaults.snap_to_silence,
+    snapWindowMs: skill.defaults.snap_window_ms,
+    preserveReaction: candidate.directive.preserve_reaction,
+  };
+
+  if (!cut.removeSilences) {
+    const trim = chooseTrim({
+      ...request,
+      desiredMs: allocated,
+      minMs: candidate.minMs,
+      maxMs: candidate.maxMs,
+    });
+    return {
+      trim,
+      pieces: [{ start_ms: trim.in_ms, end_ms: trim.out_ms }],
+      removedMs: 0,
+      removedCount: 0,
+    };
+  }
+
+  // Allocation handed this moment a length on the timeline. Taking the pauses
+  // out of a source window that long leaves less, so the window grows by what
+  // was taken, and is measured again, until what is left is what was allocated.
+  let extra = 0;
+  let result: Clips | undefined;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const trim = chooseTrim({
+      ...request,
+      desiredMs: allocated + extra,
+      minMs: candidate.minMs + extra,
+      maxMs: candidate.maxMs + extra,
+    });
+    const window = { start_ms: trim.in_ms, end_ms: trim.out_ms };
+    const removed = pausesToRemove({
+      window,
+      silences,
+      words,
+      music: musicFor(observations, range.asset_id),
+      minPauseMs: skill.defaults.min_removed_silence_ms,
+      handleMs: skill.defaults.silence_handle_ms,
+    });
+    const removedMs = total(removed);
+    result = {
+      trim,
+      pieces: piecesAfterRemoving(window, removed),
+      removedMs,
+      removedCount: removed.length,
+    };
+    if (removedMs === extra) break;
+    extra = removedMs;
+  }
+  return result!;
+}
+
+function total(spans: readonly TrimWindow[]): number {
+  return spans.reduce((sum, span) => sum + (span.end_ms - span.start_ms), 0);
+}
+
+/**
+ * A marker where each chapter begins in the cut, named as the IR names it.
+ *
+ * Chapters exist in capture time; this is where each one starts in the finished
+ * piece, which is the only place an editor or a viewer can use it. Written only
+ * when the cut spans two chapters or more — one marker on a one-chapter cut says
+ * nothing. A chapter the cut returns to (a hook lifted to the front) is marked
+ * again where it resumes, because each run is somewhere a viewer can jump to.
+ *
+ * Two chapters in a row with the same name are one marker. The IR keeps them
+ * apart for a reason of its own — an hour between two visits to the same place
+ * — and in a three-minute cut that reason is gone: the worked example's travel
+ * vlog marked "USJ" at 0:00 and again at 0:17, and its short marked it three
+ * times in its first seven seconds. What is left has to be two markers or more
+ * for the same reason a one-chapter cut gets none: the probe's edited programme,
+ * analysed offline, has two chapters both called "no speech or on-screen text",
+ * and a single marker of that name at 0:00 told an editor nothing.
+ */
+function chapterMarkers(operations: readonly VideoOperation[], ir: EditorialIR): PlanMarker[] {
+  const chapterOfEvent = new Map(ir.events.map((event) => [event.id, event.chapter_id]));
+  const main = operations
+    .filter((operation) => operation.track === 0)
+    .sort((a, b) => a.timeline_start_ms - b.timeline_start_ms);
+  const chapterOf = (operation: VideoOperation): string | undefined =>
+    operation.event_id === undefined ? undefined : chapterOfEvent.get(operation.event_id);
+
+  const spanned = new Set(main.map(chapterOf).filter((id) => id !== undefined));
+  if (spanned.size < 2) return [];
+
+  const markers: PlanMarker[] = [];
+  let previous: string | undefined;
+  for (const [index, operation] of main.entries()) {
+    const chapterId = chapterOf(operation);
+    const starts = index === 0 || chapterId !== previous;
+    previous = chapterId;
+    if (!starts || chapterId === undefined) continue;
+    const chapter = chapterById(ir, chapterId);
+    if (!chapter) continue;
+    const name = chapter.title.value.trim() || chapter.id;
+    if (markers.at(-1)?.name === name) continue;
+    markers.push({
+      timeline_ms: operation.timeline_start_ms,
+      name,
+      kind: 'chapter',
+      ...(operation.event_id ? { event_id: operation.event_id } : {}),
+    });
+  }
+  return markers.length < 2 ? [] : markers;
+}
+
+function selectionReason(
+  candidate: Selected,
+  trim: Clips['trim']['reason'],
+  pausesRemoved = 0,
+  removedMs = 0,
+): string {
   const parts: string[] = [];
   if (candidate.required) parts.push('kept because it must be');
   else parts.push(`scored ${candidate.value.toFixed(2)}`);
@@ -1117,8 +1737,28 @@ function selectionReason(candidate: Selected, trim: string): string {
     parts.push(`rules: ${describeRules(candidate.directive)}`);
   if (trim === 'speech') parts.push('trimmed to the speech in it');
   else if (trim === 'snapped') parts.push('cut points moved to the nearest quiet moment');
-  else if (trim === 'whole_event') parts.push('short enough to keep whole');
+  else if (trim === 'cut') parts.push('cut points moved onto the edit’s own cuts');
+  else if (trim === 'still') parts.push(`a photograph, held for ${formatSeconds(candidate.minMs)}`);
+  else if (trim === 'whole_event') {
+    const why = candidate.cut.wholeBecause;
+    parts.push(
+      why === 'user'
+        ? 'used whole, as you asked'
+        : why === 'clip'
+          ? 'used whole, as it was trimmed'
+          : why === 'skill'
+            ? 'used whole, as the skill asks'
+            : 'short enough to keep whole',
+    );
+  }
+  if (pausesRemoved > 0) {
+    parts.push(`${pausesRemoved} pause(s) taken out, ${formatSeconds(removedMs)} in all`);
+  }
   return parts.join('; ');
+}
+
+function formatSeconds(ms: number): string {
+  return `${Math.round(ms / 100) / 10}s`;
 }
 
 function describeRules(directive: SkillDirective): string {
