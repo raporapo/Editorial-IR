@@ -93,9 +93,9 @@ jobs:
   media:
     runs-on: ubuntu-latest
     # The worker's protocol loop blocks on stdin, so a reply that never comes is
-    # a job that sits for six hours and then reports nothing. The script times
-    # each request out at 60s; this is the backstop for ffmpeg itself hanging.
-    timeout-minutes: 10
+    # a job that sits for six hours and then reports nothing. Each step carries
+    # its own limit below; this is the backstop for the job as a whole.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -107,19 +107,31 @@ jobs:
       # The runner image ships no ffmpeg, and this is the one job that is about
       # ffmpeg, so it installs rather than skipping. --no-install-recommends
       # keeps it to the codecs instead of pulling a desktop stack in behind them.
+      #
+      # An apt mirror that stalled held this step for the job's whole ten
+      # minutes, and the job was cancelled before a single check ran. Each
+      # attempt is bounded and retried, so a slow mirror costs one attempt.
       - name: Install ffmpeg
+        timeout-minutes: 8
         run: |
           command -v ffmpeg >/dev/null || {
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq --no-install-recommends ffmpeg
+            for attempt in 1 2 3; do
+              timeout 120 sudo apt-get update -qq &&
+                timeout 240 sudo apt-get install -y -qq --no-install-recommends ffmpeg &&
+                break
+              echo "apt attempt $attempt did not finish; retrying"
+              sleep 5
+            done
           }
           ffmpeg -version | head -1
           ffprobe -version | head -1
       # The script starts the worker from `services/perception/src` itself and
       # speaks the protocol directly, so a failure points at the media code
       # rather than at the TypeScript transport, which has its own tests. No
-      # models are needed and nothing is downloaded.
+      # models are needed and nothing is downloaded. The script times each
+      # request out at 60s; this limit is the backstop for ffmpeg itself hanging.
       - name: Drive the real worker against real video
+        timeout-minutes: 5
         run: node scripts/check-media.mjs
 
   example:
