@@ -88,6 +88,7 @@ export {
   keywordsOf,
 } from './context/heuristic.js';
 export {
+  DESCRIBE_PROMPT_VERSION,
   OpenAiCompatibleContextModel,
   buildPrompt,
   toDataUrl,

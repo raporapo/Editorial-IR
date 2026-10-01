@@ -13,7 +13,11 @@ import {
   type SemanticEvent,
   type UserAnnotation,
 } from '@editorial-ir/contracts';
-import { HeuristicContextModel, type ContextModel } from '@editorial-ir/perception';
+import {
+  DESCRIBE_PROMPT_VERSION,
+  HeuristicContextModel,
+  type ContextModel,
+} from '@editorial-ir/perception';
 import type { SegmentDraft } from './segment.js';
 import { annotationsFor, applyAnnotations, withOverrides } from './annotations.js';
 import {
@@ -309,10 +313,34 @@ export async function buildSemanticEvents(
     // asking; an answer the cache holds is still free and still taken.
     let budgetReached = false;
     let firstUnpaid: string | undefined;
+    let rulesRunForNothing: string | undefined;
     for (const [index, skeleton] of skeletons.entries()) {
       if (rules && spared.has(skeleton.id)) continue;
       options.onProgress?.('describe', describing++, skeletons.length);
-      const params = describeParams(skeleton, skeletons, index, options, { includeFrames: false });
+      // A model is asked to say what is happening, so it is shown it. The base
+      // pass was text-only, frames being kept for the closer look — right when
+      // the base pass was the rules, and wrong once a vision model describes
+      // every event (OEA_VLM_SCOPE=base): measured on Gemini, it was handed no
+      // pictures and no transcript and described a Mandelbrot fractal as "a
+      // tabby cat peeks over the edge of a bed".
+      // Frames thinned out of a still stretch count as saved only on a call
+      // that is paid for, as in the closer look below: a cached answer saved
+      // nothing.
+      const thinned = { count: 0 };
+      const params = describeParams(skeleton, skeletons, index, options, {
+        includeFrames: rules !== undefined,
+        framesSkipped: thinned,
+      });
+      // Nothing to look at, nothing said, nothing written: whatever a model
+      // answers is invented. The rules say what was measured instead, and the
+      // model is not counted as having been meant to describe it.
+      if (rules && !hasEvidence(params)) {
+        rulesRunForNothing ??= options.runs.fromIdentity('context', rules.identity);
+        descriptions.set(skeleton.id, await rules.describe(params));
+        describedBy.set(skeleton.id, rulesRunForNothing);
+        describeAsked--;
+        continue;
+      }
       const key = describeKey(model, params);
       const hit = options.cache?.get<Awaited<ReturnType<ContextModel['describe']>>>(key);
       if (hit) {
@@ -332,6 +360,7 @@ export async function buildSemanticEvents(
         options.cache?.set(key, result);
         descriptions.set(skeleton.id, result);
         describedByModel++;
+        framesSkipped.count += thinned.count;
         baseRate.observe(
           promptChars(stableParams(params)),
           result.input_tokens,
@@ -626,7 +655,7 @@ export function describeKey(
     ...(model.identity.modelVersion === undefined
       ? {}
       : { modelVersion: model.identity.modelVersion }),
-    parameters: { with_frames: frame_paths.length > 0 },
+    parameters: { with_frames: frame_paths.length > 0, prompt: DESCRIBE_PROMPT_VERSION },
     pipelineVersion: PIPELINE_VERSION,
   };
 }
@@ -702,6 +731,18 @@ function describeParams(
       ? { language: options.context.editing_goal.language }
       : {}),
   };
+}
+
+/** Whether a describe call has anything in it for a model to describe. */
+function hasEvidence(params: ReturnType<typeof describeParams>): boolean {
+  return (
+    params.frame_paths.length > 0 ||
+    params.transcript.length > 0 ||
+    params.ocr.length > 0 ||
+    (params.subtitles?.length ?? 0) > 0 ||
+    params.visual_labels.length > 0 ||
+    params.audio_tags.some((tag) => tag !== 'silence')
+  );
 }
 
 function framesFor(

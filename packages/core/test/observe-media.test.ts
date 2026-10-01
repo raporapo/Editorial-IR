@@ -363,6 +363,102 @@ describe('a closer look at a still', () => {
   });
 });
 
+describe('a vision model describing every event', () => {
+  const photo = asset({
+    id: 'asset_002',
+    path: 'footage/IMG_2003.jpg',
+    file_name: 'IMG_2003.jpg',
+    kind: 'image',
+    duration_ms: 0,
+    audio_codec: undefined,
+  });
+  const describeWith = async (
+    model: {
+      identity: ReturnType<typeof identity>;
+      describe: (p: DescribeParams) => Promise<DescribeResult>;
+    },
+    target: ReturnType<typeof asset>,
+    observations: Awaited<ReturnType<typeof observe>>,
+  ) =>
+    buildSemanticEvents(
+      [
+        {
+          asset_id: target.id,
+          start_ms: 0,
+          end_ms: 4000,
+          shot_ids: [],
+          method: 'asset',
+          boundary_confidence: 1,
+        },
+      ],
+      {
+        assets: [target],
+        placements: [{ asset_id: target.id, offset_ms: 0, order: 0, ordered_by: 'file_name' }],
+        observations: {
+          ...observations.observations,
+          project_id: 'prj',
+          fingerprint: '',
+          generated_at: '',
+        },
+        context: ProjectContext.parse({
+          project_id: 'prj_test',
+          updated_at: '2026-09-01T00:00:00.000Z',
+        }),
+        annotations: [],
+        runs: new ModelRunRecorder(() => '2026-09-01T00:00:00.000Z'),
+        baseModel: model,
+        derived: observations.derived,
+      },
+    );
+
+  it('is shown the picture on the first pass, not only on a closer look', async () => {
+    // Measured on Gemini with OEA_VLM_SCOPE=base: the base pass sent no frames,
+    // and a Mandelbrot fractal came back as "a tabby cat peeks over the edge of
+    // a bed", colour bars as "a person in a dark blue short-sleeved shirt".
+    const observed = await observe([photo], madeFrames, seen());
+    const sent: string[][] = [];
+    await describeWith(
+      {
+        identity: identity('vision-model'),
+        describe: async (params) => {
+          sent.push(params.frame_paths);
+          return DescribeResult.parse({ description: 'colour bars', confidence: 0.9 });
+        },
+      },
+      photo,
+      observed,
+    );
+    expect(sent).toEqual([[join(root, 'footage/IMG_2003.jpg')]]);
+  });
+
+  it('is not asked about an event with nothing in it to describe', async () => {
+    // A sound file nobody transcribed, holding only silence: no frames, no
+    // words, no text. Anything a model said about it would be invented.
+    const memo = asset({
+      id: 'asset_003',
+      path: 'footage/memo.m4a',
+      file_name: 'memo.m4a',
+      kind: 'audio',
+      duration_ms: 4000,
+    });
+    const observed = await observe([photo], madeFrames, seen());
+    let calls = 0;
+    const built = await describeWith(
+      {
+        identity: identity('vision-model'),
+        describe: async () => {
+          calls++;
+          return DescribeResult.parse({ description: 'a speaker gives a talk', confidence: 0.9 });
+        },
+      },
+      memo,
+      observed,
+    );
+    expect(calls).toBe(0);
+    expect(built.events[0]?.description.value).not.toMatch(/speaker/);
+  });
+});
+
 describe('frames a model is asked about', () => {
   it('are never written where prepare numbered its own', async () => {
     // Prepare names frames by index; a moment at 1000 ms written as

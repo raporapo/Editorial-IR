@@ -29,7 +29,10 @@ SYSTEM_PROMPT = (
     "Use it, and never contradict it. "
     "If the frames and the background disagree, describe the frames "
     "and leave the background alone. "
-    "Answer in the language of the transcript."
+    "Answer in the language of the transcript. "
+    "Describe only what the frames, transcript, on-screen text and sound tags given here show. "
+    "Never name a person, animal, object or place that is not in them; "
+    "without frames, say only what the words and sounds establish."
 )
 
 RESPONSE_SCHEMA = {

@@ -21,6 +21,9 @@ export default defineConfig({
   test: {
     include: ['packages/*/test/**/*.test.ts', 'apps/*/test/**/*.test.ts', 'tests/**/*.test.ts'],
     environment: 'node',
+    // Strips the model variables a developer's shell may hold, so no test can
+    // reach a paid provider by accident.
+    setupFiles: ['tests/support/isolate-env.ts'],
     reporters: ['default'],
     coverage: {
       provider: 'v8',

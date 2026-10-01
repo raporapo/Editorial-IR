@@ -55,10 +55,20 @@ the fallback).
 
 Every event is described and judged once, and cached: a re-analysis, another
 skill or another duration costs nothing again. Still, silent footage is described
-and judged by rules instead ([the mask](cost.md)), and frames are sent at 768
-pixels on the long edge. `--budget <usd>` refuses to spend past a limit, and a
-spending cap in the Google console is a second guard. `oea analyze` reports what
-it spent and what the mask saved.
+and judged by rules instead ([the mask](cost.md)), and video frames are sent at
+768 pixels on the long edge (a photograph is sent as the file is). An event with
+nothing to look at and nothing said — a sound file nobody transcribed — is
+described by rules too: a model would only invent it.
+
+Measured with a real key on the five probe stills: description 9,496 input and
+644 output tokens (about 1,900 in per event with its picture), judgement 7,418
+in and 1,180 out (about 1,480 per event), and one embedding call.
+
+`--budget <usd>` refuses to spend past a limit. It prices descriptions at a
+fixed estimate per event and does not price judgement, so treat it as a guard on
+the larger of the two rather than as a bill; a spending cap in the Google
+console is the hard one. `oea analyze` reports what it estimated and what the
+mask saved.
 
 ### What leaves the machine
 
