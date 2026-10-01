@@ -103,6 +103,47 @@ server offers will do. A model on `localhost` describes every event, because
 that is free. Sixteen gigabytes of memory is a comfortable floor, and a GPU
 makes transcription and description several times faster.
 
+## Transcription from a server (Phonon-2 and others)
+
+Transcription runs in the Python worker's Whisper by default. A server speaking
+OpenAI's `POST /v1/audio/transcriptions` can do it instead, with or without the
+worker:
+
+```bash
+OEA_TRANSCRIBE_BASE_URL=http://localhost:8010/v1
+OEA_TRANSCRIBE_MODEL=phonon-2
+# OEA_TRANSCRIBE_API_KEY=…      a hosted server's key
+# OEA_TRANSCRIBE_LANGUAGES=en   which languages it can transcribe (default: any)
+```
+
+**Phonon-2** ([Fermion Research](https://www.fermionresearch.com/models/phonon-2/),
+CC-BY-4.0 weights) is a 164 MB English model that is very fast on a CPU. Run it
+with `pip install fermion-research`, then `phonon serve --port 8010`. Measured
+here: an English clip transcribed correctly in 0.24 s of decoding on four CPU
+cores, through the same request this client sends. The first run downloads the
+model and compiles its runtime, which takes about a minute.
+
+- **English only.** A model name containing `phonon` is taken as English-only
+  without being told. A project whose language (`editing_goal.language` in
+  context.yaml) is English goes to the server. Anything else goes to the
+  worker's Whisper when it is installed, and otherwise fails with a message
+  saying so. An unset language is not guessed to be English, because a
+  wrong-language transcript is worse than none. To use Phonon-2, set
+  `language: en`.
+- **No word times.** Phonon-2 returns one start and end per request. The client
+  learns this from the first answer and from then on sends the audio one stretch
+  of speech at a time, split where it is quiet for two seconds or more, so a
+  pause still ends an utterance. Measured on a clip with a four-second pause: one
+  utterance from 0 to 13.7 s became two, 0–3.65 s and 7.05–13.74 s. A server that
+  does return word times (a Whisper server, OpenAI's `whisper-1`) is sent each
+  file whole and split at its own word gaps.
+- **Hosted limits.** A file over 24 MB (about twelve minutes of prepare's 16 kHz
+  WAV) is sent in pieces, cut at the quietest moment near each limit, with the
+  times put back on the file's clock.
+- A server that answers only text is asked that way once it refuses
+  `verbose_json`, and its text is placed over the stretch it came from at low
+  confidence.
+
 ## Both
 
 The variables are per stage, so any mix works: transcription in the worker,

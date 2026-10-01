@@ -93,5 +93,14 @@ export {
   buildPrompt,
   toDataUrl,
 } from './context/openai-compatible.js';
+export {
+  LanguageRoutedSpeechModel,
+  OpenAiCompatibleSpeechModel,
+  joinWords,
+  languagesFor,
+  primaryLanguage,
+  toUtterances,
+  type OpenAiCompatibleSpeechOptions,
+} from './speech/openai-compatible.js';
 export { PythonWorkerClient, type PythonWorkerOptions } from './worker/client.js';
 export * from './worker/models.js';

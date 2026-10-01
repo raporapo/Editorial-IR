@@ -7,7 +7,9 @@ import {
 } from '@editorial-ir/contracts';
 import {
   HashingTextEmbedding,
+  LanguageRoutedSpeechModel,
   OpenAiCompatibleContextModel,
+  OpenAiCompatibleSpeechModel,
   OpenAiCompatibleTextEmbedding,
   PythonWorkerClient,
   WorkerAudioModel,
@@ -24,6 +26,7 @@ import {
   createFixtureSuite,
   createLocalSuite,
   isLocalEndpoint,
+  languagesFor,
   loadPerceptionFixture,
   workerHealth,
   type ContextModel,
@@ -219,6 +222,37 @@ export async function resolveBackends(options: BackendOptions = {}): Promise<Res
   } else {
     suite = createLocalSuite();
     description.push('perception: ffmpeg only (no transcription, no vision)');
+  }
+
+  // ---- transcription from a server ----------------------------------------
+  //
+  // Any server speaking OpenAI's /audio/transcriptions: Phonon-2 behind
+  // `phonon serve`, a local Whisper server, or a hosted one. It works without
+  // the Python worker — prepare's WAV is all it needs — and beside it, a server
+  // limited to some languages (Phonon-2: English) takes those and leaves the
+  // rest to the worker's Whisper.
+  const transcribeBase = process.env.OEA_TRANSCRIBE_BASE_URL;
+  const transcribeModel = process.env.OEA_TRANSCRIBE_MODEL;
+  if (transcribeBase && transcribeModel) {
+    const server = new OpenAiCompatibleSpeechModel({
+      baseUrl: transcribeBase,
+      model: transcribeModel,
+      languages: languagesFor(transcribeModel, process.env.OEA_TRANSCRIBE_LANGUAGES),
+      ...(process.env.OEA_TRANSCRIBE_API_KEY ? { apiKey: process.env.OEA_TRANSCRIBE_API_KEY } : {}),
+    });
+    if (server.languages.length === 0) {
+      suite = { ...suite, speech: server };
+      description.push(`transcription: ${transcribeModel} at ${transcribeBase}`);
+    } else {
+      const fallback = suite.speech;
+      suite = { ...suite, speech: new LanguageRoutedSpeechModel(server, fallback) };
+      const others = fallback
+        ? `${fallback.identity.model ?? fallback.identity.backend} for the rest`
+        : 'nothing for the rest';
+      description.push(
+        `transcription: ${transcribeModel} at ${transcribeBase} for ${server.languages.join(', ')}, ${others}`,
+      );
+    }
   }
 
   // A configured embedding service replaces the hashing stand-in everywhere.
